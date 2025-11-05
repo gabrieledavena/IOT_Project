@@ -1,0 +1,49 @@
+<circuit version="1.1.0-SR1" rev="2005" stepSize="1000000" stepsPS="1000000" NLsteps="100000" reaStep="1000000" animate="0" >
+
+<item itemtype="Subcircuit" CircId="Uno-1" mainComp="false" Show_id="true" Show_Val="false" Pos="-692,-124" rotation="0" hflip="1" vflip="1" label="Uno-1" idLabPos="0,-20" labelrot="0" valLabPos="-16,20" valLabRot="0" Logic_Symbol="false">
+<mainCompProps MainCompId="mega328-109" Frequency="16 MHz" Program="ProgettoFinale.hex" Auto_Load="false" saveEepr="true" MainMcu="true" SerialMon="-1" />
+</item>
+
+<item itemtype="Resistor" CircId="Resistor-9" mainComp="false" ShowProp="Resistance" Show_id="false" Show_Val="true" Pos="-472,-36" rotation="0" hflip="1" vflip="1" label="Resistor-9" idLabPos="-16,-24" labelrot="0" valLabPos="-12.5116,6" valLabRot="0" Resistance="100 Ω" />
+
+<item itemtype="LDR" CircId="LDR-2" mainComp="false" ShowProp="Lux" Show_id="false" Show_Val="true" Pos="-412,32" rotation="0" hflip="1" vflip="1" label="LDR-2" idLabPos="-16,-24" labelrot="0" valLabPos="-23.1677,18.8123" valLabRot="0" Lux="37180 Lux" Min_Lux="1e-12 Lux" Max_Lux="130000 Lux" Dial_Step="0 Lux" Gamma="0.8" R1="127410 Ω" Slider="true" Scale="1" />
+
+<item itemtype="Thermistor" CircId="Thermistor-12" mainComp="false" ShowProp="Temp" Show_id="false" Show_Val="true" Pos="-360,-28" rotation="0" hflip="1" vflip="1" label="Thermistor-12" idLabPos="-16,-24" labelrot="0" valLabPos="-10.1762,18.8004" valLabRot="0" Temp="8.34 ºC" Min_Temp="-10 ºC" Max_Temp="60 ºC" Dial_Step="0 ºC" B="3455" R25="10000 Ω" Slider="true" Scale="1" />
+
+<item itemtype="Resistor" CircId="Resistor-15" mainComp="false" ShowProp="Resistance" Show_id="false" Show_Val="true" Pos="-420,-76" rotation="0" hflip="1" vflip="1" label="Resistor-15" idLabPos="-16,-24" labelrot="0" valLabPos="-16,6" valLabRot="0" Resistance="100 Ω" />
+
+<item itemtype="SerialPort" CircId="SerialPort-25" mainComp="false" Show_id="false" Show_Val="false" Pos="-672,-180" rotation="0" hflip="1" vflip="1" label="SerialPort-25" idLabPos="-20,-32" labelrot="0" valLabPos="-16,20" valLabRot="0" Auto="false" Port="COM1" Baudrate="9600 _Bd" DataBits="8 _bits" StopBits="1 _bits" SerialMon="false" />
+
+<item itemtype="Node" CircId="Node-11" mainComp="false" Pos="-444,-36" />
+
+<item itemtype="Node" CircId="Node-13" mainComp="false" Pos="-520,-28" />
+
+<item itemtype="Node" CircId="Node-24" mainComp="false" Pos="-396,-76" />
+
+<item itemtype="Connector" uid="Connector-31" startpinid="Resistor-9-lPin" endpinid="Uno-1-GND1" pointList="-488,-36,-540,-36" />
+
+<item itemtype="Connector" uid="Connector-34" startpinid="Node-11-2" endpinid="Resistor-9-rPin" pointList="-444,-36,-456,-36" />
+
+<item itemtype="Connector" uid="Connector-33" startpinid="LDR-2-rPin" endpinid="Node-11-0" pointList="-396,32,-396,-36,-444,-36" />
+
+<item itemtype="Connector" uid="Connector-32" startpinid="Node-11-1" endpinid="Uno-1-A5" pointList="-444,-36,-444,-108,-540,-108" />
+
+<item itemtype="Connector" uid="Connector-36" startpinid="Node-13-1" endpinid="Thermistor-12-lPin" pointList="-520,-28,-376,-28" />
+
+<item itemtype="Connector" uid="Connector-37" startpinid="LDR-2-lPin" endpinid="Node-13-0" pointList="-428,32,-520,32,-520,-28" />
+
+<item itemtype="Connector" uid="Connector-38" startpinid="Node-13-2" endpinid="Uno-1-5V0" pointList="-520,-28,-540,-28" />
+
+<item itemtype="Connector" uid="Connector-65" startpinid="Resistor-15-lPin" endpinid="Uno-1-GND0" pointList="-436,-76,-436,-44,-540,-44" />
+
+<item itemtype="Connector" uid="Connector-66" startpinid="Node-24-1" endpinid="Uno-1-A4" pointList="-396,-76,-396,-100,-540,-100" />
+
+<item itemtype="Connector" uid="Connector-67" startpinid="Thermistor-12-rPin" endpinid="Node-24-0" pointList="-344,-28,-344,-76,-396,-76" />
+
+<item itemtype="Connector" uid="Connector-68" startpinid="Node-24-2" endpinid="Resistor-15-rPin" pointList="-396,-76,-404,-76" />
+
+<item itemtype="Connector" uid="Connector-72" startpinid="SerialPort-25-pin1" endpinid="Uno-1-1" pointList="-712,-172,-712,-100,-684,-100" />
+
+<item itemtype="Connector" uid="Connector-73" startpinid="SerialPort-25-pin0" endpinid="Uno-1-0" pointList="-712,-188,-748,-188,-748,-108,-684,-108" />
+
+</circuit>
