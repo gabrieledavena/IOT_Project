@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  django-server:
+    build: ./backend
+    container_name: iot_django_server
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      # Mappa la cartella locale src dentro al container.
+      # Modificando i file sul tuo PC, il server si riavvia automaticamente.
+      - ./backend/src:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=1
+      # Se userai un DB vero in futuro (Postgres), le credenziali vanno qui
+    restart: always
+
+# Se in futuro vorrai aggiungere il bridge python come container, 
+# potrai aggiungerlo qui sotto come nuovo servizio.
