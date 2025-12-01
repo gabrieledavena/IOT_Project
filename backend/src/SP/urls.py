@@ -8,6 +8,6 @@ from SP.views import PanelDataList, PanelDataDetail
 app_name = 'SP'
 
 urlpatterns = [
-    path("panel-data/", PanelDataList.as_view()),
-    path("panel-data/<int:pk>/", PanelDataDetail.as_view()),
+    path("panel-data/", PanelDataList.as_view(), name="panel-data-list"),
+    path("panel-data/<int:pk>/", PanelDataDetail.as_view(), name="panel-data-detail"),
 ]

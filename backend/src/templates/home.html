@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Homepage</title>
+    <style>
+        body { font-family: Arial; padding: 40px; }
+        .btn {
+            padding: 12px 20px;
+            margin: 10px;
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+        .btn:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+
+
+
+
+<body>
+    <h1>Homepage</h1>
+    <p>Scegli una funzione dell'app SP:</p>
+
+    <a class="btn" href="{% url 'SP:panel-data-list' %}">Lista Panel Data</a>
+
+    <form id="pkForm" style="margin-top: 10px;" onsubmit="event.preventDefault(); goToDetail();">
+        <input type="number" id="pkInput" placeholder="Inserisci ID" required>
+        <button type="submit" class="btn">Vai al Dettaglio</button>
+    </form>
+
+<script>
+    function goToDetail() {
+        const pk = document.getElementById('pkInput').value;
+        if (pk) {
+            window.location.href = "sp/panel-data/" + pk + "/";
+        }
+    }
+</script>
+
+</body></html>
