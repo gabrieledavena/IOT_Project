@@ -26,3 +26,5 @@ Thumbs.db
 venv/
 env/
 .venv/
+
+ArduinoBridge/*/build/*
