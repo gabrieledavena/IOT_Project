@@ -1,0 +1,28 @@
+# --- Python & Bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Django ---
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# --- IDEs & Editor (Quello che hai chiesto) ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- OS Specifici ---
+.DS_Store
+Thumbs.db
+
+# --- Docker & Environment ---
+.env
+venv/
+env/
+.venv/
