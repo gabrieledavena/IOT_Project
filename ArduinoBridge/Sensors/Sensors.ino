@@ -66,12 +66,11 @@ void loop() {
 
   // === 3. STAMPA SU SERIALE ===
   // Questa stringa verrà inviata al bridge e pubblicata su MQTT
-  Serial.print("");
   Serial.print(tempC);
   Serial.print("|");
   Serial.print(lux);
   Serial.print("|");
   Serial.print(panelPower);
   Serial.print("\n");
-  delay(10000); // Attendi 10 secondi prima della prossima lettura
+  delay(1000); // Attendi 1 secondi prima della prossima lettura
 }

@@ -1,3 +1,9 @@
 django>=4.2
 djangorestframework
 django-cors-headers
+requests
+serial
+threading
+time
+datetime
+statistics
