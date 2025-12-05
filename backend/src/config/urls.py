@@ -22,4 +22,5 @@ urlpatterns = [
     path("", home, name="home"),
     path("admin/", admin.site.urls),
     path("sp/", include("SP.urls")),
+    path("forecast/", include("forecast.urls")),
 ]
