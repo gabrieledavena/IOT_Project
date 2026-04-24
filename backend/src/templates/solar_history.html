@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storico Produzione</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin: 0 auto;
+            max-width: 98%;
+        }
+        h1 { color: #2c3e50; font-size: 24px; margin-bottom: 20px; }
+
+        /* CONTENITORE SCROLLABILE */
+        .chart-wrapper {
+            width: 100%;
+            overflow-x: auto; /* Abilita lo scroll orizzontale */
+            overflow-y: hidden;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            background: #fff;
+            padding-bottom: 5px; /* Spazio per la scrollbar */
+        }
+
+        /* CONTENITORE INTERNO (La larghezza è settata inline da Django) */
+        .chart-area {
+            position: relative;
+            height: 500px; /* ALTEZZA FISSA: Fondamentale */
+            /* width: sarà iniettata da style="..." */
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Produzione Solare (Dettaglio al Minuto)</h1>
+
+    {% if error %}
+        <div style="color: red; background: #ffe6e6; padding: 10px; border-radius: 5px;">
+            <strong>Errore:</strong> {{ error }}
+        </div>
+    {% else %}
+        <p>Visualizzazione di <strong>{{ total_records }}</strong> minuti registrati.</p>
+
+        <div class="chart-wrapper">
+            <div class="chart-area" style="width: {{ chart_width }}px;">
+                <canvas id="myChart"></canvas>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+{% if not error and total_records > 0 %}
+<script>
+    // Recupero dati renderizzati da Django
+    const labels = {{ chart_labels|safe }};
+    const dataValues = {{ chart_data|safe }};
+
+    const ctx = document.getElementById('myChart').getContext('2d');
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Produzione (kW)',
+                data: dataValues,
+                backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1,
+                // barPercentage e categoryPercentage a 1.0 rendono le barre contigue (senza spazi)
+                barPercentage: 0.95,
+                categoryPercentage: 1.0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false, // IMPORTANTE: Si adatta al div .chart-area
+            animation: false, // Disabilita animazioni per performance con tanti dati
+            scales: {
+                x: {
+                    title: { display: true, text: 'Orario' },
+                    ticks: {
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 50 // Mostra al massimo 50 orari sull'asse per non affollare
+                    },
+                    grid: { display: false }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'kW' },
+                    suggestedMax: 0.5, // Aiuta se i valori sono molto piccoli all'inizio
+                }
+            },
+            plugins: {
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            return context.parsed.y + ' kW';
+                        }
+                    }
+                },
+                legend: { display: true, position: 'top' }
+            }
+        }
+    });
+</script>
+{% endif %}
+
+</body>
+</html>
