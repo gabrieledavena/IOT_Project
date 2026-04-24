@@ -1,6 +1,7 @@
 import random
 from django.core.management.base import BaseCommand
-from SP.models import Community, User, PhotovoltaicSystem, PanelData
+from django.contrib.auth.models import User
+from SP.models import Community, Customer, PhotovoltaicSystem, PanelData
 from django.utils import timezone
 from datetime import timedelta
 
@@ -10,7 +11,8 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.stdout.write('Deleting old data...')
         PanelData.objects.all().delete()
-        User.objects.all().delete()
+        Customer.objects.all().delete()
+        User.objects.filter(is_superuser=False).delete()
         PhotovoltaicSystem.objects.all().delete()
         Community.objects.all().delete()
 
@@ -25,12 +27,18 @@ class Command(BaseCommand):
             )
             communities.append(community)
 
+        self.stdout.write('Creating users and customers...')
         for i in range(15):
-            User.objects.create(
-                name=f'User {i}',
+            username = f'user{i}'
+            password = 'password123'
+            user = User.objects.create_user(username=username, password=password)
+            Customer.objects.create(
+                user=user,
+                name=f'Name {i}',
                 surname=f'Surname {i}',
                 community=random.choice(communities)
             )
+            self.stdout.write(f'Created user: {username}, password: {password}')
 
         photovoltaic_systems = []
         for i in range(10):

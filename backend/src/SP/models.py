@@ -1,5 +1,5 @@
 from django.db import models
-
+from django.contrib.auth.models import User
 # Create your models here.
 
 
@@ -28,7 +28,8 @@ class Community(models.Model):
         verbose_name_plural = "Communities"
 
 
-class User(models.Model):
+class Customer(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=100, null=False, blank=False)
     surname = models.CharField(max_length=100, null=False, blank=False)
     community = models.ForeignKey(
@@ -39,8 +40,8 @@ class User(models.Model):
         return self.name
 
     class Meta:
-        verbose_name = "User"
-        verbose_name_plural = "Users"
+        verbose_name = "Customer"
+        verbose_name_plural = "Customers"
 
 
 class PhotovoltaicSystem(models.Model):

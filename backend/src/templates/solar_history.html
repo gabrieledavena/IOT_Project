@@ -1,47 +1,9 @@
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Storico Produzione</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            padding: 20px;
-            background-color: #f8f9fa;
-        }
-        .card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin: 0 auto;
-            max-width: 98%;
-        }
-        h1 { color: #2c3e50; font-size: 24px; margin-bottom: 20px; }
+{% extends "SP/base.html" %}
 
-        /* CONTENITORE SCROLLABILE */
-        .chart-wrapper {
-            width: 100%;
-            overflow-x: auto; /* Abilita lo scroll orizzontale */
-            overflow-y: hidden;
-            border: 1px solid #e9ecef;
-            border-radius: 4px;
-            background: #fff;
-            padding-bottom: 5px; /* Spazio per la scrollbar */
-        }
+{% block title %}Solar Production History{% endblock %}
 
-        /* CONTENITORE INTERNO (La larghezza è settata inline da Django) */
-        .chart-area {
-            position: relative;
-            height: 500px; /* ALTEZZA FISSA: Fondamentale */
-            /* width: sarà iniettata da style="..." */
-        }
-    </style>
-</head>
-<body>
-
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <div class="card">
     <h1>Produzione Solare (Dettaglio al Minuto)</h1>
 
@@ -119,6 +81,4 @@
     });
 </script>
 {% endif %}
-
-</body>
-</html>
+{% endblock %}

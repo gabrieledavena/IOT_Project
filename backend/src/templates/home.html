@@ -1,28 +1,8 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Homepage</title>
-    <style>
-        body { font-family: Arial; padding: 40px; }
-        .btn {
-            padding: 12px 20px;
-            margin: 10px;
-            display: inline-block;
-            background: #4CAF50;
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-        }
-        .btn:hover {
-            background: #45a049;
-        }
-    </style>
-</head>
+{% extends "SP/base.html" %}
 
+{% block title %}Homepage{% endblock %}
 
-
-
-<body>
+{% block content %}
     <h1>Homepage</h1>
     <p>Scegli una funzione dell'app SP:</p>
 
@@ -41,5 +21,4 @@
         }
     }
 </script>
-
-</body></html>
+{% endblock %}
