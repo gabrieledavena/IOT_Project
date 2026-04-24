@@ -1,32 +1,63 @@
-{% extends "SP/base.html" %}
+{% extends "base.html" %}
 
-{% block title %}Solar Production History{% endblock %}
+{% block title %}Solar Production Community{% endblock %}
 
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <div class="card">
-    <h1>Produzione Solare (Dettaglio al Minuto)</h1>
+    <h1>Produzione Solare Comunità {{ community }}</h1>
+
+    {% if selected_day %}
+        <p>Dati per il giorno: <strong>{{ selected_day }}</strong></p>
+    {% else %}
+        <p>Nessun giorno selezionato. Vengono mostrati tutti i dati disponibili.</p>
+    {% endif %}
+
+    <!-- Menu a tendina per la selezione del giorno -->
+    <div class="day-selector">
+        <form method="get" action="">
+            <label for="day">Seleziona un giorno:</label>
+            <select name="day" id="day">
+
+                {% for day in available_days %}
+                    <option value="{{ day }}" {% if day == selected_day %}selected{% endif %}>
+                        {{ day }}
+                    </option>
+                {% endfor %}
+            </select>
+            <button type="submit">Vai</button>
+        </form>
+    </div>
 
     {% if error %}
         <div style="color: red; background: #ffe6e6; padding: 10px; border-radius: 5px;">
             <strong>Errore:</strong> {{ error }}
         </div>
-    {% else %}
-        <p>Visualizzazione di <strong>{{ total_records }}</strong> minuti registrati.</p>
+    {% elif total_records > 0 %}
+        <p>Visualizzazione di <strong>{{total_records}}</strong> campionamenti registrati.</p>
 
         <div class="chart-wrapper">
-            <div class="chart-area" style="width: {{ chart_width }}px;">
+            <div class="chart-area" style="width: {{chart_width}}px;">
                 <canvas id="myChart"></canvas>
             </div>
         </div>
+
+        <!-- Riepilogo Energia Accumulata -->
+        <div class="energy-summary">
+            <h3>Riepilogo Energia</h3>
+            <p>Energia totale accumulata nel giorno selezionato: <strong>{{total_energy}} kWh</strong></p>
+        </div>
+
+    {% else %}
+        <p>Nessun dato disponibile per la selezione corrente.</p>
     {% endif %}
 </div>
 
 {% if not error and total_records > 0 %}
 <script>
     // Recupero dati renderizzati da Django
-    const labels = {{ chart_labels|safe }};
-    const dataValues = {{ chart_data|safe }};
+    const labels = {{chart_labels|safe}};
+    const dataValues = {{chart_data|safe}};
 
     const ctx = document.getElementById('myChart').getContext('2d');
 
@@ -40,29 +71,27 @@
                 backgroundColor: 'rgba(54, 162, 235, 0.7)',
                 borderColor: 'rgba(54, 162, 235, 1)',
                 borderWidth: 1,
-                // barPercentage e categoryPercentage a 1.0 rendono le barre contigue (senza spazi)
                 barPercentage: 0.95,
                 categoryPercentage: 1.0
             }]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false, // IMPORTANTE: Si adatta al div .chart-area
-            animation: false, // Disabilita animazioni per performance con tanti dati
+            maintainAspectRatio: false,
+            animation: false,
             scales: {
                 x: {
                     title: { display: true, text: 'Orario' },
                     ticks: {
                         maxRotation: 0,
                         autoSkip: true,
-                        maxTicksLimit: 50 // Mostra al massimo 50 orari sull'asse per non affollare
+                        maxTicksLimit: 50
                     },
                     grid: { display: false }
                 },
                 y: {
                     beginAtZero: true,
                     title: { display: true, text: 'kW' },
-                    suggestedMax: 0.5, // Aiuta se i valori sono molto piccoli all'inizio
                 }
             },
             plugins: {

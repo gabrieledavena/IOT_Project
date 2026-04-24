@@ -1,24 +1,12 @@
-{% extends "SP/base.html" %}
+{% extends "base.html" %}
 
 {% block title %}Homepage{% endblock %}
 
 {% block content %}
     <h1>Homepage</h1>
-    <p>Scegli una funzione dell'app SP:</p>
+    <p>Benvenuto nell'app SP. Visualizza i dati di produzione di energia solare.</p>
 
-    <a class="btn" href="{% url 'SP:panel-data-list' %}">Lista Panel Data</a>
+    <a class="btn" href="{% url 'SP:solar_community' %}">Visualizza Dati</a>
+    <a class="btn" href="{% url 'predict' %}">Test Previsione</a>
 
-    <form id="pkForm" style="margin-top: 10px;" onsubmit="event.preventDefault(); goToDetail();">
-        <input type="number" id="pkInput" placeholder="Inserisci ID" required>
-        <button type="submit" class="btn">Vai al Dettaglio</button>
-    </form>
-
-<script>
-    function goToDetail() {
-        const pk = document.getElementById('pkInput').value;
-        if (pk) {
-            window.location.href = "sp/panel-data/" + pk + "/";
-        }
-    }
-</script>
 {% endblock %}
