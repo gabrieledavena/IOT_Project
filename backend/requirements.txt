@@ -6,3 +6,6 @@ openpyxl
 numpy
 paho-mqtt
 pyserial
+joblib
+requests
+scikit-learn
