@@ -1,6 +1,8 @@
 import random
+import math
 from django.core.management.base import BaseCommand
-from SP.models import Community, User, PhotovoltaicSystem, PanelData
+from SP.models import Community, Customer, PhotovoltaicSystem, PanelData
+from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
 
@@ -10,7 +12,8 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.stdout.write('Deleting old data...')
         PanelData.objects.all().delete()
-        User.objects.all().delete()
+        Customer.objects.all().delete()
+        User.objects.filter(is_superuser=False).delete()
         PhotovoltaicSystem.objects.all().delete()
         Community.objects.all().delete()
 
@@ -26,9 +29,18 @@ class Command(BaseCommand):
             communities.append(community)
 
         for i in range(15):
-            User.objects.create(
-                name=f'User {i}',
-                surname=f'Surname {i}',
+            # Create a standard Django user
+            user = User.objects.create_user(
+                username=f'user{i}',
+                password='password123', # A default password
+                first_name=f'User {i}',
+                last_name=f'Surname {i}'
+            )
+            # Create the corresponding Customer profile
+            Customer.objects.create(
+                user=user,
+                name=user.first_name,
+                surname=user.last_name,
                 community=random.choice(communities)
             )
 
@@ -53,16 +65,32 @@ class Command(BaseCommand):
             for day in range(3):
                 for minute in range(24 * 60):
                     timestamp = start_date + timedelta(days=day, minutes=minute)
+
+                    hour = timestamp.hour + timestamp.minute / 60.0
+                    # Simulate solar production: active between 6:00 and 20:00
+                    if 6 <= hour <= 20:
+                        # Bell curve (Gaussian) centered at 13:00 (1:00 PM)
+                        mu = 13.0
+                        sigma = 2.5
+                        power_factor = math.exp(-((hour - mu) ** 2) / (2 * sigma ** 2))
+                        # Add a little noise to make it realistic
+                        noise = random.uniform(0.85, 1.0)
+                        power = system.max_power * power_factor * noise
+                        lightness = 100.0 + power_factor * 900.0 * noise
+                    else:
+                        power = 0.0
+                        lightness = random.uniform(0.0, 20.0)
+
                     panel_data_list.append(
                         PanelData(
                             system=system,
                             time_stamp=timestamp,
                             temperature=random.uniform(15.0, 35.0),
-                            lightness=random.uniform(100.0, 1000.0),
-                            power=random.uniform(0.0, system.max_power)
+                            lightness=lightness,
+                            power=power
                         )
                     )
-        
+
         PanelData.objects.bulk_create(panel_data_list)
 
         self.stdout.write(self.style.SUCCESS('Successfully populated the database.'))
