@@ -3,110 +3,228 @@
 {% block title %}Solar Production Community{% endblock %}
 
 {% block content %}
+<!-- Chart.js and Moment.js for date handling in the chart -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<div class="card">
-    <h1>Produzione Solare Comunità {{ community }}</h1>
+<script src="https://cdn.jsdelivr.net/npm/moment"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment"></script>
 
-    {% if selected_day %}
-        <p>Dati per il giorno: <strong>{{ selected_day }}</strong></p>
-    {% else %}
-        <p>Nessun giorno selezionato. Vengono mostrati tutti i dati disponibili.</p>
-    {% endif %}
-
-    <!-- Menu a tendina per la selezione del giorno -->
-    <div class="day-selector">
-        <form method="get" action="">
-            <label for="day">Seleziona un giorno:</label>
-            <select name="day" id="day">
-
-                {% for day in available_days %}
-                    <option value="{{ day }}" {% if day == selected_day %}selected{% endif %}>
-                        {{ day }}
-                    </option>
-                {% endfor %}
-            </select>
-            <button type="submit">Vai</button>
-        </form>
+<div class="container mb-5">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12 d-flex justify-content-between align-items-end">
+            <div>
+                <h2 class="fw-bold text-dark mb-0">Panoramica Comunità {{ community }}</h2>
+                <p class="text-muted">Monitoraggio in tempo reale della produzione solare condivisa.</p>
+            </div>
+            <!-- Day Selector Dropdown -->
+            <div class="day-selector">
+                <form method="get" action="" class="d-flex align-items-center m-0">
+                    <label for="day" class="form-label me-2 mb-0 fw-bold text-muted">Seleziona Giorno:</label>
+                    <select name="day" id="day" class="form-select form-select-sm me-2 shadow-sm border-0" onchange="this.form.submit()">
+                        {% for day in available_days %}
+                            <option value="{{ day }}" {% if day == selected_day %}selected{% endif %}>
+                                {{ day }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <noscript><button type="submit" class="btn btn-primary btn-sm">Vai</button></noscript>
+                </form>
+            </div>
+        </div>
     </div>
 
     {% if error %}
-        <div style="color: red; background: #ffe6e6; padding: 10px; border-radius: 5px;">
-            <strong>Errore:</strong> {{ error }}
+        <div class="alert alert-danger shadow-sm rounded-4">
+            <strong><i class="fas fa-exclamation-triangle me-2"></i>Errore:</strong> {{ error }}
         </div>
     {% elif total_records > 0 %}
-        <p>Visualizzazione di <strong>{{total_records}}</strong> campionamenti registrati.</p>
-
-        <div class="chart-wrapper">
-            <div class="chart-area" style="width: {{chart_width}}px;">
-                <canvas id="myChart"></canvas>
+        <!-- Main Stats (Adapted for community view) -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-12">
+                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5 hover-lift">
+                    <div class="card-body p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="text-muted fw-bold text-uppercase mb-0">Energia Totale Prodotta</h6>
+                            <div class="bg-success bg-opacity-10 text-success p-2 rounded-circle">
+                                <span class="fs-5">⚡</span>
+                            </div>
+                        </div>
+                        <h2 class="display-5 fw-bold text-dark mb-0">{{ total_energy }} <span class="fs-4 text-muted">kWh</span></h2>
+                        <p class="text-muted small mt-2 mb-0">Dati aggregati per il giorno: <strong>{{ selected_day }}</strong></p>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Riepilogo Energia Accumulata -->
-        <div class="energy-summary">
-            <h3>Riepilogo Energia</h3>
-            <p>Energia totale accumulata nel giorno selezionato: <strong>{{total_energy}} kWh</strong></p>
-        </div>
+        <!-- Production Chart -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4 d-flex justify-content-between align-items-center">
+                        <h4 class="fw-bold text-dark mb-0"><span class="me-2">📊</span>Andamento Produzione Solare</h4>
+                        <div class="btn-group shadow-sm" role="group" aria-label="Risoluzione grafico">
+                            <input type="radio" class="btn-check" name="btnradio" id="btn1m" autocomplete="off" onchange="updateChart(1)">
+                            <label class="btn btn-outline-primary btn-sm" for="btn1m">1 Min</label>
 
+                            <input type="radio" class="btn-check" name="btnradio" id="btn15m" autocomplete="off" checked onchange="updateChart(15)">
+                            <label class="btn btn-outline-primary btn-sm" for="btn15m">15 Min</label>
+
+                            <input type="radio" class="btn-check" name="btnradio" id="btn1h" autocomplete="off" onchange="updateChart(60)">
+                            <label class="btn btn-outline-primary btn-sm" for="btn1h">1 Ora</label>
+                        </div>
+                    </div>
+                    <div class="card-body p-4">
+                        <div style="height: 350px; width: 100%;">
+                            <canvas id="productionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     {% else %}
-        <p>Nessun dato disponibile per la selezione corrente.</p>
+        <div class="alert alert-info shadow-sm rounded-4">
+            <i class="fas fa-info-circle me-2"></i>Nessun dato disponibile per la selezione corrente.
+        </div>
     {% endif %}
 </div>
 
+<style>
+    body {
+        background-color: #f4f6f9; /* Light gray background to highlight white cards */
+    }
+    .hover-lift {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .hover-lift:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 1rem 3rem rgba(0,0,0,.1)!important;
+    }
+</style>
+
 {% if not error and total_records > 0 %}
+<!-- Chart Management Script -->
 <script>
-    // Recupero dati renderizzati da Django
-    const labels = {{chart_labels|safe}};
-    const dataValues = {{chart_data|safe}};
+    const rawData = {{ chart_data_json|safe }};
+    let productionChart = null;
 
-    const ctx = document.getElementById('myChart').getContext('2d');
+    function downsampleData(data, minutesInterval) {
+        if (!data || data.length === 0) return [];
+        if (minutesInterval === 1) return data;
 
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Produzione (kW)',
-                data: dataValues,
-                backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                borderColor: 'rgba(54, 162, 235, 1)',
-                borderWidth: 1,
-                barPercentage: 0.95,
-                categoryPercentage: 1.0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            scales: {
-                x: {
-                    title: { display: true, text: 'Orario' },
-                    ticks: {
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 50
-                    },
-                    grid: { display: false }
-                },
-                y: {
-                    beginAtZero: true,
-                    title: { display: true, text: 'kW' },
+        const sampled = [];
+        let sum = 0;
+        let count = 0;
+        let currentWindowStart = moment(data[0].timestamp);
+
+        for (let i = 0; i < data.length; i++) {
+            const pointTime = moment(data[i].timestamp);
+            const diffMinutes = pointTime.diff(currentWindowStart, 'minutes');
+
+            if (diffMinutes < minutesInterval) {
+                sum += data[i].value;
+                count++;
+            } else {
+                if (count > 0) {
+                    sampled.push({
+                        timestamp: currentWindowStart.toISOString(),
+                        value: sum / count
+                    });
                 }
-            },
-            plugins: {
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        label: function(context) {
-                            return context.parsed.y + ' kW';
-                        }
-                    }
-                },
-                legend: { display: true, position: 'top' }
+                currentWindowStart = pointTime;
+                sum = data[i].value;
+                count = 1;
             }
         }
+        if (count > 0) {
+            sampled.push({
+                timestamp: currentWindowStart.toISOString(),
+                value: sum / count
+            });
+        }
+        return sampled;
+    }
+
+    function updateChart(minutesInterval) {
+        const aggregatedData = downsampleData(rawData, minutesInterval);
+        const labels = aggregatedData.map(d => d.timestamp);
+        const values = aggregatedData.map(d => d.value);
+
+        if (productionChart) {
+            productionChart.data.labels = labels;
+            productionChart.data.datasets[0].data = values;
+            productionChart.data.datasets[0].type = minutesInterval === 1 ? 'line' : 'bar';
+            productionChart.data.datasets[0].fill = minutesInterval === 1;
+            productionChart.data.datasets[0].borderWidth = minutesInterval === 1 ? 2 : 0;
+            productionChart.data.datasets[0].pointRadius = 0;
+            productionChart.update();
+        } else {
+            const ctx = document.getElementById('productionChart').getContext('2d');
+            let gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(25, 135, 84, 0.8)');
+            gradient.addColorStop(1, 'rgba(25, 135, 84, 0.1)');
+
+            productionChart = new Chart(ctx, {
+                type: minutesInterval === 1 ? 'line' : 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Potenza Generata (kW)',
+                        data: values,
+                        backgroundColor: gradient,
+                        borderColor: '#198754',
+                        borderWidth: minutesInterval === 1 ? 2 : 0,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            padding: 12,
+                            titleFont: { size: 14 },
+                            bodyFont: { size: 14, weight: 'bold' },
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y.toFixed(2) + ' kW';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'hour',
+                                displayFormats: { hour: 'HH:mm' },
+                                tooltipFormat: 'DD MMM YYYY, HH:mm'
+                            },
+                            grid: { display: false },
+                            ticks: { color: '#6c757d', font: { size: 12 } }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#e9ecef', drawBorder: false },
+                            ticks: {
+                                color: '#6c757d',
+                                font: { size: 12 },
+                                callback: function(value) { return value + ' kW'; }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        updateChart(15);
     });
 </script>
 {% endif %}
