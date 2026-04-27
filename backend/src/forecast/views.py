@@ -15,20 +15,17 @@ METEO_PARAMS = (
 )
 
 
-def get_meteo_domani(latitude, longitude):
-    """Scarica le previsioni meteo per domani da Open-Meteo"""
-    today = date.today()
-    tomorrow = today + timedelta(days=1)
-    tomorrow_str = tomorrow.strftime("%Y-%m-%d")
-
+def get_weather_data(latitude, longitude, start_date, end_date, is_forecast=False):
+    """Scarica dati meteo estesi da Open-Meteo"""
     url = "https://api.open-meteo.com/v1/forecast"
+
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "start_date": tomorrow_str,
-        "end_date": tomorrow_str,
+        "start_date": start_date,
+        "end_date": end_date,
         "daily": METEO_PARAMS,
-        "timezone": "auto",
+        "timezone": "auto"
     }
 
     try:
@@ -91,7 +88,10 @@ def view_test_previsione(request):
                      total_area = total_max_power * 5 # Rough estimate if area is missing
 
                 # 2. Ottieni i dati meteo per domani basati sulla latitudine e longitudine della community
-                X_input = get_meteo_domani(community.latitude, community.longitude)
+                today = date.today()
+                tomorrow = today + timedelta(days=1)
+                tomorrow_str = tomorrow.strftime("%Y-%m-%d")
+                X_input = get_weather_data(community.latitude, community.longitude, tomorrow_str, tomorrow_str, is_forecast=True)
 
                 if X_input is not None:
                     # Add max_power and area to X_input to match what the general model expects
@@ -117,7 +117,7 @@ def view_test_previsione(request):
                     kwh_predicted = model.predict(X_input)[0]
 
                     context["success"] = True
-                    context["prediction"] = round(kwh_predicted, 2)
+                    context["prediction"] = round(kwh_predicted, 3)
                     context["date"] = (date.today() + timedelta(days=1)).strftime(
                         "%d/%m/%Y"
                     )

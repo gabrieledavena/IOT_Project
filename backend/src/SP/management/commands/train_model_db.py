@@ -69,27 +69,71 @@ class Command(BaseCommand):
             self.stdout.write(f"Elaborazione dati per Community: {community.name}")
             
             # Recupera la produzione giornaliera per ogni impianto della community
-            daily_production = (
-                PanelData.objects.filter(system__community=community)
-                .annotate(date=TruncDate('time_stamp'))
-                .values('date', 'system__id', 'system__max_power', 'system__area')
-                .annotate(
-                    total_production=Sum('power')
-                )
-                .order_by('date')
-            )
+            systems = PhotovoltaicSystem.objects.filter(community=community)
+            daily_production = []
             
-            if not daily_production.exists():
+            for system in systems:
+                panel_data = PanelData.objects.filter(system=system).order_by('time_stamp')
+                if not panel_data.exists():
+                    continue
+                
+                records = [
+                    {'Timestamp': pd.to_datetime(p.time_stamp), 'Power': p.power}
+                    for p in panel_data
+                ]
+                
+                raw_data = []
+                for i in range(1, len(records)):
+                    curr_row = records[i]
+                    prev_row = records[i - 1]
+
+                    curr_time = curr_row['Timestamp']
+                    prev_time = prev_row['Timestamp']
+                    curr_val = curr_row['Power']
+                    prev_val = prev_row['Power']
+
+                    delta_prod = curr_val - prev_val
+
+                    # Gestione reset del contatore (es. nuovo giorno)
+                    if delta_prod < 0:
+                        delta_prod = curr_val
+
+                    time_diff_minutes = int(round((curr_time - prev_time).total_seconds() / 60))
+
+                    if time_diff_minutes <= 0:
+                        continue
+
+                    value_per_minute = delta_prod / time_diff_minutes
+
+                    for m in range(1, time_diff_minutes + 1):
+                        minute_timestamp = prev_time + timedelta(minutes=m)
+                        if pd.notnull(minute_timestamp):
+                            raw_data.append({
+                                'timestamp': minute_timestamp,
+                                'value': round(value_per_minute, 4)
+                            })
+                
+                daily_sums = {}
+                for item in raw_data:
+                    day = item['timestamp'].date()
+                    if day not in daily_sums:
+                        daily_sums[day] = 0
+                    daily_sums[day] += item['value']
+                
+                for day, val in daily_sums.items():
+                    daily_production.append({
+                        'Date': day,
+                        'system__id': system.id,
+                        'max_power': system.max_power,
+                        'area': system.area,
+                        'Daily Production (Active)': val / 60
+                    })
+            
+            if not daily_production:
                 self.stdout.write(self.style.WARNING(f"Nessun dato di produzione per la Community {community.name}"))
                 continue
 
-            df_community = pd.DataFrame(list(daily_production))
-            df_community.rename(columns={
-                'date': 'Date', 
-                'total_production': 'Daily Production (Active)',
-                'system__max_power': 'max_power',
-                'system__area': 'area'
-            }, inplace=True)
+            df_community = pd.DataFrame(daily_production)
             
             # Gestisci valori nulli per max_power e area
             df_community['max_power'] = df_community['max_power'].fillna(0)
@@ -128,9 +172,10 @@ class Command(BaseCommand):
             'solar_radiation', 'temp_max', 'temp_min', 'precipitation',
             'wind_speed', 'cloud_cover', 'daylight_duration', 'snowfall'
         ]
-
         X_train = df_train[feature_cols]
         y_train = df_train['Daily Production (Active)']
+        print(X_train.columns)
+        print(y_train.head())
 
         # 4. Allena Random Forest
         self.stdout.write("Addestramento del modello Random Forest...")
