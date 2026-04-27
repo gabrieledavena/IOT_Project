@@ -3,11 +3,11 @@ import pandas as pd
 from datetime import date, timedelta
 from django.shortcuts import render
 from django.apps import apps  # Per recuperare il modello caricato all'avvio
+from django.contrib.auth.decorators import login_required
+from SP.models import Customer
 import sklearn
 
 # Configurazione costanti (le stesse del training)
-LATITUDE = 44.77
-LONGITUDE = 10.78
 METEO_PARAMS = (
     "temperature_2m_max,temperature_2m_min,"
     "precipitation_sum,shortwave_radiation_sum,"
@@ -15,7 +15,7 @@ METEO_PARAMS = (
 )
 
 
-def get_meteo_domani():
+def get_meteo_domani(latitude, longitude):
     """Scarica le previsioni meteo per domani da Open-Meteo"""
     today = date.today()
     tomorrow = today + timedelta(days=1)
@@ -23,8 +23,8 @@ def get_meteo_domani():
 
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
-        "latitude": LATITUDE,
-        "longitude": LONGITUDE,
+        "latitude": latitude,
+        "longitude": longitude,
         "start_date": tomorrow_str,
         "end_date": tomorrow_str,
         "daily": METEO_PARAMS,
@@ -54,7 +54,7 @@ def get_meteo_domani():
         print(f"Errore meteo: {e}")
         return None
 
-
+@login_required
 def view_test_previsione(request):
     context = {}
 
@@ -69,14 +69,40 @@ def view_test_previsione(request):
                 "Il modello non è stato caricato correttamente all'avvio."
             )
         else:
-            # 2. Ottieni i dati meteo per domani
-            X_input = get_meteo_domani()
+            try:
+                # Get the current user's community to fetch the right weather data
+                customer = Customer.objects.get(user=request.user)
+                community = customer.community
+                
+                # We also need some max_power and area to make a prediction
+                # Let's average the power and area of the photovoltaic systems in this community
+                # Or sum them if we want to predict the total production of the community
+                photovoltaic_systems = community.photovoltaic_system.all()
+                
+                if not photovoltaic_systems.exists():
+                     context["error"] = "Nessun impianto fotovoltaico registrato per questa community."
+                     return render(request, "test_previsione.html", context)
 
-            if X_input is not None:
-                try:
+                total_max_power = sum([system.max_power for system in photovoltaic_systems])
+                total_area = sum([system.area for system in photovoltaic_systems if system.area is not None])
+                
+                # If some systems have no area, we might have an issue, let's provide a fallback
+                if total_area == 0:
+                     total_area = total_max_power * 5 # Rough estimate if area is missing
+
+                # 2. Ottieni i dati meteo per domani basati sulla latitudine e longitudine della community
+                X_input = get_meteo_domani(community.latitude, community.longitude)
+
+                if X_input is not None:
+                    # Add max_power and area to X_input to match what the general model expects
+                    X_input['max_power'] = total_max_power
+                    X_input['area'] = total_area
+
                     # 3. Fai la previsione
                     # Assicuriamoci che le colonne siano nell'ordine corretto
                     feature_cols = [
+                        "max_power",
+                        "area",
                         "solar_radiation",
                         "temp_max",
                         "temp_min",
@@ -95,11 +121,18 @@ def view_test_previsione(request):
                     context["date"] = (date.today() + timedelta(days=1)).strftime(
                         "%d/%m/%Y"
                     )
+                    context["community_name"] = community.name
+                    context["total_power"] = total_max_power
+                    context["total_area"] = total_area
+                    
                     # Passiamo anche i dati meteo per visualizzarli se vuoi
                     context["meteo_data"] = X_input.iloc[0].to_dict()
-                except Exception as e:
-                    context["error"] = f"Errore durante la predizione: {str(e)}"
-            else:
-                context["error"] = "Impossibile recuperare i dati meteo da Open-Meteo."
+                else:
+                    context["error"] = "Impossibile recuperare i dati meteo da Open-Meteo."
+                    
+            except Customer.DoesNotExist:
+                context["error"] = "Utente non associato a nessuna community."
+            except Exception as e:
+                context["error"] = f"Errore durante la predizione: {str(e)}"
 
     return render(request, "test_previsione.html", context)

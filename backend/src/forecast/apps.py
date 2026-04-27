@@ -15,7 +15,7 @@ class ForecastConfig(AppConfig):
     def ready(self):
         # Il metodo ready viene eseguito all'avvio del server
         print(settings.BASE_DIR)
-        model_path = os.path.join(settings.BASE_DIR, 'forecast','ml_models', 'modello_previsione_produzione.joblib')
+        model_path = os.path.join(settings.BASE_DIR, 'forecast','ml_models', 'modello_previsione_produzione_generale.joblib')
 
         # Controllo se il modello esiste per evitare crash se il file manca
         if os.path.exists(model_path):
@@ -23,4 +23,4 @@ class ForecastConfig(AppConfig):
             self.model = joblib.load(model_path)
             print("Modello caricato con successo!")
         else:
-            print(f"Attenzione: File modello nomodello_previsione_produzione.joblibn trovato in {model_path}")
+            print(f"Attenzione: File modello non trovato in {model_path}")
