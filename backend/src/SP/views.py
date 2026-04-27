@@ -11,9 +11,51 @@ import os
 import json
 import pandas as pd
 from datetime import timedelta, datetime
+import requests
+import reverse_geocoder as rg
 
 from django.conf import settings
 from django.views import View
+
+METEO_PARAMS = (
+            "temperature_2m_max,temperature_2m_min,"
+            "precipitation_sum,shortwave_radiation_sum,"
+            "wind_speed_10m_max,cloud_cover_mean,daylight_duration,snowfall_sum"
+        )
+
+def get_weather_data(latitude, longitude, start_date, end_date, is_forecast=False):
+    """Scarica dati meteo estesi da Open-Meteo"""
+    url = "https://api.open-meteo.com/v1/forecast"
+
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "start_date": start_date,
+        "end_date": end_date,
+        "daily": METEO_PARAMS,
+        "timezone": "auto"
+    }
+
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        raise Exception(f"Errore API Meteo: {response.text}")
+
+    data = response.json()['daily']
+
+    df = pd.DataFrame({
+        'Date': pd.to_datetime(data['time']).dt.date if hasattr(pd.to_datetime(data['time']), 'dt') else pd.to_datetime(
+            data['time']).date,
+        'solar_radiation': data['shortwave_radiation_sum'],
+        'temp_max': data['temperature_2m_max'],
+        'temp_min': data['temperature_2m_min'],
+        'precipitation': data['precipitation_sum'],
+        'wind_speed': data['wind_speed_10m_max'],
+        'cloud_cover': data['cloud_cover_mean'],
+        'daylight_duration': data['daylight_duration'],
+        'snowfall': data['snowfall_sum']
+    })
+    return df.fillna(0)
+
 
 def login_view(request):
     if request.method == 'POST':
@@ -228,6 +270,19 @@ class SolarCommunityView(LoginRequiredMixin, View):
             # Calcolo dinamico della larghezza del grafico per il CSS/JS
             total_width = 1000
 
+            # Meteo
+            weather_data = None
+            try:
+                df = get_weather_data(community.latitude, community.longitude, selected_day, selected_day, is_forecast=False)
+                if not df.empty:
+                    weather_data = df.iloc[0].to_dict()
+                    # Rimuovo oggetti non serializzabili se presenti, Date per renderlo facile da usare.
+                    if 'Date' in weather_data:
+                        weather_data['Date'] = str(weather_data['Date'])
+            except Exception as e:
+                print(f"Errore recupero meteo: {e}")
+
+            citta = rg.search([(community.latitude, community.longitude)])[0]['admin2'] or 'boh'
             context = {
                 'chart_labels': json.dumps(labels),
                 'chart_data': json.dumps(data_values),
@@ -237,7 +292,9 @@ class SolarCommunityView(LoginRequiredMixin, View):
                 'available_days': available_days,  # Passa i giorni al template
                 'selected_day': selected_day,  # Passa il giorno selezionato
                 'total_energy': round(total_energy, 2),  # Passa l'energia totale
-                'community': community.name,
+                'community': community,
+                'weather': weather_data, # Dati meteo passati al template
+                'citta':citta
             }
             return render(request, 'solar_community.html', context)
 
