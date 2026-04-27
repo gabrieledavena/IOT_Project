@@ -13,10 +13,7 @@ import pandas as pd
 from datetime import timedelta, datetime
 
 from django.conf import settings
-from datetime import timedelta
-from django.shortcuts import render
 from django.views import View
-import json
 
 def login_view(request):
     if request.method == 'POST':
@@ -31,7 +28,6 @@ def login_view(request):
     else:
         form = AuthenticationForm()
     return render(request, 'SP/login.html', {'form': form})
-from rest_framework import generics
 
 def register_view(request):
     if request.method == 'POST':
@@ -47,9 +43,6 @@ def register_view(request):
 @login_required
 def home_view(request):
     return render(request, 'SP/home.html')
-from SP.models import PanelData
-from SP.serializers import PanelDataSerializer
-
 
 # --- ENDPOINT API REST ---
 
@@ -148,18 +141,17 @@ def getDataFromDB(community, selected_day=None):
     else:
         panel_data = panel_data.order_by('time_stamp')
 
-    # Se non ci sono dati, restituisce un DataFrame vuoto
+    # Se non ci sono dati, restituisce una lista vuota
     if not panel_data.exists():
-        return pd.DataFrame({'Timestamp': [], 'ProductionPerMinute': []})
+        return []
 
-    # Converte i dati in un formato simile a quello di `getHistory`
+    # Converte i dati
     records = [
         {'Timestamp': pd.to_datetime(p.time_stamp), 'Power': p.power}
         for p in panel_data
     ]
 
-    new_timestamps = []
-    new_productions = []
+    raw_data = []
 
     # Interpolazione dei dati minuto per minuto
     for i in range(1, len(records)):
@@ -186,13 +178,13 @@ def getDataFromDB(community, selected_day=None):
 
         for m in range(1, time_diff_minutes + 1):
             minute_timestamp = prev_time + timedelta(minutes=m)
-            new_timestamps.append(minute_timestamp.strftime('%Y-%m-%d %H:%M'))
-            new_productions.append(round(value_per_minute, 4))
+            if pd.notnull(minute_timestamp):
+                raw_data.append({
+                    'timestamp': minute_timestamp.strftime('%Y-%m-%dT%H:%M:%S'),
+                    'value': round(value_per_minute, 4)
+                })
 
-    return pd.DataFrame({
-        'Timestamp': new_timestamps,
-        'ProductionPerMinute': new_productions
-    })
+    return raw_data
 
 
 # --- VISTA GRAFICO WEB ---
@@ -218,31 +210,20 @@ class SolarCommunityView(LoginRequiredMixin, View):
                 return redirect(f"/sp/community/?day={available_days[0]}")
 
             # Ottiene i dati dal database, filtrando per giorno se specificato
-            df = getDataFromDB(community, selected_day)
+            raw_data = getDataFromDB(community, selected_day)
 
             # Calcolo dell'energia totale accumulata
             total_energy = 0
-            if not df.empty:
+            if raw_data:
                 # La produzione è in kW, l'intervallo è di 1 minuto (1/60 di ora)
                 # Energia (kWh) = Potenza (kW) * Tempo (h)
-                total_energy = df['ProductionPerMinute'].sum() / 60
-
-            if pd.api.types.is_datetime64_any_dtype(df['Timestamp']):
-                labels = df['Timestamp'].dt.strftime('%H:%M').tolist()
-            else:
-                # Converte le stringhe in datetime per l'elaborazione
-                if not df.empty:
-                    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-                    labels = df['Timestamp'].dt.strftime('%H:%M').tolist()
-                else:
-                    labels = []
+                total_energy = sum(item['value'] for item in raw_data) / 60
 
             # Sottocampionamento per la visualizzazione nel grafico
-            labels = labels[::step]
-
-            # Arrotondamento dei dati
-            data_values = [round(x, 3) for x in df['ProductionPerMinute'].tolist()]
-            data_values = data_values[::step]
+            raw_data_sampled = raw_data[::step]
+            
+            labels = [item['timestamp'][11:16] for item in raw_data_sampled] # Extract HH:MM
+            data_values = [item['value'] for item in raw_data_sampled]
 
             # Calcolo dinamico della larghezza del grafico per il CSS/JS
             total_width = 1000
@@ -250,6 +231,7 @@ class SolarCommunityView(LoginRequiredMixin, View):
             context = {
                 'chart_labels': json.dumps(labels),
                 'chart_data': json.dumps(data_values),
+                'chart_data_json': json.dumps(raw_data_sampled),
                 'total_records': len(labels),
                 'chart_width': total_width,
                 'available_days': available_days,  # Passa i giorni al template
