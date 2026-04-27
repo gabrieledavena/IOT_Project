@@ -136,3 +136,90 @@ def view_test_previsione(request):
                 context["error"] = f"Errore durante la predizione: {str(e)}"
 
     return render(request, "test_previsione.html", context)
+
+
+@login_required
+def view_test_previsione_oggi(request):
+    context = {}
+
+    if request.method == "POST":
+        # 1. Recupera il modello dalla RAM (caricato in apps.py)
+        # Sostituisci 'mia_app' con il nome reale della tua app in settings.py
+        app_config = apps.get_app_config("forecast")
+        model = app_config.model
+
+        if not model:
+            context["error"] = (
+                "Il modello non è stato caricato correttamente all'avvio."
+            )
+        else:
+            try:
+                # Get the current user's community to fetch the right weather data
+                customer = Customer.objects.get(user=request.user)
+                community = customer.community
+
+                # We also need some max_power and area to make a prediction
+                # Let's average the power and area of the photovoltaic systems in this community
+                # Or sum them if we want to predict the total production of the community
+                photovoltaic_systems = community.photovoltaic_system.all()
+
+                if not photovoltaic_systems.exists():
+                    context["error"] = "Nessun impianto fotovoltaico registrato per questa community."
+                    return render(request, "test_previsione.html", context)
+
+                total_max_power = sum([system.max_power for system in photovoltaic_systems])
+                total_area = sum([system.area for system in photovoltaic_systems if system.area is not None])
+
+                # If some systems have no area, we might have an issue, let's provide a fallback
+                if total_area == 0:
+                    total_area = total_max_power * 5  # Rough estimate if area is missing
+
+                # 2. Ottieni i dati meteo per domani basati sulla latitudine e longitudine della community
+                today = date.today()
+                today_str = today.strftime("%Y-%m-%d")
+                X_input = get_weather_data(community.latitude, community.longitude, today_str, today_str,
+                                           is_forecast=True)
+
+                if X_input is not None:
+                    # Add max_power and area to X_input to match what the general model expects
+                    X_input['max_power'] = total_max_power
+                    X_input['area'] = total_area
+
+                    # 3. Fai la previsione
+                    # Assicuriamoci che le colonne siano nell'ordine corretto
+                    feature_cols = [
+                        "max_power",
+                        "area",
+                        "solar_radiation",
+                        "temp_max",
+                        "temp_min",
+                        "precipitation",
+                        "wind_speed",
+                        "cloud_cover",
+                        "daylight_duration",
+                        "snowfall",
+                    ]
+                    X_input = X_input[feature_cols]
+
+                    kwh_predicted = model.predict(X_input)[0]
+
+                    context["success"] = True
+                    context["prediction"] = round(kwh_predicted, 3)
+                    context["date"] = (date.today() + timedelta(days=1)).strftime(
+                        "%d/%m/%Y"
+                    )
+                    context["community_name"] = community.name
+                    context["total_power"] = total_max_power
+                    context["total_area"] = total_area
+
+                    # Passiamo anche i dati meteo per visualizzarli se vuoi
+                    context["meteo_data"] = X_input.iloc[0].to_dict()
+                else:
+                    context["error"] = "Impossibile recuperare i dati meteo da Open-Meteo."
+
+            except Customer.DoesNotExist:
+                context["error"] = "Utente non associato a nessuna community."
+            except Exception as e:
+                context["error"] = f"Errore durante la predizione: {str(e)}"
+
+    return render(request, "test_previsione.html", context)
