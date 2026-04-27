@@ -3,39 +3,64 @@
 {% block title %}AI Model Test{% endblock %}
 
 {% block content %}
-<div class="card">
-    <h1>🔮 Test Produzione Solare</h1>
-    <p style="text-align: center; color: #666;">
-        Clicca per calcolare la produzione prevista per domani basata sulle previsioni meteo attuali.
-    </p>
-
-    <form method="POST">
-        {% csrf_token %}
-        <button type="submit" class="btn">Calcola Previsione Domani</button>
-    </form>
-
-    {% if prediction %}
-    <div class="result-box">
-        <h2 style="margin-top: 0;">Risultato per il {{ date }}</h2>
-        <p style="font-size: 24px; font-weight: bold; color: #0d47a1;">
-            ⚡ {{ prediction }} kWh
-        </p>
-
-        <div class="meteo-details">
-            <strong>Dati meteo utilizzati:</strong>
-            <ul>
-                <li>Irraggiamento: {{ meteo_data.solar_radiation }} MJ/m²</li>
-                <li>Nuvolosità: {{ meteo_data.cloud_cover }}%</li>
-                <li>Temp Max: {{ meteo_data.temp_max }}°C</li>
-            </ul>
+<div class="container mb-5">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12 text-center">
+            <h2 class="fw-bold text-dark mb-1">🔮 Test Produzione Solare</h2>
+            <p class="text-muted">Calcola la produzione prevista per domani basata sulle previsioni meteo.</p>
         </div>
     </div>
-    {% endif %}
 
-    {% if error %}
-    <div class="error-box">
-        <strong>Errore:</strong> {{ error }}
+    <!-- Main Content -->
+    <div class="row">
+        <div class="col-lg-6 col-md-8 mx-auto">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4 text-center">
+
+
+                    {% if prediction %}
+                    <div class="card border-0 shadow-sm rounded-4 mt-4 border-start border-primary border-5 text-start">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="text-muted fw-bold text-uppercase mb-0">Previsione per il {{ date }}</h6>
+                                <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
+                                    <span class="fs-5">💡</span>
+                                </div>
+                            </div>
+                            <h2 class="display-5 fw-bold text-dark mb-0">{{ prediction }} <span class="fs-4 text-muted">kWh</span></h2>
+                            <hr class="my-4">
+                            <p class="text-muted small mb-2"><strong>Dati meteo considerati:</strong></p>
+                            <ul class="list-unstyled text-muted small">
+                                <li><i class="fas fa-sun fa-fw me-2 text-warning"></i><strong>Irraggiamento:</strong> {{ meteo_data.solar_radiation }} MJ/m²</li>
+                                <li><i class="fas fa-cloud fa-fw me-2 text-info"></i><strong>Nuvolosità:</strong> {{ meteo_data.cloud_cover }}%</li>
+                                <li><i class="fas fa-thermometer-half fa-fw me-2 text-danger"></i><strong>Temp Max:</strong> {{ meteo_data.temp_max }}°C</li>
+                            </ul>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div style="height: 20px"></div>
+
+                    <form method="POST" class="mb-4">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary btn-lg shadow-sm px-5 py-2">Calcola Previsione</button>
+                    </form>
+
+                    {% if error %}
+                        <div class="alert alert-danger shadow-sm rounded-4 mt-4">
+                            <strong><i class="fas fa-exclamation-triangle me-2"></i>Errore:</strong> {{ error }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     </div>
-    {% endif %}
 </div>
+
+<style>
+    body {
+        background-color: #f4f6f9;
+    }
+</style>
 {% endblock %}
