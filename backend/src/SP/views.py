@@ -10,7 +10,7 @@ from rest_framework import generics
 import os
 import json
 import pandas as pd
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, date
 import requests
 import reverse_geocoder as rg
 
@@ -283,18 +283,28 @@ class SolarCommunityView(LoginRequiredMixin, View):
                 print(f"Errore recupero meteo: {e}")
 
             citta = rg.search([(community.latitude, community.longitude)])[0]['admin2'] or 'boh'
+            
+            # Formattiamo i giorni per il frontend:
+            # Creiamo una lista di dizionari con 'value' (data YYYY-MM-DD) e 'label' (data YYYY-MM-DD o 'Oggi')
+            today_str = date.today().strftime('%Y-%m-%d')
+            formatted_days = []
+            for d in available_days:
+                label = 'Oggi' if d == today_str else d
+                formatted_days.append({'value': d, 'label': label})
+
             context = {
                 'chart_labels': json.dumps(labels),
                 'chart_data': json.dumps(data_values),
                 'chart_data_json': json.dumps(raw_data_sampled),
                 'total_records': len(labels),
                 'chart_width': total_width,
-                'available_days': available_days,  # Passa i giorni al template
+                'available_days': formatted_days,  # Passiamo la lista formattata
                 'selected_day': selected_day,  # Passa il giorno selezionato
                 'total_energy': round(total_energy, 2),  # Passa l'energia totale
                 'community': community,
                 'weather': weather_data, # Dati meteo passati al template
-                'citta':citta
+                'citta':citta,
+                'oggi_str': today_str
             }
             return render(request, 'solar_community.html', context)
 

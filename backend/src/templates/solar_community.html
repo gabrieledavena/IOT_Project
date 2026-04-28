@@ -21,9 +21,9 @@
                 <form method="get" action="" class="d-flex align-items-center m-0">
                     <label for="day" class="form-label me-2 mb-0 fw-bold text-muted">Seleziona Giorno:</label>
                     <select name="day" id="day" class="form-select form-select-sm me-2 shadow-sm border-0" onchange="this.form.submit()">
-                        {% for day in available_days %}
-                            <option value="{{ day }}" {% if day == selected_day %}selected{% endif %}>
-                                {{ day }}
+                        {% for day_obj in available_days %}
+                            <option value="{{ day_obj.value }}" {% if day_obj.value == selected_day %}selected{% endif %}>
+                                {{ day_obj.label }}
                             </option>
                         {% endfor %}
                     </select>

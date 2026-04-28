@@ -19,12 +19,21 @@ class Command(BaseCommand):
 
         self.stdout.write('Creating new data...')
 
+        citta_coords = [
+            {'name': 'Milano', 'lat': 45.4642, 'lon': 9.1900},
+            {'name': 'Modena', 'lat': 44.6471, 'lon': 10.9252},
+            {'name': 'Torino', 'lat': 45.0703, 'lon': 7.6868},
+            {'name': 'Napoli', 'lat': 40.8518, 'lon': 14.2681},
+            {'name': 'Bari', 'lat': 41.1171, 'lon': 16.8719}
+        ]
+
         communities = []
         for i in range(10):
+            citta_scelta = random.choice(citta_coords)
             community = Community.objects.create(
-                name=f'Community {i}',
-                latitude=random.uniform(45.0, 46.0),
-                longitude=random.uniform(7.0, 8.0)
+                name=f"Community {i} ({citta_scelta['name']})",
+                latitude=citta_scelta['lat'] + random.uniform(-0.02, 0.02), # Add small variation
+                longitude=citta_scelta['lon'] + random.uniform(-0.02, 0.02)
             )
             communities.append(community)
 
@@ -58,11 +67,12 @@ class Command(BaseCommand):
             )
             photovoltaic_systems.append(photovoltaic_system)
 
+        # start_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=3)
         start_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=3)
 
         panel_data_list = []
         for system in photovoltaic_systems:
-            for day in range(3):
+            for day in range(4):
                 for minute in range(24 * 60):
                     timestamp = start_date + timedelta(days=day, minutes=minute)
 
@@ -80,6 +90,9 @@ class Command(BaseCommand):
                     else:
                         power = 0.0
                         lightness = random.uniform(0.0, 20.0)
+
+                    if timezone.now() <= timestamp:
+                        break
 
                     panel_data_list.append(
                         PanelData(
