@@ -78,7 +78,7 @@ class Command(BaseCommand):
 
                     hour = timestamp.hour + timestamp.minute / 60.0
                     # Simulate solar production: active between 6:00 and 20:00
-                    if 6 <= hour <= 20:
+                    if 6 <= hour <= 20 and timezone.now() > timestamp:
                         # Bell curve (Gaussian) centered at 13:00 (1:00 PM)
                         mu = 13.0
                         sigma = 2.5
@@ -91,8 +91,6 @@ class Command(BaseCommand):
                         power = 0.0
                         lightness = random.uniform(0.0, 20.0)
 
-                    if timezone.now() <= timestamp:
-                        break
 
                     panel_data_list.append(
                         PanelData(
