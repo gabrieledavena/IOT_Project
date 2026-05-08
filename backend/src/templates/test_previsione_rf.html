@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Previsione RandomForest</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        .container { max-width: 800px; margin: auto; }
+        .btn { padding: 10px 15px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        .error { color: red; }
+        .success { color: green; }
+        table { border-collapse: collapse; width: 100%; margin-top: 1em; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test del Modello di Previsione (RandomForest)</h1>
+        <p>Clicca il pulsante per prevedere la produzione delle prossime 24 ore per la tua community: <strong>{{ request.user.customer.community.name }}</strong>.</p>
+
+        <form method="POST">
+            {% csrf_token %}
+            <button type="submit" class="btn">Esegui Previsione</button>
+        </form>
+
+        {% if error %}
+            <p class="error"><strong>Errore:</strong> {{ error }}</p>
+        {% endif %}
+
+        {% if success %}
+            <h2 class="success">Previsione completata!</h2>
+            <p>Produzione stimata per la community <strong>{{ community_name }}</strong> per le prossime 24 ore:</p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ora</th>
+                        <th>Produzione Stimata (kWh)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for time, value in prediction.items %}
+                    <tr>
+                        <td>{{ time }}</td>
+                        <td>{{ value }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+</body>
+</html>

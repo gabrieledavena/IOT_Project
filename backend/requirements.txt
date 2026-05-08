@@ -10,3 +10,6 @@ joblib
 requests
 scikit-learn
 reverse_geocoder
+darts
+torch
+pytorch-lightning
