@@ -389,18 +389,36 @@ def view_test_previsione_rf(request):
             full_time_df = pd.concat([df_resampled[['timestamp'] + weather_cols], future_df[['timestamp'] + weather_cols]])
             ts_future_cov = TimeSeries.from_dataframe(full_time_df, time_col='timestamp', value_cols=weather_cols)
 
-            # Covariate temporali
-            hour_cov = datetime_attribute_timeseries(ts_target, attribute='hour')
-            day_cov = datetime_attribute_timeseries(ts_target, attribute='day')
-            month_cov = datetime_attribute_timeseries(ts_target, attribute='month')
-            time_covariates_past = hour_cov.stack(day_cov).stack(month_cov)
+            # Covariate temporali - Cyclical Encoding (Stessa cosa fatta in training)
+            hour_ts = datetime_attribute_timeseries(ts_target, attribute='hour')
+            hour_sin = hour_ts.map(lambda x: np.sin(2 * np.pi * x / 24.0))
+            hour_cos = hour_ts.map(lambda x: np.cos(2 * np.pi * x / 24.0))
             
+            day_ts = datetime_attribute_timeseries(ts_target, attribute='day')
+            day_sin = day_ts.map(lambda x: np.sin(2 * np.pi * x / 31.0))
+            day_cos = day_ts.map(lambda x: np.cos(2 * np.pi * x / 31.0))
+            
+            month_ts = datetime_attribute_timeseries(ts_target, attribute='month')
+            month_sin = month_ts.map(lambda x: np.sin(2 * np.pi * x / 12.0))
+            month_cos = month_ts.map(lambda x: np.cos(2 * np.pi * x / 12.0))
+
+            time_covariates_past = hour_sin.stack(hour_cos).stack(day_sin).stack(day_cos).stack(month_sin).stack(month_cos)
             past_covariates = ts_past_cov.stack(time_covariates_past)
 
-            hour_cov_future = datetime_attribute_timeseries(ts_future_cov, attribute='hour')
-            day_cov_future = datetime_attribute_timeseries(ts_future_cov, attribute='day')
-            month_cov_future = datetime_attribute_timeseries(ts_future_cov, attribute='month')
-            time_covariates_future = hour_cov_future.stack(day_cov_future).stack(month_cov_future)
+            # Esegui lo stesso mapping ciclico per il futuro
+            hour_future_ts = datetime_attribute_timeseries(ts_future_cov, attribute='hour')
+            hour_future_sin = hour_future_ts.map(lambda x: np.sin(2 * np.pi * x / 24.0))
+            hour_future_cos = hour_future_ts.map(lambda x: np.cos(2 * np.pi * x / 24.0))
+
+            day_future_ts = datetime_attribute_timeseries(ts_future_cov, attribute='day')
+            day_future_sin = day_future_ts.map(lambda x: np.sin(2 * np.pi * x / 31.0))
+            day_future_cos = day_future_ts.map(lambda x: np.cos(2 * np.pi * x / 31.0))
+
+            month_future_ts = datetime_attribute_timeseries(ts_future_cov, attribute='month')
+            month_future_sin = month_future_ts.map(lambda x: np.sin(2 * np.pi * x / 12.0))
+            month_future_cos = month_future_ts.map(lambda x: np.cos(2 * np.pi * x / 12.0))
+
+            time_covariates_future = hour_future_sin.stack(hour_future_cos).stack(day_future_sin).stack(day_future_cos).stack(month_future_sin).stack(month_future_cos)
             
             future_covariates = ts_future_cov.stack(time_covariates_future)
 

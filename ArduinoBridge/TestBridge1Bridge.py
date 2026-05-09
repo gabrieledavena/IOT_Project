@@ -6,7 +6,9 @@ import time
 # --- CONFIGURAZIONE ---
 # ATTENZIONE: Assicurati che sia la stessa porta usata dall'IDE di Arduino
 # Esempio: 'COM3' su Windows, '/dev/ttyUSB0' su Linux
-SERIAL_PORT = 'COM2' 
+
+# SERIAL_PORT = 'COM2'
+SERIAL_PORT = '/dev/ttyUSB0'
 BAUD_RATE = 9600
 
 BROKER = 'localhost' # Il tuo broker MQTT (Mosquitto)

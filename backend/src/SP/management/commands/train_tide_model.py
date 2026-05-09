@@ -6,6 +6,7 @@ import warnings
 from django.core.management.base import BaseCommand
 from SP.models import PhotovoltaicSystem, PanelData
 import requests
+import numpy as np
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore")
@@ -173,10 +174,20 @@ class Command(BaseCommand):
                 all_time_series.append(ts_target)
                 
                 # Creazione delle covariate basate sul tempo per fornire informazioni contestuali al modello (ora, giorno, mese)
-                hour_cov = datetime_attribute_timeseries(ts_target, attribute='hour')
-                day_cov = datetime_attribute_timeseries(ts_target, attribute='day')
-                month_cov = datetime_attribute_timeseries(ts_target, attribute='month')
-                time_covariates = hour_cov.stack(day_cov).stack(month_cov)
+                # Cyclical Encoding: usiamo seno e coseno invece dei numeri interi
+                hour_ts = datetime_attribute_timeseries(ts_target, attribute='hour')
+                hour_sin = hour_ts.map(lambda x: np.sin(2 * np.pi * x / 24.0))
+                hour_cos = hour_ts.map(lambda x: np.cos(2 * np.pi * x / 24.0))
+                
+                day_ts = datetime_attribute_timeseries(ts_target, attribute='day')
+                day_sin = day_ts.map(lambda x: np.sin(2 * np.pi * x / 31.0))
+                day_cos = day_ts.map(lambda x: np.cos(2 * np.pi * x / 31.0))
+                
+                month_ts = datetime_attribute_timeseries(ts_target, attribute='month')
+                month_sin = month_ts.map(lambda x: np.sin(2 * np.pi * x / 12.0))
+                month_cos = month_ts.map(lambda x: np.cos(2 * np.pi * x / 12.0))
+
+                time_covariates = hour_sin.stack(hour_cos).stack(day_sin).stack(day_cos).stack(month_sin).stack(month_cos)
                 
                 # Combiniamo le time_covariates con le past_covariates e future_covariates
                 past_covariates = ts_past_cov.stack(time_covariates)
