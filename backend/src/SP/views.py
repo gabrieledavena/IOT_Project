@@ -4,7 +4,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.decorators import login_required
 from .forms import CustomerRegistrationForm
-from .models import PanelData, Customer
+from .models import PanelData, Customer, PhotovoltaicSystem
 from .serializers import PanelDataSerializer
 from rest_framework import generics
 import os
@@ -167,8 +167,34 @@ def getHistory():
 
 
 def getDataFromDB(community, selected_day=None):
-    # Filtra per community
-    panel_data = PanelData.objects.filter(system__community=community)
+    # Calcoliamo i dati per ogni singolo impianto e poi li sommiamo
+    systems = PhotovoltaicSystem.objects.filter(community=community)
+    
+    community_data = {}
+    
+    for system in systems:
+        system_raw_data = getPhotovoltaicSystemData(system, selected_day)
+        for item in system_raw_data:
+            ts = item['timestamp']
+            val = item['value']
+            if ts in community_data:
+                community_data[ts] += val
+            else:
+                community_data[ts] = val
+                
+    raw_data = []
+    for ts in sorted(community_data.keys()):
+        raw_data.append({
+            'timestamp': ts,
+            'value': round(community_data[ts], 4)
+        })
+
+    return raw_data
+
+
+def getPhotovoltaicSystemData(system, selected_day=None):
+    # Filtra per system
+    panel_data = PanelData.objects.filter(system=system)
 
     # Filtra i dati per il giorno selezionato, se fornito
     if selected_day:
@@ -312,3 +338,94 @@ class SolarCommunityView(LoginRequiredMixin, View):
             return render(request, 'solar_community.html', {'error': 'Utente non associato a un cliente.'})
         except Exception as e:
             return render(request, 'solar_community.html', {'error': str(e)})
+
+
+class PhotovoltaicSystemView(LoginRequiredMixin, View):
+    def get(self, request, system_id):
+        try:
+            step = 2
+            # Ottiene il sistema fotovoltaico
+            system = PhotovoltaicSystem.objects.get(id=system_id)
+
+            if not request.user.is_staff and not request.user.is_superuser:
+                try:
+                    customer = Customer.objects.get(user=request.user)
+                    if customer.community != system.community:
+                        return render(request, 'photovoltaic_system.html', {'error': 'Non sei autorizzato a visualizzare questo impianto.'})
+                except Customer.DoesNotExist:
+                    return render(request, 'photovoltaic_system.html', {'error': 'Utente non associato a un cliente o non autorizzato.'})
+
+            # Ottiene tutti i giorni unici per il menu a tendina
+            available_days = PanelData.objects.filter(system=system).dates('time_stamp', 'day', order='DESC')
+            available_days = [d.strftime('%Y-%m-%d') for d in available_days]
+
+            # Ottiene il giorno selezionato dalla richiesta GET
+            selected_day = request.GET.get('day')
+
+            # Se nessun giorno è selezionato e ci sono giorni disponibili,
+            # reindirizza al giorno più recente.
+            if not selected_day and available_days:
+                return redirect(f"/sp/system/{system_id}/?day={available_days[0]}")
+
+            # Ottiene i dati dal database, filtrando per giorno se specificato
+            raw_data = getPhotovoltaicSystemData(system, selected_day)
+
+            # Calcolo dell'energia totale accumulata
+            total_energy = 0
+            if raw_data:
+                # La produzione è in kW, l'intervallo è di 1 minuto (1/60 di ora)
+                # Energia (kWh) = Potenza (kW) * Tempo (h)
+                total_energy = sum(item['value'] for item in raw_data) / 60
+
+            # Sottocampionamento per la visualizzazione nel grafico
+            raw_data_sampled = raw_data[::step]
+            
+            labels = [item['timestamp'][11:16] for item in raw_data_sampled] # Extract HH:MM
+            data_values = [item['value'] for item in raw_data_sampled]
+
+            # Calcolo dinamico della larghezza del grafico per il CSS/JS
+            total_width = 1000
+
+            # Meteo
+            weather_data = None
+            try:
+                df = get_weather_data(system.community.latitude, system.community.longitude, selected_day, selected_day, is_forecast=False)
+                if not df.empty:
+                    weather_data = df.iloc[0].to_dict()
+                    # Rimuovo oggetti non serializzabili se presenti, Date per renderlo facile da usare.
+                    if 'Date' in weather_data:
+                        weather_data['Date'] = str(weather_data['Date'])
+            except Exception as e:
+                print(f"Errore recupero meteo: {e}")
+
+            citta = rg.search([(system.community.latitude, system.community.longitude)])[0]['admin2'] or 'boh'
+            
+            # Formattiamo i giorni per il frontend:
+            # Creiamo una lista di dizionari con 'value' (data YYYY-MM-DD) e 'label' (data YYYY-MM-DD o 'Oggi')
+            today_str = date.today().strftime('%Y-%m-%d')
+            formatted_days = []
+            for d in available_days:
+                label = 'Oggi' if d == today_str else d
+                formatted_days.append({'value': d, 'label': label})
+
+            context = {
+                'chart_labels': json.dumps(labels),
+                'chart_data': json.dumps(data_values),
+                'chart_data_json': json.dumps(raw_data_sampled),
+                'total_records': len(labels),
+                'chart_width': total_width,
+                'available_days': formatted_days,
+                'selected_day': selected_day,
+                'total_energy': round(total_energy, 2),
+                'system': system,
+                'weather': weather_data,
+                'citta':citta,
+                'oggi_str': today_str,
+                'community': system.community,
+            }
+            return render(request, 'photovoltaic_system.html', context)
+
+        except PhotovoltaicSystem.DoesNotExist:
+            return render(request, 'photovoltaic_system.html', {'error': 'Impianto non trovato.'})
+        except Exception as e:
+            return render(request, 'photovoltaic_system.html', {'error': str(e)})

@@ -9,7 +9,24 @@ from datetime import timedelta
 class Command(BaseCommand):
     help = 'Populates the database with fictitious data'
 
-    def handle(self, *args, **kwargs):
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--days',
+            type=int,
+            default=4,
+            help='Number of days of data to generate'
+        )
+        parser.add_argument(
+            '--systems_per_community',
+            type=int,
+            default=2,
+            help='Number of photovoltaic systems per community'
+        )
+
+    def handle(self, *args, **options):
+        number_of_days = options['days']
+        number_of_photovoltaic_systems_per_community = options['systems_per_community']
+        
         self.stdout.write('Deleting old data...')
         PanelData.objects.all().delete()
         Customer.objects.all().delete()
@@ -54,25 +71,29 @@ class Command(BaseCommand):
             )
 
         photovoltaic_systems = []
-        for i in range(10):
-            photovoltaic_system = PhotovoltaicSystem.objects.create(
-                name=f'System {i}',
-                max_power=random.uniform(3.0, 6.0),
-                area=random.uniform(20.0, 40.0),
-                brand=f'Brand {i}',
-                inclination=random.randint(15, 45),
-                selling_rate_per_kwh=random.uniform(0.10, 0.15),
-                buying_rate_per_kwh=random.uniform(0.20, 0.25),
-                community=communities[i]
-            )
-            photovoltaic_systems.append(photovoltaic_system)
+        system_index = 0
+        for community in communities:
+            for j in range(number_of_photovoltaic_systems_per_community):
+                photovoltaic_system = PhotovoltaicSystem.objects.create(
+                    name=f'System {system_index}',
+                    max_power=random.uniform(3.0, 6.0),
+                    area=random.uniform(20.0, 40.0),
+                    brand=f'Brand {system_index}',
+                    inclination=random.randint(15, 45),
+                    selling_rate_per_kwh=random.uniform(0.10, 0.15),
+                    buying_rate_per_kwh=random.uniform(0.20, 0.25),
+                    community=community
+                )
+                photovoltaic_systems.append(photovoltaic_system)
+                system_index += 1
 
-        # start_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=3)
-        start_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=3)
+        # Calculate start_date based on the number of days (default 4 days means start 3 days ago)
+        days_ago = max(0, number_of_days - 1)
+        start_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_ago)
 
         panel_data_list = []
         for system in photovoltaic_systems:
-            for day in range(4):
+            for day in range(number_of_days):
                 for minute in range(24 * 60):
                     timestamp = start_date + timedelta(days=day, minutes=minute)
 
