@@ -14,7 +14,7 @@
         <div class="col-12 d-flex justify-content-between align-items-end">
             <div>
                 <h2 class="fw-bold text-dark mb-0">Panoramica Impianto {{ system.name }}</h2>
-                <p class="text-muted">Monitoraggio in tempo reale della produzione solare.</p>
+                <p class="text-muted">Monitoraggio in tempo reale della produzione solare, luminosità e temperatura.</p>
             </div>
             <!-- Day Selector Dropdown -->
             <div class="day-selector">
@@ -118,7 +118,7 @@
         </div>
 
         <!-- Production Chart -->
-        <div class="row mb-5">
+        <div class="row mb-4">
             <div class="col-12">
                 <div class="card border-0 shadow-sm rounded-4">
                     <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4 d-flex justify-content-between align-items-center">
@@ -137,6 +137,35 @@
                     <div class="card-body p-4">
                         <div style="height: 350px; width: 100%;">
                             <canvas id="productionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Temperature and Lightness Charts -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+                        <h5 class="fw-bold text-dark mb-0"><i class="fas fa-sun text-warning me-2"></i>Andamento Luminosità</h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div style="height: 250px; width: 100%;">
+                            <canvas id="lightnessChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm rounded-4 h-100">
+                    <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+                        <h5 class="fw-bold text-dark mb-0"><i class="fas fa-thermometer-half text-danger me-2"></i>Andamento Temperatura</h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div style="height: 250px; width: 100%;">
+                            <canvas id="temperatureChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -167,13 +196,17 @@
 <script>
     const rawData = {{ chart_data_json|safe }};
     let productionChart = null;
+    let temperatureChart = null;
+    let lightnessChart = null;
 
     function downsampleData(data, minutesInterval) {
         if (!data || data.length === 0) return [];
         if (minutesInterval === 1) return data;
 
         const sampled = [];
-        let sum = 0;
+        let sumValue = 0;
+        let sumTemp = 0;
+        let sumLight = 0;
         let count = 0;
         let currentWindowStart = moment(data[0].timestamp);
 
@@ -182,24 +215,32 @@
             const diffMinutes = pointTime.diff(currentWindowStart, 'minutes');
 
             if (diffMinutes < minutesInterval) {
-                sum += data[i].value;
+                sumValue += data[i].value;
+                sumTemp += data[i].temperature || 0;
+                sumLight += data[i].lightness || 0;
                 count++;
             } else {
                 if (count > 0) {
                     sampled.push({
                         timestamp: currentWindowStart.toISOString(),
-                        value: sum / count
+                        value: sumValue / count,
+                        temperature: sumTemp / count,
+                        lightness: sumLight / count
                     });
                 }
                 currentWindowStart = pointTime;
-                sum = data[i].value;
+                sumValue = data[i].value;
+                sumTemp = data[i].temperature || 0;
+                sumLight = data[i].lightness || 0;
                 count = 1;
             }
         }
         if (count > 0) {
             sampled.push({
                 timestamp: currentWindowStart.toISOString(),
-                value: sum / count
+                value: sumValue / count,
+                temperature: sumTemp / count,
+                lightness: sumLight / count
             });
         }
         return sampled;
@@ -209,7 +250,10 @@
         const aggregatedData = downsampleData(rawData, minutesInterval);
         const labels = aggregatedData.map(d => d.timestamp);
         const values = aggregatedData.map(d => d.value);
+        const temperatures = aggregatedData.map(d => d.temperature);
+        const lightnesses = aggregatedData.map(d => d.lightness);
 
+        // Update Production Chart
         if (productionChart) {
             productionChart.data.labels = labels;
             productionChart.data.datasets[0].data = values;
@@ -221,8 +265,8 @@
         } else {
             const ctx = document.getElementById('productionChart').getContext('2d');
             let gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, 'rgba(25, 135, 84, 0.8)');
-            gradient.addColorStop(1, 'rgba(25, 135, 84, 0.1)');
+            gradient.addColorStop(0, 'rgba(40, 167, 69, 0.8)');
+            gradient.addColorStop(1, 'rgba(40, 167, 69, 0.1)');
 
             productionChart = new Chart(ctx, {
                 type: minutesInterval === 1 ? 'line' : 'bar',
@@ -232,7 +276,7 @@
                         label: 'Potenza Generata (kW)',
                         data: values,
                         backgroundColor: gradient,
-                        borderColor: '#198754',
+                        borderColor: '#28a745',
                         borderWidth: minutesInterval === 1 ? 2 : 0,
                         fill: true,
                         pointRadius: 0,
@@ -240,48 +284,114 @@
                         borderRadius: 4
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                            padding: 12,
-                            titleFont: { size: 14 },
-                            bodyFont: { size: 14, weight: 'bold' },
-                            callbacks: {
-                                label: function(context) {
-                                    return context.parsed.y.toFixed(2) + ' kW';
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'hour',
-                                displayFormats: { hour: 'HH:mm' },
-                                tooltipFormat: 'DD MMM YYYY, HH:mm'
-                            },
-                            grid: { display: false },
-                            ticks: { color: '#6c757d', font: { size: 12 } }
-                        },
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#e9ecef', drawBorder: false },
-                            ticks: {
-                                color: '#6c757d',
-                                font: { size: 12 },
-                                callback: function(value) { return value + ' kW'; }
-                            }
+                options: getChartOptions('kW', '#28a745')
+            });
+        }
+
+        // Update Lightness Chart
+        if (lightnessChart) {
+            lightnessChart.data.labels = labels;
+            lightnessChart.data.datasets[0].data = lightnesses;
+            lightnessChart.update();
+        } else {
+            const ctxLight = document.getElementById('lightnessChart').getContext('2d');
+            let gradientLight = ctxLight.createLinearGradient(0, 0, 0, 400);
+            gradientLight.addColorStop(0, 'rgba(255, 193, 7, 0.6)');
+            gradientLight.addColorStop(1, 'rgba(255, 193, 7, 0.1)');
+
+            lightnessChart = new Chart(ctxLight, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Luminosità',
+                        data: lightnesses,
+                        backgroundColor: gradientLight,
+                        borderColor: '#ffc107',
+                        borderWidth: 2,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        tension: 0.4
+                    }]
+                },
+                options: getChartOptions('lx', '#ffc107', false)
+            });
+        }
+
+        // Update Temperature Chart
+        if (temperatureChart) {
+            temperatureChart.data.labels = labels;
+            temperatureChart.data.datasets[0].data = temperatures;
+            temperatureChart.update();
+        } else {
+            const ctxTemp = document.getElementById('temperatureChart').getContext('2d');
+            let gradientTemp = ctxTemp.createLinearGradient(0, 0, 0, 400);
+            gradientTemp.addColorStop(0, 'rgba(220, 53, 69, 0.6)');
+            gradientTemp.addColorStop(1, 'rgba(220, 53, 69, 0.1)');
+
+            temperatureChart = new Chart(ctxTemp, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Temperatura (°C)',
+                        data: temperatures,
+                        backgroundColor: gradientTemp,
+                        borderColor: '#dc3545',
+                        borderWidth: 2,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        tension: 0.4
+                    }]
+                },
+                options: getChartOptions('°C', '#dc3545', false)
+            });
+        }
+    }
+
+    function getChartOptions(unit, color, beginAtZero = true) {
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: { size: 14 },
+                    bodyFont: { size: 14, weight: 'bold' },
+                    callbacks: {
+                        label: function(context) {
+                            return context.parsed.y.toFixed(2) + ' ' + unit;
                         }
                     }
                 }
-            });
-        }
+            },
+            scales: {
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'hour',
+                        displayFormats: { hour: 'HH:mm' },
+                        tooltipFormat: 'DD MMM YYYY, HH:mm'
+                    },
+                    grid: { display: false },
+                    ticks: { color: '#6c757d', font: { size: 12 } }
+                },
+                y: {
+                    beginAtZero: beginAtZero,
+                    grid: { color: '#e9ecef', drawBorder: false },
+                    ticks: {
+                        color: '#6c757d',
+                        font: { size: 12 },
+                        callback: function(value) { return value + ' ' + unit; }
+                    }
+                }
+            }
+        };
     }
 
     document.addEventListener("DOMContentLoaded", function() {

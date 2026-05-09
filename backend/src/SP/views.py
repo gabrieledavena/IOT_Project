@@ -215,7 +215,12 @@ def getPhotovoltaicSystemData(system, selected_day=None):
 
     # Converte i dati
     records = [
-        {'Timestamp': pd.to_datetime(p.time_stamp), 'Power': p.power}
+        {
+            'Timestamp': pd.to_datetime(p.time_stamp), 
+            'Power': p.power,
+            'Temperature': p.temperature,
+            'Lightness': p.lightness
+        }
         for p in panel_data
     ]
 
@@ -228,10 +233,19 @@ def getPhotovoltaicSystemData(system, selected_day=None):
 
         curr_time = curr_row['Timestamp']
         prev_time = prev_row['Timestamp']
+        
         curr_val = curr_row['Power']
         prev_val = prev_row['Power']
+        
+        curr_temp = curr_row['Temperature']
+        prev_temp = prev_row['Temperature']
+        
+        curr_light = curr_row['Lightness']
+        prev_light = prev_row['Lightness']
 
         delta_prod = curr_val - prev_val
+        delta_temp = curr_temp - prev_temp
+        delta_light = curr_light - prev_light
 
         # Gestione reset del contatore (es. nuovo giorno)
         if delta_prod < 0:
@@ -243,13 +257,17 @@ def getPhotovoltaicSystemData(system, selected_day=None):
             continue
 
         value_per_minute = delta_prod / time_diff_minutes
+        temp_per_minute = delta_temp / time_diff_minutes
+        light_per_minute = delta_light / time_diff_minutes
 
         for m in range(1, time_diff_minutes + 1):
             minute_timestamp = prev_time + timedelta(minutes=m)
             if pd.notnull(minute_timestamp):
                 raw_data.append({
                     'timestamp': minute_timestamp.strftime('%Y-%m-%dT%H:%M:%S'),
-                    'value': round(value_per_minute, 4)
+                    'value': round(value_per_minute, 4),
+                    'temperature': round(prev_temp + (temp_per_minute * m), 2),
+                    'lightness': round(prev_light + (light_per_minute * m), 2)
                 })
 
     return raw_data

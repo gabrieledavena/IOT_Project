@@ -5,7 +5,7 @@
 - [x] Previsione giorno successivo
 - [x] Previsione giorno corrente (nella dashboard del nibba)
 - [ ] ROI (non pooling)
-- [ ] Dashboard per pannelli (PhotovoltaicPanel)
+- [X] Dashboard per pannelli (PhotovoltaicPanel)
 - [ ] Confronto con produzione città
 - [ ] Pompa d'acqua per lavaggio pannelli sporchi (forse)
 - [ ] Pagine management manutenzione pannelli
