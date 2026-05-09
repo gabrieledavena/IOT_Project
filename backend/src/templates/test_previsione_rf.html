@@ -1,54 +1,62 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Test Previsione RandomForest</title>
-    <style>
-        body { font-family: sans-serif; margin: 2em; }
-        .container { max-width: 800px; margin: auto; }
-        .btn { padding: 10px 15px; background-color: #007bff; color: white; border: none; cursor: pointer; }
-        .error { color: red; }
-        .success { color: green; }
-        table { border-collapse: collapse; width: 100%; margin-top: 1em; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Test del Modello di Previsione (RandomForest)</h1>
-        <p>Clicca il pulsante per prevedere la produzione delle prossime 24 ore per la tua community: <strong>{{ request.user.customer.community.name }}</strong>.</p>
+{% extends 'base.html' %}
 
-        <form method="POST">
-            {% csrf_token %}
-            <button type="submit" class="btn">Esegui Previsione</button>
-        </form>
+{% block title %}Test Previsione TiDE{% endblock %}
 
-        {% if error %}
-            <p class="error"><strong>Errore:</strong> {{ error }}</p>
-        {% endif %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow-sm rounded-4 border-0">
+            <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+                <h2 class="card-title text-success mb-0"><i class="fas fa-chart-line me-2"></i>Test del Modello di Previsione (TiDE)</h2>
+            </div>
 
-        {% if success %}
-            <h2 class="success">Previsione completata!</h2>
-            <p>Produzione stimata per la community <strong>{{ community_name }}</strong> per le prossime 24 ore:</p>
+            <div class="card-body p-4">
+                <p class="text-muted mb-4">
+                    Clicca il pulsante per prevedere la produzione delle prossime 24 ore per la tua community:
+                    <strong class="text-dark">{{ request.user.customer.community.name }}</strong>.
+                </p>
 
-            <table>
-                <thead>
-                    <tr>
-                        <th>Ora</th>
-                        <th>Produzione Stimata (kWh)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for time, value in prediction.items %}
-                    <tr>
-                        <td>{{ time }}</td>
-                        <td>{{ value }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        {% endif %}
+                <form method="POST" class="mb-4">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success rounded-pill px-4 shadow-sm">
+                        <i class="fas fa-magic me-2"></i>Esegui Previsione
+                    </button>
+                </form>
+
+                {% if error %}
+                    <div class="alert alert-danger rounded-3" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i><strong>Errore:</strong> {{ error }}
+                    </div>
+                {% endif %}
+
+                {% if success %}
+                    <div class="alert alert-success rounded-3 mb-4" role="alert">
+                        <i class="fas fa-check-circle me-2"></i><strong>Previsione completata!</strong>
+                    </div>
+
+                    <h5 class="mb-3">Produzione stimata per la community <strong>{{ community_name }}</strong> per le prossime 24 ore:</h5>
+
+                    <div class="table-responsive bg-white rounded-3 shadow-sm border border-light">
+                        <table class="table table-hover table-striped mb-0 text-center align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col"><i class="far fa-clock me-2 text-muted"></i>Ora</th>
+                                    <th scope="col"><i class="fas fa-bolt me-2 text-warning"></i>Produzione Istatanea Stimata (kW)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for time, value in prediction.items %}
+                                <tr>
+                                    <td class="fw-medium">{{ time }}</td>
+                                    <td><span class="badge bg-success bg-opacity-10 text-success fs-6 border border-success border-opacity-25">{{ value }} kW</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}

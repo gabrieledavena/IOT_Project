@@ -8,8 +8,11 @@ from SP.models import Customer, PanelData, PhotovoltaicSystem
 import sklearn
 import joblib
 import os
+import torch
+import numpy as np
 from darts import TimeSeries
 from darts.utils.timeseries_generation import datetime_attribute_timeseries
+from darts.models import TiDEModel
 
 # Configurazione costanti (le stesse del training)
 METEO_PARAMS = (
@@ -21,7 +24,7 @@ METEO_PARAMS = (
 
 def get_weather_data(latitude, longitude, start_date, end_date, is_forecast=False):
     """Scarica dati meteo estesi da Open-Meteo"""
-    url = "https://api.open-meteo.com/v1/forecast"
+    url = "https://api.open-meteo.com/v1/forecast" if is_forecast else "https://archive-api.open-meteo.com/v1/archive"
 
     params = {
         "latitude": latitude,
@@ -35,11 +38,16 @@ def get_weather_data(latitude, longitude, start_date, end_date, is_forecast=Fals
     try:
         response = requests.get(url, params=params, timeout=5)
         response.raise_for_status()
-        data = response.json()["daily"]
+        data = response.json().get("daily")
+        
+        if not data:
+            return None
 
-        # Creiamo un DataFrame con una sola riga
+        # Creiamo un DataFrame con una sola riga se necessario
         df = pd.DataFrame(
             {
+                "Date": pd.to_datetime(data['time']).dt.date if hasattr(pd.to_datetime(data['time']),
+                                                                        'dt') else pd.to_datetime(data['time']).date,
                 "solar_radiation": data["shortwave_radiation_sum"],
                 "temp_max": data["temperature_2m_max"],
                 "temp_min": data["temperature_2m_min"],
@@ -116,6 +124,9 @@ def view_test_previsione(request):
                         "daylight_duration",
                         "snowfall",
                     ]
+                    # Rimuoviamo il "Date" prima di passarlo al modello generico
+                    if 'Date' in X_input.columns:
+                        X_input = X_input.drop(columns=['Date'])
                     X_input = X_input[feature_cols]
 
                     kwh_predicted = model.predict(X_input)[0]
@@ -203,6 +214,9 @@ def view_test_previsione_oggi(request):
                         "daylight_duration",
                         "snowfall",
                     ]
+                    # Rimuoviamo il "Date" prima di passarlo al modello generico
+                    if 'Date' in X_input.columns:
+                        X_input = X_input.drop(columns=['Date'])
                     X_input = X_input[feature_cols]
 
                     kwh_predicted = model.predict(X_input)[0]
@@ -234,9 +248,37 @@ def view_test_previsione_rf(request):
 
     if request.method == "POST":
         try:
-            # 1. Carica il modello RandomForest
-            model_path = os.path.join('forecast', 'ml_models', 'modello_previsione_tide.joblib')
-            model = joblib.load(model_path)
+            # 1. Carica il modello TiDE e gli scalers
+            model_path = os.path.join('forecast', 'ml_models', 'modello_previsione_tide.pt')
+            scalers_path = os.path.join('forecast', 'ml_models', 'scalers_tide.joblib')
+            
+            # Allowlist torch.optim.adam.Adam for loading PyTorch weights
+            try:
+                import torch.optim.adam
+                torch.serialization.add_safe_globals([torch.optim.adam.Adam])
+            except Exception:
+                pass
+            
+            # Allow loading weights only for older models where it causes issues in PyTorch 2.6+
+            # Let's override torch.load to always bypass weights_only internally for darts if needed
+            original_torch_load = torch.load
+            def custom_torch_load(*args, **kwargs):
+                if 'weights_only' in kwargs:
+                    kwargs['weights_only'] = False
+                return original_torch_load(*args, **kwargs)
+                
+            try:
+                torch.load = custom_torch_load
+                # Use TiDEModel.load for a PyTorch darts model
+                model = TiDEModel.load(model_path)
+            finally:
+                torch.load = original_torch_load
+
+            scalers = joblib.load(scalers_path)
+
+            scaler_target = scalers['target']
+            scaler_past_cov = scalers['past_cov']
+            scaler_future_cov = scalers['future_cov']
 
             # 2. Ottieni la community dell'utente
             customer = Customer.objects.get(user=request.user)
@@ -247,15 +289,19 @@ def view_test_previsione_rf(request):
                 context["error"] = "Nessun impianto fotovoltaico per questa community."
                 return render(request, "test_previsione_rf.html", context)
 
-            # 3. Recupera gli ultimi 2 giorni di dati per creare la serie storica di input
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=2)
+            # 3. Recupera i dati passati e futuri necessari 
+            # Vogliamo le ULTIME 48 ORE per l'input (che ti sei configurato in training)
+            # e poi prevedere le 24 ore successive (il giorno corrente).
+            today = datetime.now().date()
+            start_of_today = datetime.combine(today, datetime.min.time())
+            start_date_past = start_of_today - timedelta(days=2) # Ultime 48 ore (2 giorni prima di oggi)
             
             all_systems_data = []
             for system in systems:
-                panel_data = PanelData.objects.filter(system=system, time_stamp__range=(start_date, end_date)).order_by('time_stamp')
+                # Recuperiamo dati fino all'inizio di oggi (cioè dalle 00:00 di 2 giorni fa, alle 00:00 di oggi)
+                panel_data = PanelData.objects.filter(system=system, time_stamp__range=(start_date_past, start_of_today)).order_by('time_stamp')
                 
-                records = [{'Timestamp': pd.to_datetime(p.time_stamp), 'Power': p.power} for p in panel_data]
+                records = [{'Timestamp': pd.to_datetime(p.time_stamp), 'Power': p.power, 'Lightness': p.lightness, 'Temperature': p.temperature} for p in panel_data]
                 
                 raw_data = []
                 for i in range(1, len(records)):
@@ -267,46 +313,115 @@ def view_test_previsione_rf(request):
                     if time_diff_minutes <= 0: continue
                     
                     value_per_minute = delta_prod / time_diff_minutes
+                    lightness = curr_row['Lightness'] + prev_row['Lightness']
+                    temperature = curr_row['Temperature'] + prev_row['Temperature']
+
                     for m in range(1, time_diff_minutes + 1):
                         minute_timestamp = prev_row['Timestamp'] + timedelta(minutes=m)
-                        raw_data.append({'timestamp': minute_timestamp.replace(second=0, microsecond=0), 'production': round(value_per_minute, 4)})
+                        raw_data.append({'timestamp': minute_timestamp.replace(second=0, microsecond=0), 'production': round(value_per_minute, 4), 'lightness': lightness, 'temperature': temperature})
                 
                 if raw_data:
                     df_system = pd.DataFrame(raw_data).set_index('timestamp')
                     all_systems_data.append(df_system)
 
             if not all_systems_data:
-                context["error"] = "Dati di produzione insufficienti negli ultimi 2 giorni."
+                context["error"] = f"Dati di produzione insufficienti per gli ultimi 2 giorni a partire dal {start_date_past.date()}."
                 return render(request, "test_previsione_rf.html", context)
 
-            # Somma la produzione di tutti gli impianti per ora
-            df_total = pd.concat(all_systems_data).groupby('timestamp').sum()
-            df_resampled = df_total.resample('1h').sum().fillna(0).reset_index()
+            # Somma la produzione di tutti gli impianti per ora (facciamo media per le condizioni ambientali)
+            df_concat = pd.concat(all_systems_data)
+            df_total_prod = df_concat[['production']].groupby('timestamp').sum()
+            df_total_env = df_concat[['lightness', 'temperature']].groupby('timestamp').mean()
             
-            # Assicurati che ci siano abbastanza dati per la previsione
-            if len(df_resampled) < 24:
-                context["error"] = "Non ci sono abbastanza dati storici (richieste almeno 24 ore)."
+            df_total = pd.concat([df_total_prod, df_total_env], axis=1)
+            # Remove timezone if any exists to match training data
+            if df_total.index.tz is not None:
+                df_total.index = df_total.index.tz_localize(None)
+            df_resampled = df_total.resample('1h').mean().fillna(0).reset_index()
+            
+            # Filtra per prendere solo le ultime 48 ore esatte di ieri per l'input
+            df_resampled = df_resampled[(df_resampled['timestamp'] >= start_date_past) & (df_resampled['timestamp'] < start_of_today)]
+
+            if len(df_resampled) < 48:
+                 context["error"] = "Non ci sono 48 ore di dati storici complete per i 2 giorni precedenti."
+                 return render(request, "test_previsione_rf.html", context)
+
+            # Prendi solo gli ultimi 48 per sicurezza (input_chunk_length = 48)
+            df_resampled = df_resampled.tail(48)
+
+            # --- Dati Meteo (Passato e Futuro) ---
+            # Il passato sono i 2 giorni precedenti, il futuro è oggi
+            start_date_meteo = df_resampled['timestamp'].min().date() 
+            end_date_meteo = start_of_today.date() # Oggi
+            
+            # Attenzione, stiamo usando un mix di dati meteo storici (per past) e forecast (per future)
+            weather_df_past = get_weather_data(community.latitude, community.longitude, start_date_meteo, end_date_meteo - timedelta(days=1), is_forecast=False)
+            weather_df_future = get_weather_data(community.latitude, community.longitude, end_date_meteo, end_date_meteo, is_forecast=True)
+            
+            if weather_df_past is None or weather_df_future is None:
+                context["error"] = "Impossibile recuperare i dati meteo necessari per la predizione."
                 return render(request, "test_previsione_rf.html", context)
+
+            weather_df = pd.concat([weather_df_past, weather_df_future]).drop_duplicates(subset=['Date'])
+            weather_df['Date'] = pd.to_datetime(weather_df['Date'])
+            
+            # Assicurati che date sia compatibile, senza fusi orari
+            df_resampled['Date'] = pd.to_datetime(df_resampled['timestamp'].dt.date)
+            df_resampled = pd.merge(df_resampled, weather_df, on='Date', how='left').fillna(0)
+            df_resampled.drop(columns=['Date'], inplace=True)
 
             # 4. Crea la TimeSeries e le covariate per Darts
-            ts = TimeSeries.from_dataframe(df_resampled, time_col='timestamp', value_cols='production')
+            ts_target = TimeSeries.from_dataframe(df_resampled, time_col='timestamp', value_cols=['production'])
             
-            # Crea covariate per il passato e il futuro per coprire l'orizzonte di previsione
-            # Il modello RandomForest con past_covariates richiede che le covariate coprano
-            # l'intera serie temporale target + i passi futuri da prevedere (n=24)
-            covariates_time_index = pd.date_range(start=ts.start_time(), periods=len(ts) + 24, freq=ts.freq)
+            weather_cols = ['solar_radiation', 'temp_max', 'temp_min', 'precipitation', 'wind_speed', 'cloud_cover', 'daylight_duration', 'snowfall']
             
-            past_covariates = datetime_attribute_timeseries(covariates_time_index, attribute='hour', one_hot=False)
-            past_covariates = past_covariates.stack(datetime_attribute_timeseries(covariates_time_index, attribute='day', one_hot=False))
-            past_covariates = past_covariates.stack(datetime_attribute_timeseries(covariates_time_index, attribute='month', one_hot=False))
+            ts_past_cov = TimeSeries.from_dataframe(df_resampled, time_col='timestamp', value_cols=['lightness', 'temperature'] + weather_cols)
+            
+            # Per le covariate future, creiamo il dataframe per OGGI (dalle 00:00 alle 23:00)
+            future_timestamps = pd.date_range(start=start_of_today, periods=24, freq='1h')
+            future_df = pd.DataFrame({'timestamp': future_timestamps})
+            future_df['Date'] = pd.to_datetime(future_df['timestamp'].dt.date)
+            future_df = pd.merge(future_df, weather_df, on='Date', how='left').fillna(0)
+            future_df.drop(columns=['Date'], inplace=True)
 
-            # 5. Fai la previsione per le prossime 24 ore
-            # Il RandomForest model in Darts non supporta future_covariates, solo past_covariates.
-            prediction = model.predict(n=24, series=ts, past_covariates=past_covariates)
+            # L'input model di TiDE si aspetta le future_covariates fornite su tutto lo scope (past_chunk_length + output_chunk_length)
+            # Quindi concateniamo df_resampled (ultime 48h) e future_df (oggi 24h) per ottenere un timeframe da 72h totali
+            full_time_df = pd.concat([df_resampled[['timestamp'] + weather_cols], future_df[['timestamp'] + weather_cols]])
+            ts_future_cov = TimeSeries.from_dataframe(full_time_df, time_col='timestamp', value_cols=weather_cols)
 
+            # Covariate temporali
+            hour_cov = datetime_attribute_timeseries(ts_target, attribute='hour')
+            day_cov = datetime_attribute_timeseries(ts_target, attribute='day')
+            month_cov = datetime_attribute_timeseries(ts_target, attribute='month')
+            time_covariates_past = hour_cov.stack(day_cov).stack(month_cov)
+            
+            past_covariates = ts_past_cov.stack(time_covariates_past)
+
+            hour_cov_future = datetime_attribute_timeseries(ts_future_cov, attribute='hour')
+            day_cov_future = datetime_attribute_timeseries(ts_future_cov, attribute='day')
+            month_cov_future = datetime_attribute_timeseries(ts_future_cov, attribute='month')
+            time_covariates_future = hour_cov_future.stack(day_cov_future).stack(month_cov_future)
+            
+            future_covariates = ts_future_cov.stack(time_covariates_future)
+
+            # Scale i dati prima di inviarli
+            ts_target_scaled = scaler_target.transform(ts_target)
+            past_covariates_scaled = scaler_past_cov.transform(past_covariates)
+            future_covariates_scaled = scaler_future_cov.transform(future_covariates)
+
+            # 5. Fai la previsione per le 24 ore di OGGI
+            prediction_scaled = model.predict(n=24, series=ts_target_scaled, past_covariates=past_covariates_scaled, future_covariates=future_covariates_scaled)
+            
+            # Inverse scale la predizione
+            prediction = scaler_target.inverse_transform(prediction_scaled)
+
+            # Post-processing: evita valori negativi (Clipping)
+            pred_values = prediction.values()
+            pred_values[pred_values < 0] = 0
+            
             # 6. Prepara il contesto per il template
             context["success"] = True
-            context["prediction"] = {item[0].strftime('%Y-%m-%d %H:%M'): round(item[1][0], 2) for item in zip(prediction.time_index, prediction.values())}
+            context["prediction"] = {item[0].strftime('%Y-%m-%d %H:%M'): round(item[1][0], 2) for item in zip(prediction.time_index, pred_values)}
             context["community_name"] = community.name
             
         except FileNotFoundError:

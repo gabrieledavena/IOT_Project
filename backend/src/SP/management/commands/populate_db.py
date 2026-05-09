@@ -72,7 +72,7 @@ class Command(BaseCommand):
 
         panel_data_list = []
         for system in photovoltaic_systems:
-            for day in range(4):
+            for day in range(6):
                 for minute in range(24 * 60):
                     timestamp = start_date + timedelta(days=day, minutes=minute)
 

@@ -148,7 +148,8 @@ class Command(BaseCommand):
             self.stdout.write(f"Recupero dati meteo per {community.name} ({start_hist} - {end_hist})...")
             df_weather_hist = get_weather_data(community.latitude, community.longitude, start_hist, end_hist)
             df_weather_hist['Date'] = pd.to_datetime(df_weather_hist['Date']).dt.date if hasattr(pd.to_datetime(df_weather_hist['Date']), 'dt') else pd.to_datetime(df_weather_hist['Date']).apply(lambda x: x.date())
-            
+
+            print(f' df_community: {df_community.columns} \n df_weather_hist: {df_weather_hist.columns}')
             # Merge dati di produzione con meteo
             df_merged = pd.merge(df_community, df_weather_hist, on='Date', how='inner')
             all_data.append(df_merged)
