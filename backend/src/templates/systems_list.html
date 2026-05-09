@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}I Tuoi Impianti{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="fw-bold text-dark mb-0">I Tuoi Impianti Fotovoltaici</h2>
+            <p class="text-muted">Seleziona un impianto per visualizzarne i dettagli.</p>
+        </div>
+    </div>
+
+    {% if error %}
+        <div class="alert alert-danger shadow-sm rounded-4">
+            <strong><i class="fas fa-exclamation-triangle me-2"></i>Errore:</strong> {{ error }}
+        </div>
+    {% else %}
+        <div class="row g-4">
+            {% for system in systems %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift text-decoration-none">
+                        <div class="card-body p-4 d-flex flex-column">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="fw-bold text-dark mb-0">{{ system.name }}</h5>
+                                <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
+                                    <span class="fs-5">☀️</span>
+                                </div>
+                            </div>
+
+                            <ul class="list-unstyled text-muted mb-4 flex-grow-1">
+                                <li class="mb-2"><i class="fas fa-bolt me-2 text-warning"></i>Potenza Max: <strong>{{ system.max_power|floatformat:2 }} kW</strong></li>
+                                <li class="mb-2"><i class="fas fa-ruler-combined me-2 text-info"></i>Area: <strong>{{ system.area|floatformat:2 }} m²</strong></li>
+                                <li class="mb-2"><i class="fas fa-tag me-2 text-secondary"></i>Brand: <strong>{{ system.brand }}</strong></li>
+                            </ul>
+
+                            <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-primary w-100 rounded-pill fw-bold">
+                                Visualizza Dettagli <i class="fas fa-arrow-right ms-2"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <div class="col-12">
+                    <div class="alert alert-info shadow-sm rounded-4">
+                        <i class="fas fa-info-circle me-2"></i>Nessun impianto fotovoltaico associato alla tua community.
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    body {
+        background-color: #f4f6f9;
+    }
+    .hover-lift {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .hover-lift:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 1rem 3rem rgba(0,0,0,.1)!important;
+    }
+</style>
+{% endblock %}

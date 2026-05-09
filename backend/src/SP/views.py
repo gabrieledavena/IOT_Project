@@ -339,6 +339,25 @@ class SolarCommunityView(LoginRequiredMixin, View):
         except Exception as e:
             return render(request, 'solar_community.html', {'error': str(e)})
 
+class PhotovoltaicSystemListView(LoginRequiredMixin, View):
+    def get(self, request):
+        try:
+            # Ottiene il customer associato all'utente loggato
+            customer = Customer.objects.get(user=request.user)
+            community = customer.community
+            
+            # Ottiene gli impianti della community del cliente
+            systems = PhotovoltaicSystem.objects.filter(community=community)
+            
+            context = {
+                'systems': systems,
+                'community': community
+            }
+            return render(request, 'systems_list.html', context)
+        except Customer.DoesNotExist:
+            return render(request, 'systems_list.html', {'error': 'Utente non associato a un cliente.'})
+        except Exception as e:
+            return render(request, 'systems_list.html', {'error': str(e)})
 
 class PhotovoltaicSystemView(LoginRequiredMixin, View):
     def get(self, request, system_id):
