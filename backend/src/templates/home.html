@@ -6,7 +6,8 @@
     <h1>Homepage</h1>
     <p>Benvenuto nell'app SP. Visualizza i dati di produzione di energia solare.</p>
 
-    <a class="btn" href="{% url 'SP:solar_community' %}">Visualizza Dati</a>
+    <a class="btn" href="{% url 'SP:solar_community' %}">Visualizza Dati Community</a>
+    <a class="btn" href="{% url 'SP:photovoltaic_system_list' %}">Visualizza Dati Impianti Fotovoltaici</a>
     <a class="btn" href="{% url 'tomorrow' %}">Test Previsione Domani</a>
     <a class="btn" href="{% url 'today' %}">Test Previsione Oggi</a>
 
