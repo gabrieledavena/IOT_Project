@@ -10,3 +10,4 @@ joblib
 requests
 scikit-learn
 reverse_geocoder
+geonamescache

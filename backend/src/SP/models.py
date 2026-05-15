@@ -6,22 +6,10 @@ from django.contrib.auth.models import User
 class Community(models.Model):
 
     name = models.CharField(max_length=100, unique=True, null=False, blank=False)
-    latitude = models.FloatField(
-        verbose_name="Latitude",
-        help_text="La coordinata di latitudine in formato decimale (float).",
-        null=False,
-        blank=False,
-    )
-
-    longitude = models.FloatField(
-        verbose_name="Longitude",
-        help_text="La coordinata di longitudine in formato decimale (float).",
-        null=False,
-        blank=False,
-    )
+    city = models.ForeignKey("City", on_delete=models.CASCADE, related_name="community", verbose_name="Citta")
 
     def __str__(self):
-        return self.name + " (" + str(self.latitude) + ", " + str(self.longitude) + ")"
+        return self.name
 
     class Meta:
         verbose_name = "Community"
@@ -58,6 +46,16 @@ class PhotovoltaicSystem(models.Model):
 
 
 class Intervention(models.Model):
+    class InterventionType(models.TextChoices):
+        CLEANING = "CLN", "Pulizia Pannelli"
+        PANEL_SUBSTITUTION = "SBT", "Sostituzione Pannello"
+        ELECTRICAL_CHECK = "ELC", "Manutenzione Elettrica e Serraggi"
+        INVERTER_MAINTENANCE = "INV", "Intervento su Inverter"
+        THERMOGRAPHY_INSPECTION = "INF", "Ispezione Termografica/Visiva"
+        STRUCTURE_CHECK = "STR", "Controllo Strutture e Ancoraggi"
+        MINOR_REPLACEMENT = "RPL", "Sostituzione Componenti Minori (Fusibili/Connettori)"
+        OTHER = "OTH", "Altro"
+
     # Stabilisce il legame con l'impianto
     system = models.ForeignKey(
         "PhotovoltaicSystem",
@@ -66,9 +64,7 @@ class Intervention(models.Model):
         verbose_name="Impianto Fotovoltaico",
     )
 
-    INTERVENTION_TYPES = (("CLN", "Clean Panels"), ("SBT", "Substitutions of a Panel"))
-
-    code = models.CharField(max_length=3, choices=INTERVENTION_TYPES, unique=True)
+    code = models.CharField(max_length=3, choices=InterventionType.choices, verbose_name="Tipo di Intervento")
 
     date = models.DateField(
         null=False, blank=False
@@ -99,3 +95,20 @@ class PanelData(models.Model):
     temperature = models.FloatField(null=False, blank=False)
     lightness = models.FloatField(null=False, blank=False)
     power = models.FloatField(null=False, blank=False)
+
+class City(models.Model):
+    name = models.CharField(max_length=255)
+    province = models.CharField(max_length=100, null=True, blank=True)
+    region = models.CharField(max_length=100, null=True, blank=True)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+
+    def __str__(self):
+        if self.province:
+            return f"{self.name} ({self.province})"
+        return self.name
+
+    class Meta:
+        verbose_name = "City"
+        verbose_name_plural = "Cities"
+        ordering = ['name']
