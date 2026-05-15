@@ -8,6 +8,7 @@ import requests
 # --- CONFIGURATION ---
 SERIAL_PORT = 'COM2'    # Port connected to Arduino
 BAUD_RATE = 9600        # Baud rate of the serial communication
+RESOURCE_CREATED = 201  # HTTP status code for resource created
 URL = "http://127.0.0.1:8000/sp/panel-data/"
 try:
     ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
@@ -22,7 +23,7 @@ def send_data_to_server(payload):
     # Send data to the server via POST
     try:
         response = requests.post(URL, json=payload)
-        if response.status_code == 201:
+        if response.status_code == RESOURCE_CREATED:
             print(f"Data sent successfully: {payload}")
         else:
             print(f"Error sending data: {response.status_code} - {response.text}")
@@ -83,7 +84,7 @@ def serial_reader():
                         "temperature": avg_temp,
                         "lightness": avg_lux,
                         "power": avg_power,
-                        "system": 1,
+                        "system": 1, # The PK of the sun panel system in the DB
                     }
                     
                     # Send
