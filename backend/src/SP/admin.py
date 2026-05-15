@@ -5,6 +5,7 @@ from .models import (
     PhotovoltaicSystem,
     PanelData,
     Intervention,
+    City
 )
 
 class CommunityAdmin(admin.ModelAdmin):
@@ -12,6 +13,13 @@ class CommunityAdmin(admin.ModelAdmin):
 
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "surname", "community")
+
+class CityAdmin(admin.ModelAdmin):
+    list_display = ("name"
+    ,"province"
+    ,"region"
+    ,"latitude"
+    ,"longitude")
 
 class PhotovoltaicSystemAdmin(admin.ModelAdmin):
     list_display = ("id", "name")
@@ -37,3 +45,4 @@ admin.site.register(Customer, CustomerAdmin)
 admin.site.register(PhotovoltaicSystem, PhotovoltaicSystemAdmin)
 admin.site.register(PanelData, PanelDataAdmin)
 admin.site.register(Intervention, InterventionAdmin)
+admin.site.register(City, CityAdmin)
