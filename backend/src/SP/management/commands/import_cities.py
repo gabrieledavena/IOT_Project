@@ -29,15 +29,14 @@ class Command(BaseCommand):
             
             # Fetch all cities from geonamescache and filter for Italy (country code 'IT')
             gc_cities = gc.get_cities()
+            print(len(gc_cities))
             italy_cities = {city_data['name'].lower(): city_data for city_id, city_data in gc_cities.items() if city_data['countrycode'] == 'IT'}
-            
-            # We assume columns: Denominazione in italiano, Sigla automobilistica, Denominazione regione
-            # Adjust these if the actual column names differ
+
             
             # Helper to find column names safely
-            col_name = next((c for c in df.columns if 'comun' in c.lower() or 'denominazione in italiano' in c.lower()), None)
-            col_prov = next((c for c in df.columns if 'provinc' in c.lower() or 'sigla automobilistica' in c.lower() or 'unità territoriale' in c.lower()), None)
-            col_reg = next((c for c in df.columns if 'region' in c.lower()), None)
+            col_name = df.columns[6]
+            col_prov = df.columns[11]
+            col_reg = df.columns[10]
             
             if not col_name:
                 self.stdout.write(self.style.ERROR("Could not identify the city name column."))
@@ -47,7 +46,7 @@ class Command(BaseCommand):
             self.stdout.write("Matching cities to geonamescache data...")
             
             missing_coordinates_count = 0
-
+            count = 0
             for index, row in df.iterrows():
                 name = str(row[col_name]).strip() if pd.notna(row[col_name]) else ""
                 
@@ -62,23 +61,28 @@ class Command(BaseCommand):
                 
                 # Match by city name (case-insensitive)
                 name_lower = name.lower()
-                
+
                 if name_lower in italy_cities:
                     matched_city = italy_cities[name_lower]
                     lat = matched_city.get('latitude')
                     lon = matched_city.get('longitude')
+                    cities_to_create.append(
+                        City(name=name, province=province, region=region, latitude=lat, longitude=lon)
+                    )
                 else:
                     missing_coordinates_count += 1
-                
-                cities_to_create.append(
-                    City(name=name, province=province, region=region, latitude=lat, longitude=lon)
-                )
+
+
+                # print(italy_cities)
+
 
                 if len(cities_to_create) % 1000 == 0:
                     self.stdout.write(f"Processed {len(cities_to_create)} cities...")
 
             if missing_coordinates_count > 0:
                 self.stdout.write(self.style.WARNING(f"{missing_coordinates_count} cities could not be matched for coordinates."))
+                self.stdout.write(self.style.WARNING(f"{count} cities could not be matched for coordinates."))
+                print(len(italy_cities))
 
             if cities_to_create:
                 self.stdout.write("Clearing old data and inserting new records...")
