@@ -7,25 +7,31 @@ from unittest import mock
 
 import joblib
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.management import call_command
 from django.test import TestCase
-from django.utils import timezone
 
 from forecast import predictor
-from SP.tests.helpers import add_readings, create_city, create_community, create_customer, create_system, fake_weather, utc
-from SP.weather import WEATHER_COLUMNS, WeatherUnavailable
+from forecast.predictor import FEATURE_COLUMNS, ForecastError, build_features, estimate_past_year_yield, solar_declination
+from SP.tests.helpers import (
+    FakeModel, create_city, create_community, create_customer, create_system, fake_weather, reference_dataset,
+)
+from SP.weather import WeatherUnavailable
 
 
-class FakeModel:
-    """Modello finto con resa costante (kWh per kW installato)."""
+class FeatureTests(TestCase):
+    def test_solar_declination_follows_the_seasons(self):
+        summer, equinox, winter = solar_declination([date(2026, 6, 21), date(2026, 3, 21), date(2026, 12, 21)])
 
-    def __init__(self, specific_yield=5.0):
-        self.specific_yield = specific_yield
+        self.assertAlmostEqual(summer, 23.44, places=1)
+        self.assertAlmostEqual(equinox, 0, delta=0.5)
+        self.assertAlmostEqual(winter, -23.44, places=1)
 
-    def predict(self, weather):
-        if list(weather.columns) != WEATHER_COLUMNS:
-            raise ValueError("feature names should match")
-        return [self.specific_yield] * len(weather)
+    def test_features_are_the_weather_plus_the_sun_position(self):
+        features = build_features(fake_weather(date(2026, 6, 21)), latitude=44.6)
+
+        self.assertEqual(list(features.columns), FEATURE_COLUMNS)
+        self.assertEqual(features["latitude"].iloc[0], 44.6)
 
 
 class ForecastViewTests(TestCase):
@@ -99,6 +105,31 @@ class ForecastViewTests(TestCase):
         self.assertNotIn("prediction", response.context)
 
 
+class PastYearYieldTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.city = create_city()
+
+    def test_uses_the_real_weather_of_the_last_365_days(self):
+        with mock.patch("forecast.predictor.load_model", return_value=FakeModel(4.0)), \
+                mock.patch("forecast.predictor.get_daily_weather",
+                           side_effect=lambda city, start, end, historical=False: fake_weather(start, end)) as weather:
+            daily = estimate_past_year_yield(self.city)
+            estimate_past_year_yield(self.city)  # la seconda volta il meteo arriva dalla cache
+
+        self.assertEqual(len(daily), 365)
+        self.assertEqual(daily["Date"].max(), date.today() - timedelta(days=1))
+        self.assertAlmostEqual(daily["specific_yield"].sum(), 4.0 * 365)
+        weather.assert_called_once()
+        self.assertTrue(weather.call_args.kwargs["historical"])
+
+    def test_weather_errors_become_forecast_errors(self):
+        with mock.patch("forecast.predictor.load_model", return_value=FakeModel()), \
+                mock.patch("forecast.predictor.get_daily_weather", side_effect=WeatherUnavailable("offline")):
+            with self.assertRaisesMessage(ForecastError, "offline"):
+                estimate_past_year_yield(self.city)
+
+
 class ModelLoadingTests(TestCase):
     def test_model_is_reloaded_when_the_file_changes(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch("forecast.predictor.MODEL_PATH", Path(tmp) / "model.joblib"):
@@ -113,33 +144,33 @@ class ModelLoadingTests(TestCase):
             self.assertEqual(predictor.load_model().specific_yield, 2.0)
 
 
-class TrainModelCommandTests(TestCase):
-    def test_trains_on_complete_days_only_and_saves_the_model(self):
-        system = create_system(create_community(), max_power=4.0)
-        today = timezone.now().date()
-        two_days_ago, yesterday = today - timedelta(days=2), today - timedelta(days=1)
-        add_readings(system, utc(two_days_ago.year, two_days_ago.month, two_days_ago.day), [4.0] * 1440)
-        add_readings(system, utc(yesterday.year, yesterday.month, yesterday.day), [2.0] * 1440)
-        add_readings(system, utc(today.year, today.month, today.day), [4.0] * 3)  # oggi: giornata incompleta
+class TrainForecastModelCommandTests(TestCase):
+    def train(self, *args, dataset_exists=True):
+        with tempfile.TemporaryDirectory() as tmp:
+            dataset_path, model_path = Path(tmp) / "reference.csv.gz", Path(tmp) / "model.joblib"
+            if dataset_exists:
+                reference_dataset().to_csv(dataset_path, index=False)
+            with mock.patch("forecast.management.commands.train_forecast_model.DATASET_PATH", dataset_path), \
+                    mock.patch("forecast.reference_data.DATASET_PATH", dataset_path), \
+                    mock.patch("forecast.predictor.MODEL_PATH", model_path), \
+                    mock.patch("forecast.management.commands.train_forecast_model.download_reference_dataset",
+                               return_value=reference_dataset()) as download:
+                out = StringIO()
+                call_command("train_forecast_model", *args, stdout=out)
+                return out.getvalue(), joblib.load(model_path), download
 
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch("forecast.predictor.MODEL_PATH", Path(tmp) / "model.joblib"), \
-                mock.patch("forecast.management.commands.train_model_db.get_daily_weather",
-                           side_effect=lambda city, start, end=None: fake_weather(start, end)):
-            out = StringIO()
-            call_command("train_model_db", stdout=out)
-            model = joblib.load(Path(tmp) / "model.joblib")
+    def test_validates_on_unseen_locations_and_saves_the_model(self):
+        output, model, download = self.train()
 
-        # Rese per kW: 1439 min x 4 kW / 60 / 4 kW = 23,98 e 1440 min x 2 kW / 60 / 4 kW = 12,00
-        self.assertIn("2 record totali (resa media 17.99 kWh per kW installato)", out.getvalue())
-        self.assertEqual(list(model.feature_names_in_), WEATHER_COLUMNS)
-        prediction = model.predict(fake_weather(today)[WEATHER_COLUMNS])[0]
-        self.assertTrue(12.0 <= prediction <= 23.99)
+        download.assert_not_called()
+        self.assertIn("VALIDAZIONE SU LOCALITÀ ESCLUSE DAL TRAINING", output)
+        self.assertIn("Errore sulla produzione annua", output)
+        self.assertEqual(list(model.feature_names_in_), FEATURE_COLUMNS)
+        june = date(2026, 6, 21)
+        sunny = model.predict(build_features(fake_weather(june, solar_radiation=27.0), 44.0))[0]
+        cloudy = model.predict(build_features(fake_weather(june, solar_radiation=5.0), 44.0))[0]
+        self.assertGreater(sunny, cloudy)
 
-    def test_without_data_no_model_is_saved(self):
-        with tempfile.TemporaryDirectory() as tmp, mock.patch("forecast.predictor.MODEL_PATH", Path(tmp) / "model.joblib"):
-            out = StringIO()
-            call_command("train_model_db", stdout=out)
-
-            self.assertIn("Nessun dato utile", out.getvalue())
-            self.assertFalse((Path(tmp) / "model.joblib").exists())
+    def test_downloads_the_dataset_when_missing_or_asked(self):
+        self.assertTrue(self.train(dataset_exists=False)[2].called)
+        self.assertTrue(self.train("--refresh-data")[2].called)

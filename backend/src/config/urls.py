@@ -8,4 +8,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("sp/", include("SP.urls")),
     path("forecast/", include("forecast.urls")),
+    path("roi/", include("roi.urls")),
 ]

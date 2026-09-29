@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Confronto tra città{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="fw-bold text-dark mb-0">Confronto tra Città</h2>
+            <p class="text-muted">
+                Produzione media degli impianti delle community, rapportata alla loro grandezza:
+                kWh prodotti in un giorno per ogni kW installato (kWh/kWp).
+            </p>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase mb-2">Città con dati</h6>
+                    <h2 class="fw-bold text-dark mb-0">{{ cities_with_data }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-warning border-5">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase mb-2">Resa media delle città con dati</h6>
+                    <h2 class="fw-bold text-dark mb-0">
+                        {% if average_yield is not None %}{{ average_yield|floatformat:2 }} <span class="fs-5 text-muted">kWh/kWp al giorno</span>{% else %}-{% endif %}
+                    </h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form method="get" class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4 row g-3 align-items-end">
+            <div class="col-md-5">
+                <label for="q" class="form-label fw-bold text-muted">Città o provincia</label>
+                <input type="search" name="q" id="q" value="{{ query }}" class="form-control" placeholder="Es. Modena">
+            </div>
+            <div class="col-md-3">
+                <label for="region" class="form-label fw-bold text-muted">Regione</label>
+                <select name="region" id="region" class="form-select">
+                    <option value="">Tutte</option>
+                    {% for name in regions %}
+                        <option value="{{ name }}" {% if name == region %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="only_with_data" value="1" id="only_with_data" {% if only_with_data %}checked{% endif %}>
+                    <label class="form-check-label" for="only_with_data">Solo città con dati</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Filtra</button>
+            </div>
+        </div>
+    </form>
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+            <p class="text-muted small">{{ page.paginator.count }} città trovate</p>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Città</th>
+                            <th>Provincia</th>
+                            <th>Regione</th>
+                            <th class="text-end">Resa media (kWh/kWp al giorno)</th>
+                            <th class="text-end">Impianti</th>
+                            <th>Periodo misurato</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for city, stats in rows %}
+                            <tr>
+                                <td class="fw-bold">{{ city.name }}</td>
+                                <td>{{ city.province|default:"-" }}</td>
+                                <td>{{ city.region|default:"-" }}</td>
+                                {% if stats %}
+                                    <td class="text-end fw-bold text-success">{{ stats.specific_yield|floatformat:2 }}</td>
+                                    <td class="text-end">{{ stats.systems }}</td>
+                                    <td>
+                                        <span class="text-nowrap">{{ stats.first_day|date:"d/m/Y" }} - {{ stats.last_day|date:"d/m/Y" }}</span>
+                                        <span class="text-muted small text-nowrap">({{ stats.days }} giorni)</span>
+                                    </td>
+                                {% else %}
+                                    <td colspan="3" class="text-muted fst-italic">Nessuna informazione disponibile</td>
+                                {% endif %}
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="6" class="text-muted">Nessuna città corrisponde alla ricerca.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if page.has_other_pages %}
+                <nav class="mt-4" aria-label="Pagine">
+                    <ul class="pagination justify-content-center mb-0">
+                        {% if page.has_previous %}
+                            <li class="page-item"><a class="page-link" href="?{{ filters }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>
+                        {% endif %}
+                        <li class="page-item disabled"><span class="page-link">Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span></li>
+                        {% if page.has_next %}
+                            <li class="page-item"><a class="page-link" href="?{{ filters }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -7,11 +7,15 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from forecast.predictor import ForecastError, load_model, predict_specific_yield
 from SP.models import City, Community, Customer, PanelData, PhotovoltaicSystem
+from SP.weather import WeatherUnavailable, get_daily_weather
 
 NUMBER_OF_COMMUNITIES = 10
 NUMBER_OF_CUSTOMERS = 15
 CUSTOMER_PASSWORD = "password123"
+# Staff account (same password) to try the ROI calculator, reserved to staff
+STAFF_USERNAME = "consulente"
 
 # Used when the database has no city with coordinates (run import_cities to get the real ones)
 FALLBACK_CITIES = [
@@ -23,12 +27,19 @@ FALLBACK_CITIES = [
 ]
 
 
+NOISE_RANGE = (0.85, 1.0)
+
+
 def solar_power_factor(hour):
     """Fraction of the peak power produced at a given hour (0-24): bell curve centered at 13:00."""
     if not 6 <= hour <= 20:
         return 0.0
     mu, sigma = 13.0, 2.5
     return math.exp(-((hour - mu) ** 2) / (2 * sigma ** 2))
+
+
+# Hours at full power the bell curve is worth in a day, including the average noise
+CURVE_HOURS = sum(solar_power_factor(minute / 60) for minute in range(24 * 60)) / 60 * sum(NOISE_RANGE) / 2
 
 
 class Command(BaseCommand):
@@ -47,6 +58,9 @@ class Command(BaseCommand):
         self.stdout.write('Creating new data...')
         communities = self.create_communities(self.pick_cities())
         self.create_customers(communities)
+        User.objects.create_user(
+            username=STAFF_USERNAME, password=CUSTOMER_PASSWORD, first_name='Consulente', last_name='Demo', is_staff=True
+        )
         systems = self.create_systems(communities, options['systems_per_community'])
         self.create_panel_data(systems, options['days'])
 
@@ -109,10 +123,15 @@ class Command(BaseCommand):
         return systems
 
     def create_panel_data(self, systems, number_of_days):
-        """One reading per minute from midnight number_of_days - 1 days ago until now."""
+        """One reading per minute from midnight number_of_days - 1 days ago until now.
+
+        Each day the bell curve is scaled so that the energy produced is the one the forecast model
+        predicts with the real weather of that day in the system's city.
+        """
         now = timezone.now()
         start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=max(0, number_of_days - 1))
         end = min(now, start + timedelta(days=number_of_days))
+        yields = self.daily_yields({system.community.city for system in systems}, start.date(), end.date())
 
         panel_data = []
         for system in systems:
@@ -121,8 +140,10 @@ class Command(BaseCommand):
                 power_factor = solar_power_factor(timestamp.hour + timestamp.minute / 60.0)
                 if power_factor:
                     # A little noise to make it realistic
-                    noise = random.uniform(0.85, 1.0)
-                    power = system.max_power * power_factor * noise
+                    noise = random.uniform(*NOISE_RANGE)
+                    daily_yield = yields.get((system.community.city_id, timestamp.date()))
+                    peak = system.max_power if daily_yield is None else daily_yield * system.max_power / CURVE_HOURS
+                    power = min(peak * power_factor * noise, system.max_power)
                     lightness = 100.0 + power_factor * 900.0 * noise
                 else:
                     power = 0.0
@@ -137,3 +158,21 @@ class Command(BaseCommand):
                 timestamp += timedelta(minutes=1)
 
         PanelData.objects.bulk_create(panel_data, batch_size=5000)
+
+    def daily_yields(self, cities, first_day, last_day):
+        """{(city_id, day): kWh per installed kW} predicted with the real weather; missing when not available."""
+        model = load_model()
+        if model is None:
+            self.stdout.write(self.style.WARNING('No forecast model: production generated without weather.'))
+            return {}
+
+        yields = {}
+        for city in cities:
+            try:
+                weather = get_daily_weather(city, first_day, last_day)
+                predicted = predict_specific_yield(model, weather, city.latitude)
+            except (WeatherUnavailable, ForecastError) as error:
+                self.stdout.write(self.style.WARNING(f'{city}: {error} Production generated without weather.'))
+                continue
+            yields.update({(city.id, day): value for day, value in zip(weather["Date"], predicted)})
+        return yields

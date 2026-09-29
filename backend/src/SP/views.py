@@ -1,13 +1,17 @@
-"""Pagine web: registrazione, elenco impianti e dashboard di produzione di community e impianti."""
+"""Pagine web: registrazione, confronto tra città, elenco impianti e dashboard di produzione."""
 from datetime import date
+from statistics import mean
 
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.paginator import Paginator
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.shortcuts import redirect, render
 from django.views import View
 
+from .benchmark import measured_city_yields
 from .forms import CustomerRegistrationForm
-from .models import Customer, PanelData, PhotovoltaicSystem
+from .models import City, Customer, PanelData, PhotovoltaicSystem
 from .production import energy_kwh, get_community_series, get_system_series
 from .weather import get_day_weather
 
@@ -23,6 +27,47 @@ def register_view(request):
     else:
         form = CustomerRegistrationForm()
     return render(request, "SP/register.html", {"form": form})
+
+
+class CityBenchmarkView(View):
+    """Pagina pubblica: resa media misurata (kWh per kW installato al giorno) di ogni città italiana."""
+
+    template_name = "SP/city_benchmark.html"
+    cities_per_page = 50
+
+    def get(self, request):
+        stats = measured_city_yields()
+        query = request.GET.get("q", "").strip()
+        region = request.GET.get("region", "")
+        only_with_data = request.GET.get("only_with_data") == "1"
+
+        cities = City.objects.all()
+        if query:
+            cities = cities.filter(Q(name__icontains=query) | Q(province__icontains=query))
+        if region:
+            cities = cities.filter(region=region)
+        if only_with_data:
+            cities = cities.filter(id__in=stats)
+        # Prima le città con dati, poi le altre in ordine alfabetico
+        has_data = Case(When(id__in=list(stats), then=Value(1)), default=Value(0), output_field=IntegerField())
+        cities = cities.annotate(has_data=has_data if stats else Value(0)).order_by("-has_data", "name", "province")
+
+        page = Paginator(cities, self.cities_per_page).get_page(request.GET.get("page"))
+        filters = request.GET.copy()
+        filters.pop("page", None)
+        context = {
+            "page": page,
+            "rows": [(city, stats.get(city.id)) for city in page],
+            "regions": City.objects.exclude(region__isnull=True).exclude(region="")
+                                   .values_list("region", flat=True).distinct().order_by("region"),
+            "query": query,
+            "region": region,
+            "only_with_data": only_with_data,
+            "filters": filters.urlencode(),
+            "cities_with_data": len(stats),
+            "average_yield": mean(s["specific_yield"] for s in stats.values()) if stats else None,
+        }
+        return render(request, self.template_name, context)
 
 
 class PhotovoltaicSystemListView(LoginRequiredMixin, View):

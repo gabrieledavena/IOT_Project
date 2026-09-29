@@ -1,4 +1,4 @@
-"""Meteo giornaliero da Open-Meteo, usato da dashboard, previsioni e training del modello."""
+"""Meteo giornaliero da Open-Meteo, usato da dashboard, previsioni, ROI e training del modello."""
 import logging
 
 import pandas as pd
@@ -6,8 +6,12 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Previsioni e giorni recenti (fino a circa 3 mesi fa)
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+# Archivio del meteo reale dei giorni passati, senza limiti di data
+OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 REQUEST_TIMEOUT_SECONDS = 10
+ARCHIVE_TIMEOUT_SECONDS = 30
 
 # Variabile giornaliera di Open-Meteo -> colonna usata nel progetto
 DAILY_VARIABLES = {
@@ -29,38 +33,47 @@ class WeatherUnavailable(Exception):
     """Meteo non disponibile: città senza coordinate o errore di Open-Meteo."""
 
 
-def get_daily_weather(city, start_day, end_day=None):
-    """Meteo della città, un giorno per riga, da start_day a end_day inclusi.
+def fetch_daily_weather(latitude, longitude, start_day, end_day=None, historical=False):
+    """Meteo del punto indicato, un giorno per riga, da start_day a end_day inclusi.
 
-    Restituisce un DataFrame con la colonna "Date" e le WEATHER_COLUMNS.
+    Restituisce un DataFrame con la colonna "Date" e le WEATHER_COLUMNS. Con historical=True usa
+    l'archivio del meteo reale: serve per i giorni passati oltre i 3 mesi, e i giorni non ancora
+    presenti nell'archivio vengono scartati.
     Solleva WeatherUnavailable (con un messaggio da mostrare all'utente) se il meteo non è disponibile.
     """
-    if not city.has_coordinates:
-        raise WeatherUnavailable(f"La città {city} non ha coordinate: impossibile recuperare il meteo.")
-
+    url, timeout = (OPEN_METEO_ARCHIVE_URL, ARCHIVE_TIMEOUT_SECONDS) if historical else (OPEN_METEO_URL, REQUEST_TIMEOUT_SECONDS)
     params = {
-        "latitude": city.latitude,
-        "longitude": city.longitude,
+        "latitude": latitude,
+        "longitude": longitude,
         "start_date": str(start_day),
         "end_date": str(end_day or start_day),
         "daily": ",".join(DAILY_VARIABLES),
         "timezone": "auto",
     }
     try:
-        response = requests.get(OPEN_METEO_URL, params=params, timeout=REQUEST_TIMEOUT_SECONDS)
+        response = requests.get(url, params=params, timeout=timeout)
         response.raise_for_status()
         daily = response.json()["daily"]
     except (requests.RequestException, ValueError, KeyError) as error:
-        logger.warning("Meteo Open-Meteo non disponibile per %s: %s", city, error)
+        logger.warning("Meteo Open-Meteo non disponibile per (%s, %s): %s", latitude, longitude, error)
         raise WeatherUnavailable("Impossibile recuperare i dati meteo da Open-Meteo.") from error
 
-    # Open-Meteo può restituire valori nulli: diventano 0
     weather = pd.DataFrame({
         column: pd.to_numeric(pd.Series(daily[variable]), errors="coerce")
         for variable, column in DAILY_VARIABLES.items()
-    }).fillna(0)
+    })
     weather.insert(0, "Date", pd.to_datetime(daily["time"]).date)
-    return weather
+    if historical:
+        return weather.dropna().reset_index(drop=True)
+    # Le previsioni possono avere valori nulli isolati: diventano 0
+    return weather.fillna(0)
+
+
+def get_daily_weather(city, start_day, end_day=None, historical=False):
+    """Meteo della città (vedi fetch_daily_weather); richiede che la città abbia le coordinate."""
+    if not city.has_coordinates:
+        raise WeatherUnavailable(f"La città {city} non ha coordinate: impossibile recuperare il meteo.")
+    return fetch_daily_weather(city.latitude, city.longitude, start_day, end_day, historical)
 
 
 def get_day_weather(city, day):

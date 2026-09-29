@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preventivo {{ quote_number }} · Solar Family</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; color: #212529; background: #f4f6f9; }
+        .sheet { max-width: 210mm; margin: 2rem auto; padding: 15mm; background: #fff; box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, .08); }
+        .brand { color: #198754; font-weight: 700; }
+        h2 { font-size: 1.05rem; font-weight: 700; text-transform: uppercase; color: #198754; margin: 1.5rem 0 0.6rem; }
+        table { font-size: 0.85rem; }
+        .kpi { border-left: 4px solid #198754; padding: 0.4rem 0.8rem; }
+        .kpi strong { display: block; font-size: 1.3rem; }
+        .notes { font-size: 0.75rem; color: #6c757d; }
+        @page { size: A4; margin: 12mm; }
+        @media print {
+            body { background: #fff; }
+            .sheet { margin: 0; padding: 0; box-shadow: none; max-width: none; }
+            .no-print { display: none !important; }
+            h2 { break-after: avoid; }
+            tr { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+<div class="no-print d-flex justify-content-center gap-2 mt-3">
+    <button type="button" class="btn btn-success" onclick="window.print()">Stampa / salva in PDF</button>
+    <form method="post" action="{% url 'roi:calculator' %}" class="m-0">
+        {% csrf_token %}
+        {% for field in form %}{{ field.as_hidden }}{% endfor %}
+        <button type="submit" class="btn btn-outline-secondary">Torna al calcolo</button>
+    </form>
+</div>
+
+<div class="sheet">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <div class="brand fs-4">Solar Family</div>
+            <div class="text-muted small">Comunità energetiche e impianti fotovoltaici</div>
+        </div>
+        <div class="text-end">
+            <div class="fw-bold">Preventivo n. {{ quote_number }}</div>
+            <div class="small">Data: {{ today|date:"d/m/Y" }}</div>
+        </div>
+    </div>
+
+    <h1 class="fs-3 fw-bold mt-4 mb-1">Stima di produzione e ritorno dell'investimento</h1>
+    <p class="mb-0">Cliente: <strong>{{ data.client|default:"-" }}</strong></p>
+
+    <h2>Impianto proposto</h2>
+    <table class="table table-sm">
+        <tbody>
+            <tr><td>Comune</td><td class="text-end">{{ data.city }}</td></tr>
+            <tr><td>Potenza dell'impianto</td><td class="text-end">{{ data.peak_power_kw|floatformat:"-2g" }} kWp</td></tr>
+            <tr><td>Costo impianto + installazione</td><td class="text-end">{{ data.system_cost|floatformat:"2g" }} €</td></tr>
+            <tr><td>Consumi annuali del cliente</td><td class="text-end">{{ data.annual_consumption_kwh|floatformat:"0g" }} kWh</td></tr>
+            <tr><td>Costo attuale dell'energia</td><td class="text-end">{{ data.energy_price|floatformat:"-3g" }} €/kWh</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Risultati</h2>
+    <div class="row g-3">
+        <div class="col-6"><div class="kpi">Produzione annua stimata<strong>{{ result.first_year.production_kwh|floatformat:"0g" }} kWh</strong></div></div>
+        <div class="col-6"><div class="kpi">Beneficio del primo anno<strong>{{ result.first_year.benefit|floatformat:"2g" }} €</strong></div></div>
+        <div class="col-6"><div class="kpi">Tempo di rientro<strong>{% if result.payback_years is not None %}{{ result.payback_years|floatformat:1 }} anni{% else %}oltre la vita utile{% endif %}</strong></div></div>
+        <div class="col-6"><div class="kpi">ROI in {{ assumptions.lifetime_years }} anni<strong>{{ roi_percent|floatformat:0 }}% (guadagno netto {{ result.net_gain|floatformat:"0g" }} €)</strong></div></div>
+    </div>
+
+    <table class="table table-sm mt-3">
+        <tbody>
+            <tr><td>Resa dell'impianto</td><td class="text-end">{{ specific_yield|floatformat:"0g" }} kWh per kW installato all'anno</td></tr>
+            <tr><td>Energia autoconsumata (primo anno)</td><td class="text-end">{{ result.first_year.self_consumed_kwh|floatformat:"0g" }} kWh</td></tr>
+            <tr><td>Energia immessa in rete (primo anno)</td><td class="text-end">{{ result.first_year.exported_kwh|floatformat:"0g" }} kWh</td></tr>
+            <tr><td>Consumi coperti dall'impianto</td><td class="text-end">{% if coverage_percent is not None %}{{ coverage_percent|floatformat:0 }}%{% else %}-{% endif %}</td></tr>
+            <tr><td>Risparmio in bolletta (primo anno)</td><td class="text-end">{{ result.first_year.savings|floatformat:"2g" }} €</td></tr>
+            <tr><td>Ricavo dall'energia immessa (primo anno)</td><td class="text-end">{{ result.first_year.revenue|floatformat:"2g" }} €</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Produzione stimata per mese</h2>
+    <table class="table table-sm text-center">
+        <thead><tr>{% for month, kwh in monthly_production %}<th>{{ month }}</th>{% endfor %}</tr></thead>
+        <tbody><tr>{% for month, kwh in monthly_production %}<td>{{ kwh|floatformat:"0g" }}</td>{% endfor %}</tr></tbody>
+    </table>
+    <p class="notes">Valori in kWh.</p>
+
+    <h2>Flussi di cassa</h2>
+    <table class="table table-sm table-striped">
+        <thead>
+            <tr>
+                <th>Anno</th>
+                <th class="text-end">Produzione (kWh)</th>
+                <th class="text-end">Risparmio (€)</th>
+                <th class="text-end">Vendita (€)</th>
+                <th class="text-end">Cumulato (€)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for year in result.years %}
+                <tr>
+                    <td>{{ year.year }}</td>
+                    <td class="text-end">{{ year.production_kwh|floatformat:"0g" }}</td>
+                    <td class="text-end">{{ year.savings|floatformat:"2g" }}</td>
+                    <td class="text-end">{{ year.revenue|floatformat:"2g" }}</td>
+                    <td class="text-end {% if year.cumulative_cash_flow < 0 %}text-danger{% else %}text-success{% endif %}">{{ year.cumulative_cash_flow|floatformat:"2g" }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>Ipotesi e metodo</h2>
+    <ul class="notes ps-3">
+        <li>
+            Produzione stimata dal modello di previsione Solar Family con il meteo reale del comune
+            dal {{ weather_first_day|date:"d/m/Y" }} al {{ weather_last_day|date:"d/m/Y" }} ({{ weather_days }} giorni, fonte Open-Meteo),
+            per un impianto orientato in modo ottimale con perdite di sistema del 14%.
+        </li>
+        <li>Quota di autoconsumo: {{ assumptions.self_consumption_percent|floatformat:"-1" }}% della produzione, senza superare i consumi annuali.</li>
+        <li>Prezzo dell'energia immessa in rete: {{ assumptions.export_price|floatformat:"-3" }} €/kWh.</li>
+        <li>Degrado dei pannelli: {{ assumptions.degradation_percent|floatformat:"-2" }}% all'anno; vita utile: {{ assumptions.lifetime_years }} anni.</li>
+        <li>Costo dell'energia e prezzo di vendita considerati costanti; non sono inclusi incentivi, detrazioni fiscali né costi di manutenzione.</li>
+        <li>La stima si basa sul meteo dell'ultimo anno: la produzione reale può variare in base al meteo futuro, all'orientamento e alle ombre dell'installazione.</li>
+    </ul>
+
+    <div class="d-flex justify-content-between mt-5 small">
+        <div>Il consulente<br><br>{{ request.user.get_full_name|default:request.user.username }}</div>
+        <div class="text-end">Per accettazione, il cliente<br><br>______________________________</div>
+    </div>
+</div>
+</body>
+</html>

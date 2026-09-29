@@ -1,4 +1,5 @@
 import tempfile
+from datetime import timedelta
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -7,11 +8,14 @@ import pandas as pd
 from django.contrib.auth.models import User
 from django.core.management import CommandError, call_command
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.authtoken.models import Token
 
 from SP.management.commands.import_cities import NAME_COLUMN, PROVINCE_COLUMN, REGION_COLUMN
+from SP.management.commands.populate_db import CURVE_HOURS
 from SP.models import City, Community, Customer, PanelData, PhotovoltaicSystem
-from SP.tests.helpers import create_community
+from SP.production import daily_energy_kwh, get_system_series
+from SP.tests.helpers import FakeModel, create_community, fake_weather
 
 
 def run(command, *args):
@@ -39,17 +43,45 @@ class BridgeUserCommandTests(TestCase):
 
 
 class PopulateDbCommandTests(TestCase):
+    def populate(self, model):
+        with mock.patch("SP.management.commands.populate_db.load_model", return_value=model), \
+                mock.patch("SP.management.commands.populate_db.get_daily_weather",
+                           side_effect=lambda city, first, last: fake_weather(first, last)):
+            return run("populate_db", "--days", "2", "--systems_per_community", "1")
+
+    def yesterday_yields(self):
+        """kWh prodotti ieri da ogni impianto, per kW installato."""
+        yesterday = timezone.now().date() - timedelta(days=1)
+        return [
+            daily_energy_kwh(get_system_series(system, yesterday))[yesterday] / system.max_power
+            for system in PhotovoltaicSystem.objects.all()
+        ]
+
     def test_creates_fictitious_data_and_keeps_the_bridge_user(self):
         run("create_bridge_user")
         token = Token.objects.get(user__username="bridge").key
 
-        run("populate_db", "--days", "2", "--systems_per_community", "1")
+        self.populate(FakeModel(3.0))
 
         self.assertEqual(Community.objects.count(), 10)
         self.assertEqual(Customer.objects.count(), 15)
         self.assertEqual(PhotovoltaicSystem.objects.count(), 10)
         self.assertTrue(PanelData.objects.exists())
         self.assertEqual(Token.objects.get(user__username="bridge").key, token)
+        self.assertTrue(User.objects.get(username="consulente").is_staff)
+
+    def test_daily_production_follows_the_model_with_the_real_weather(self):
+        self.populate(FakeModel(3.0))
+
+        for specific_yield in self.yesterday_yields():
+            self.assertAlmostEqual(specific_yield, 3.0, delta=0.1)
+
+    def test_without_model_production_ignores_the_weather(self):
+        output = self.populate(None)
+
+        self.assertIn("No forecast model", output)
+        for specific_yield in self.yesterday_yields():
+            self.assertAlmostEqual(specific_yield, CURVE_HOURS, delta=0.2)
 
 
 def geonames_place(name, admin1code, latitude, population=10000):

@@ -43,7 +43,13 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'home' %}"><i class="fas fa-home me-1"></i>Home</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'SP:city_benchmark' %}"><i class="fas fa-map-marked-alt me-1"></i>Confronto città</a>
+                    </li>
                     {% if user.is_staff %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'roi:calculator' %}"><i class="fas fa-calculator me-1"></i>ROI</a>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'admin:index' %}"><i class="fas fa-cog me-1"></i>Admin</a>
                     </li>

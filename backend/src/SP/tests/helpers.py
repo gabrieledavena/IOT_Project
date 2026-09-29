@@ -1,9 +1,11 @@
-"""Dati di prova condivisi dai test delle app SP e forecast."""
-from datetime import datetime, timedelta, timezone
+"""Dati di prova condivisi dai test delle app SP, forecast e roi."""
+from datetime import date, datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
 from django.contrib.auth.models import User
 
+from forecast.predictor import FEATURE_COLUMNS
 from SP.models import City, Community, Customer, PanelData, PhotovoltaicSystem
 from SP.weather import WEATHER_COLUMNS
 
@@ -62,3 +64,38 @@ def fake_weather(start_day, end_day=None, **values):
     df = pd.DataFrame({column: [weather[column]] * len(days) for column in WEATHER_COLUMNS})
     df.insert(0, "Date", days)
     return df
+
+
+class FakeModel:
+    """Modello di previsione finto con resa costante (kWh per kW installato al giorno)."""
+
+    def __init__(self, specific_yield=5.0):
+        self.specific_yield = specific_yield
+
+    def predict(self, features):
+        if list(features.columns) != FEATURE_COLUMNS:
+            raise ValueError("The feature names should match those that were passed during fit")
+        return np.full(len(features), self.specific_yield)
+
+
+def reference_dataset(locations=8, days=60):
+    """Piccolo dataset di riferimento: la resa cresce con la radiazione, come nei dati PVGIS."""
+    random = np.random.RandomState(0)
+    rows = []
+    for location in range(locations):
+        for day in pd.date_range(date(2023, 3, 1), periods=days).date:
+            weather = {**DEFAULT_WEATHER, "solar_radiation": random.uniform(3, 28)}
+            rows.append({
+                "location": f"Località {location}", "latitude": 38 + location, "longitude": 12.0, "Date": day,
+                **weather, "specific_yield": weather["solar_radiation"] / 3.6 * 0.8,
+            })
+    return pd.DataFrame(rows)
+
+
+def past_year_yield(specific_yield=4.0, days=365):
+    """Risultato finto di forecast.predictor.estimate_past_year_yield."""
+    last_day = date.today() - timedelta(days=1)
+    return pd.DataFrame({
+        "Date": pd.date_range(end=last_day, periods=days).date,
+        "specific_yield": [specific_yield] * days,
+    })

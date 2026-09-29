@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Calcolo ROI{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="fw-bold text-dark mb-0">Calcolo del ROI</h2>
+            <p class="text-muted">
+                Simulazione dell'investimento per un cliente: la produzione è stimata dal modello di previsione
+                con il meteo reale del comune negli ultimi 365 giorni.
+            </p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-4">
+            <form method="post" action="{% url 'roi:calculator' %}" class="card border-0 shadow-sm rounded-4">
+                {% csrf_token %}
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">Dati del cliente</h5>
+                    {% for field in form.main_fields %}
+                        {% include "roi/_field.html" %}
+                    {% endfor %}
+
+                    <h6 class="fw-bold mt-4 mb-1">Ipotesi</h6>
+                    <p class="text-muted small">Valori tipici, modificabili se la situazione del cliente è diversa.</p>
+                    {% for field in form.assumption_fields %}
+                        {% include "roi/_field.html" %}
+                    {% endfor %}
+
+                    <button type="submit" class="btn btn-primary w-100 mt-2">Calcola ROI</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="col-lg-8">
+            {% if error %}
+                {% include "partials/error_alert.html" %}
+            {% elif result %}
+                <div class="row g-4 mb-4">
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5">
+                            <div class="card-body p-4">
+                                <h6 class="text-muted fw-bold text-uppercase mb-2">Produzione annua stimata</h6>
+                                <h2 class="fw-bold text-dark mb-0">{{ result.first_year.production_kwh|floatformat:"0g" }} <span class="fs-5 text-muted">kWh</span></h2>
+                                <p class="text-muted small mt-2 mb-0">{{ specific_yield|floatformat:"0g" }} kWh per kW installato a {{ form.cleaned_data.city }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-primary border-5">
+                            <div class="card-body p-4">
+                                <h6 class="text-muted fw-bold text-uppercase mb-2">Beneficio del primo anno</h6>
+                                <h2 class="fw-bold text-dark mb-0">{{ result.first_year.benefit|floatformat:"2g" }} <span class="fs-5 text-muted">€</span></h2>
+                                <p class="text-muted small mt-2 mb-0">
+                                    {{ result.first_year.savings|floatformat:"2g" }} € di risparmio in bolletta +
+                                    {{ result.first_year.revenue|floatformat:"2g" }} € dall'energia venduta
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-warning border-5">
+                            <div class="card-body p-4">
+                                <h6 class="text-muted fw-bold text-uppercase mb-2">Tempo di rientro</h6>
+                                <h2 class="fw-bold text-dark mb-0">
+                                    {% if result.payback_years is not None %}{{ result.payback_years|floatformat:1 }} <span class="fs-5 text-muted">anni</span>{% else %}Oltre la vita utile{% endif %}
+                                </h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-info border-5">
+                            <div class="card-body p-4">
+                                <h6 class="text-muted fw-bold text-uppercase mb-2">ROI in {{ assumptions.lifetime_years }} anni</h6>
+                                <h2 class="fw-bold text-dark mb-0">{{ roi_percent|floatformat:0 }} <span class="fs-5 text-muted">%</span></h2>
+                                <p class="text-muted small mt-2 mb-0">Guadagno netto: {{ result.net_gain|floatformat:"2g" }} €</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-3">Primo anno</h5>
+                        <table class="table mb-0">
+                            <tbody>
+                                <tr><td>Energia autoconsumata</td><td class="text-end">{{ result.first_year.self_consumed_kwh|floatformat:"0g" }} kWh</td></tr>
+                                <tr><td>Energia immessa in rete</td><td class="text-end">{{ result.first_year.exported_kwh|floatformat:"0g" }} kWh</td></tr>
+                                <tr><td>Consumi coperti dall'impianto</td><td class="text-end">{% if coverage_percent is not None %}{{ coverage_percent|floatformat:0 }}%{% else %}-{% endif %}</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-3">Produzione stimata per mese</h5>
+                        <div style="height: 260px;"><canvas id="monthlyProductionChart"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-3">Flusso di cassa cumulato</h5>
+                        <div style="height: 260px;"><canvas id="cashFlowChart"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <p class="text-muted small mb-0">
+                        Meteo reale di {{ weather_days }} giorni, dal {{ weather_first_day|date:"d/m/Y" }} al {{ weather_last_day|date:"d/m/Y" }}.
+                    </p>
+                    <!-- Il preventivo riceve gli stessi dati in POST, nei campi nascosti -->
+                    <form method="post" action="{% url 'roi:quote' %}" target="_blank" class="m-0">
+                        {% csrf_token %}
+                        {% for field in form %}{{ field.as_hidden }}{% endfor %}
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-print me-1"></i>Stampa preventivo
+                        </button>
+                    </form>
+                </div>
+            {% else %}
+                <div class="alert alert-info shadow-sm rounded-4">
+                    <i class="fas fa-info-circle me-2"></i>Inserisci i dati del cliente e premi "Calcola ROI".
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.city_options|json_script:"city-options" }}
+<script src="{% static 'roi/city_select.js' %}"></script>
+{% if result %}
+    {{ chart_data|json_script:"roi-chart-data" }}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="{% static 'roi/roi_charts.js' %}"></script>
+{% endif %}
+{% endblock %}

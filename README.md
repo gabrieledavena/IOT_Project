@@ -50,8 +50,10 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | Sensor node (temperature, light, estimated power) and Python bridge | Implemented (the bridge sends data over HTTP; MQTT is not used yet) |
 | REST API for the measurements (token for the bridge, per-community read access) | Implemented |
 | Web dashboards for communities and single systems, with weather and map | Implemented |
-| 3. Short-term production forecasting | Implemented (Random Forest on daily yield per installed kW) |
-| Actuators, 1. self-consumption optimization, 2. CO₂ savings, 4. community benchmark, 5. energy community simulation | Not implemented yet |
+| 3. Short-term production forecasting | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
+| 4. Community benchmark: public page with the measured yield per installed kW of every Italian city | Implemented (anomaly alerts not yet) |
+| ROI calculator with printable quote, for staff consultants | Implemented |
+| Actuators, 1. self-consumption optimization, 2. CO₂ savings, 5. energy community simulation | Not implemented yet |
 
 ## Project structure
 
@@ -62,16 +64,22 @@ backend/src/
   SP/                     Core app
     models.py             City, Community, Customer, PhotovoltaicSystem, PanelData, Intervention
     production.py         Minute-by-minute production series and energy (kWh)
-    weather.py            Daily weather from Open-Meteo
+    benchmark.py          Measured yield per installed kW of every city
+    weather.py            Daily weather from Open-Meteo (forecast and historical archive)
     api.py                REST API used by the bridge
-    views.py              Registration and production dashboards
+    views.py              Registration, city benchmark and production dashboards
     management/commands/  import_cities, populate_db, create_bridge_user
     tests/                Tests of the SP app
   forecast/               Production forecast
-    predictor.py          Model loading and community forecast
+    predictor.py          Features, model loading, community forecast and past-year yield of a city
+    reference_data.py     Reference dataset (Open-Meteo weather + PVGIS production)
+    training.py           Model, validation on unseen locations and training
     views.py              Forecast page (today / tomorrow)
-    management/commands/  train_model_db
+    management/commands/  train_forecast_model
+    data/                 Reference dataset (.csv.gz)
     ml_models/            Trained models (.joblib)
+  roi/                    ROI calculator and printable quote (staff only)
+    calculator.py         Yearly cash flows, payback and ROI
   templates/              Base layout and home page
 ```
 
@@ -83,12 +91,20 @@ The backend runs in Docker (`backend/src` is mounted in the container, so code c
 docker compose up -d --build
 docker exec iot_django_server python manage.py migrate
 docker exec iot_django_server python manage.py import_cities       # Italian municipalities with coordinates
-docker exec iot_django_server python manage.py populate_db         # fictitious communities, users (password123) and data
+docker exec iot_django_server python manage.py populate_db         # fictitious communities, users and data
 docker exec iot_django_server python manage.py createsuperuser
-docker exec iot_django_server python manage.py train_model_db      # trains the forecast model
 ```
 
-The web app is at http://localhost:8000.
+The web app is at http://localhost:8000. `populate_db` creates the customers `user0` ... `user14` and the staff
+account `consulente` (for the ROI calculator), all with password `password123`; each day of fictitious production
+follows the forecast model with the real weather of the community's city.
+
+The trained forecast model is in the repository. To train it again (for example after changing the features):
+
+```bash
+docker exec iot_django_server python manage.py train_forecast_model                  # uses forecast/data/reference_dataset.csv.gz
+docker exec iot_django_server python manage.py train_forecast_model --refresh-data   # downloads the dataset again (a few minutes)
+```
 
 To send real measurements, create the bridge user and pass its token to the bridge through the environment:
 
@@ -105,6 +121,26 @@ docker exec iot_django_server python manage.py test
 ```
 
 The tests use a separate database and do not call Open-Meteo.
+
+## Forecast model
+
+The model predicts the daily energy produced per installed kW (kWh/kWp) from the weather of the day and the
+position of the sun (latitude and solar declination). Multiplied by the installed power it gives the production of
+a system or of a whole community; summed over the real weather of the last 365 days it gives the annual production
+used by the ROI calculator.
+
+- **Algorithm**: Random Forest (scikit-learn), 100 trees with at least 50 days per leaf.
+- **Training data**: 24 locations from Aosta to Catania, 2021–2023 (26,280 days). Features: daily weather from the
+  Open-Meteo historical archive. Target: production of a 1 kWp system computed by
+  [PVGIS](https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis_en)
+  (European Commission, JRC) from satellite irradiance, for an optimally oriented system with 14% system losses.
+- **Validation** on locations excluded from training: mean daily error 0.48 kWh/kWp, annual production error 2.1%
+  on average (7.8% at most).
+
+The previous model was trained on the fictitious data of `populate_db`, whose production does not depend on the
+weather: it predicted 5.76 kWh/kWp every day of the year in every city (about 2,100 kWh/kWp per year, 33–55% more
+than PVGIS, with no seasons). The measurements of the communities can be added to the training once they cover at
+least a full year.
 
 # Possibili implementazioni
 

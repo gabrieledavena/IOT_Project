@@ -5,7 +5,9 @@ import requests
 from django.test import TestCase
 
 from SP.tests.helpers import create_city
-from SP.weather import WEATHER_COLUMNS, WeatherUnavailable, get_daily_weather, get_day_weather
+from SP.weather import (
+    OPEN_METEO_ARCHIVE_URL, OPEN_METEO_URL, WEATHER_COLUMNS, WeatherUnavailable, get_daily_weather, get_day_weather,
+)
 
 
 def open_meteo_response(days):
@@ -34,7 +36,21 @@ class WeatherTests(TestCase):
         self.assertEqual(list(weather.columns), ["Date"] + WEATHER_COLUMNS)
         self.assertEqual(list(weather["Date"]), [date(2026, 9, 28), date(2026, 9, 29)])
         self.assertEqual(list(weather["precipitation"]), [0, 0])
+        self.assertEqual(get.call_args.args[0], OPEN_METEO_URL)
         self.assertEqual(get.call_args.kwargs["params"]["start_date"], "2026-09-28")
+
+    @mock.patch("SP.weather.requests.get")
+    def test_historical_weather_uses_the_archive_and_skips_missing_days(self, get):
+        response = open_meteo_response(["2025-09-01", "2025-09-02"])
+        daily = response.json.return_value["daily"]
+        daily["precipitation_sum"] = [0.0, None]
+        daily["shortwave_radiation_sum"] = [18.3, None]  # giorno non ancora presente nell'archivio
+        get.return_value = response
+
+        weather = get_daily_weather(create_city(), date(2025, 9, 1), date(2025, 9, 2), historical=True)
+
+        self.assertEqual(get.call_args.args[0], OPEN_METEO_ARCHIVE_URL)
+        self.assertEqual(list(weather["Date"]), [date(2025, 9, 1)])
 
     @mock.patch("SP.weather.requests.get")
     def test_city_without_coordinates_does_not_call_open_meteo(self, get):

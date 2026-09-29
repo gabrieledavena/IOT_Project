@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'SP',
     'forecast',
+    'roi',
 ]
 
 MIDDLEWARE = [
