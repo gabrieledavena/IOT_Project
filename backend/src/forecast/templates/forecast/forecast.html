@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}AI Model Test{% endblock %}
+{% block title %}Previsione produzione{% endblock %}
 
 {% block content %}
 <div class="container mb-5">
     <!-- Header Section -->
     <div class="row mb-4">
         <div class="col-12 text-center">
-            <h2 class="fw-bold text-dark mb-1">🔮 Test Produzione Solare</h2>
-            <p class="text-muted">Calcola la produzione prevista per domani basata sulle previsioni meteo.</p>
+            <h2 class="fw-bold text-dark mb-1">🔮 Previsione Produzione Solare</h2>
+            <p class="text-muted">Calcola la produzione della tua community prevista per {{ day_label }} in base alle previsioni meteo.</p>
         </div>
     </div>
 
@@ -18,12 +18,11 @@
             <div class="card border-0 shadow-sm rounded-4">
                 <div class="card-body p-4 text-center">
 
-
-                    {% if prediction %}
+                    {% if prediction is not None %}
                     <div class="card border-0 shadow-sm rounded-4 mt-4 border-start border-primary border-5 text-start">
                         <div class="card-body p-4">
                             <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h6 class="text-muted fw-bold text-uppercase mb-0">Previsione per il {{ date }}</h6>
+                                <h6 class="text-muted fw-bold text-uppercase mb-0">Previsione per il {{ day|date:"d/m/Y" }}</h6>
                                 <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
                                     <span class="fs-5">💡</span>
                                 </div>
@@ -32,9 +31,9 @@
                             <hr class="my-4">
                             <p class="text-muted small mb-2"><strong>Dati meteo considerati:</strong></p>
                             <ul class="list-unstyled text-muted small">
-                                <li><i class="fas fa-sun fa-fw me-2 text-warning"></i><strong>Irraggiamento:</strong> {{ meteo_data.solar_radiation }} MJ/m²</li>
-                                <li><i class="fas fa-cloud fa-fw me-2 text-info"></i><strong>Nuvolosità:</strong> {{ meteo_data.cloud_cover }}%</li>
-                                <li><i class="fas fa-thermometer-half fa-fw me-2 text-danger"></i><strong>Temp Max:</strong> {{ meteo_data.temp_max }}°C</li>
+                                <li><i class="fas fa-sun fa-fw me-2 text-warning"></i><strong>Irraggiamento:</strong> {{ weather.solar_radiation }} MJ/m²</li>
+                                <li><i class="fas fa-cloud fa-fw me-2 text-info"></i><strong>Nuvolosità:</strong> {{ weather.cloud_cover }}%</li>
+                                <li><i class="fas fa-thermometer-half fa-fw me-2 text-danger"></i><strong>Temp Max:</strong> {{ weather.temp_max }}°C</li>
                             </ul>
                         </div>
                     </div>
@@ -48,19 +47,11 @@
                     </form>
 
                     {% if error %}
-                        <div class="alert alert-danger shadow-sm rounded-4 mt-4">
-                            <strong><i class="fas fa-exclamation-triangle me-2"></i>Errore:</strong> {{ error }}
-                        </div>
+                        {% include "partials/error_alert.html" with extra_class="mt-4" %}
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </div>
-
-<style>
-    body {
-        background-color: #f4f6f9;
-    }
-</style>
 {% endblock %}

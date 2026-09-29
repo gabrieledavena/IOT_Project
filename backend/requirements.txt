@@ -1,13 +1,10 @@
-django>=4.2
-djangorestframework
-django-cors-headers
-pandas
-openpyxl
-numpy
-paho-mqtt
-pyserial
-joblib
-requests
-scikit-learn
-reverse_geocoder
-geonamescache
+Django==5.2.17
+djangorestframework==3.18.1
+django-cors-headers==4.9.0
+pandas==2.3.3
+openpyxl==3.1.5
+requests==2.34.2
+geonamescache==3.0.2
+# The forecast model (.joblib) must be loaded with the scikit-learn version it was saved with
+scikit-learn==1.7.2
+joblib==1.6.0

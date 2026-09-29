@@ -1,0 +1,82 @@
+/* Stili dell'applicazione, caricati dopo Bootstrap per poterne sovrascrivere le regole */
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    overflow-x: hidden;
+    background-color: #f4f6f9; /* Grigio chiaro per far risaltare le card bianche */
+}
+
+/* Spaziatura verticale di tutti i contenitori */
+.container {
+    padding-top: 2em;
+    padding-bottom: 2em;
+}
+
+main > .container {
+    padding-top: 1.5rem;
+    padding-bottom: 2rem;
+}
+
+/* --- Barra di navigazione --- */
+
+.navbar {
+    padding-top: 0.1rem;
+    padding-bottom: 0.1rem;
+    background-color: #ffffff !important;
+    border-bottom: 1px solid #e9ecef;
+    min-height: 40px;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    color: #198754 !important;
+    font-size: 1.1rem;
+}
+
+.navbar-nav {
+    padding: 0;
+    margin: 0;
+}
+
+.navbar-nav li {
+    margin-right: 1em;
+    margin-bottom: 0;
+}
+
+.navbar-nav.ms-auto {
+    gap: 5px;
+}
+
+.nav-link {
+    color: #495057 !important;
+    font-weight: 500;
+    padding: 0.2rem 0.6rem !important;
+    transition: color 0.2s ease;
+    font-size: 0.9rem;
+}
+
+.nav-link:hover,
+.nav-link.active {
+    color: #198754 !important;
+}
+
+.navbar .badge {
+    padding: 0.3em 0.6em !important;
+    font-size: 0.8em;
+}
+
+.navbar .btn {
+    padding: 0.15rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+/* --- Card --- */
+
+.hover-lift {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 1rem 3rem rgba(0, 0, 0, .1) !important;
+}

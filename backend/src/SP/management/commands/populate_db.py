@@ -1,141 +1,139 @@
-import random
 import math
-from django.core.management.base import BaseCommand
-from SP.models import Community, Customer, PhotovoltaicSystem, PanelData, City
-from django.contrib.auth.models import User
-from django.utils import timezone
+import random
 from datetime import timedelta
+
+from django.conf import settings
+from django.contrib.auth.models import User
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+
+from SP.models import City, Community, Customer, PanelData, PhotovoltaicSystem
+
+NUMBER_OF_COMMUNITIES = 10
+NUMBER_OF_CUSTOMERS = 15
+CUSTOMER_PASSWORD = "password123"
+
+# Used when the database has no city with coordinates (run import_cities to get the real ones)
+FALLBACK_CITIES = [
+    {"name": "Milano", "lat": 45.4642, "lon": 9.1900},
+    {"name": "Modena", "lat": 44.6471, "lon": 10.9252},
+    {"name": "Torino", "lat": 45.0703, "lon": 7.6868},
+    {"name": "Napoli", "lat": 40.8518, "lon": 14.2681},
+    {"name": "Bari", "lat": 41.1171, "lon": 16.8719},
+]
+
+
+def solar_power_factor(hour):
+    """Fraction of the peak power produced at a given hour (0-24): bell curve centered at 13:00."""
+    if not 6 <= hour <= 20:
+        return 0.0
+    mu, sigma = 13.0, 2.5
+    return math.exp(-((hour - mu) ** 2) / (2 * sigma ** 2))
+
 
 class Command(BaseCommand):
     help = 'Populates the database with fictitious data'
 
     def add_arguments(self, parser):
+        parser.add_argument('--days', type=int, default=4, help='Number of days of data to generate')
         parser.add_argument(
-            '--days',
-            type=int,
-            default=4,
-            help='Number of days of data to generate'
-        )
-        parser.add_argument(
-            '--systems_per_community',
-            type=int,
-            default=2,
-            help='Number of photovoltaic systems per community'
+            '--systems_per_community', type=int, default=2, help='Number of photovoltaic systems per community'
         )
 
     def handle(self, *args, **options):
-        number_of_days = options['days']
-        number_of_photovoltaic_systems_per_community = options['systems_per_community']
-        
         self.stdout.write('Deleting old data...')
+        self.delete_old_data()
+
+        self.stdout.write('Creating new data...')
+        communities = self.create_communities(self.pick_cities())
+        self.create_customers(communities)
+        systems = self.create_systems(communities, options['systems_per_community'])
+        self.create_panel_data(systems, options['days'])
+
+        self.stdout.write(self.style.SUCCESS('Successfully populated the database.'))
+
+    def delete_old_data(self):
         PanelData.objects.all().delete()
         Customer.objects.all().delete()
-        User.objects.filter(is_superuser=False).delete()
+        # Keep the bridge user, otherwise its token would change at every run
+        User.objects.filter(is_superuser=False).exclude(username=settings.BRIDGE_USERNAME).delete()
         PhotovoltaicSystem.objects.all().delete()
         Community.objects.all().delete()
 
-        self.stdout.write('Creating new data...')
+    def pick_cities(self):
+        """Up to 5 random cities with coordinates, or the fallback ones if the database has none."""
+        cities = list(City.objects.filter(latitude__isnull=False, longitude__isnull=False).order_by('?')[:5])
+        if cities:
+            return cities
 
-        # Get some random cities from the database, or use fallback if empty
-        db_cities = list(City.objects.filter(latitude__isnull=False, longitude__isnull=False).order_by('?')[:5])
-        
-        if not db_cities:
-            self.stdout.write(self.style.WARNING('No cities with coordinates found in the database. Generating dummy cities.'))
-            dummy_cities_data = [
-                {'name': 'Milano', 'lat': 45.4642, 'lon': 9.1900},
-                {'name': 'Modena', 'lat': 44.6471, 'lon': 10.9252},
-                {'name': 'Torino', 'lat': 45.0703, 'lon': 7.6868},
-                {'name': 'Napoli', 'lat': 40.8518, 'lon': 14.2681},
-                {'name': 'Bari', 'lat': 41.1171, 'lon': 16.8719}
-            ]
-            db_cities = []
-            for city_data in dummy_cities_data:
-                city, _ = City.objects.get_or_create(
-                    name=city_data['name'], 
-                    defaults={'latitude': city_data['lat'], 'longitude': city_data['lon']}
-                )
-                db_cities.append(city)
+        self.stdout.write(self.style.WARNING('No cities with coordinates found in the database. Generating dummy cities.'))
+        return [
+            City.objects.get_or_create(name=city['name'], defaults={'latitude': city['lat'], 'longitude': city['lon']})[0]
+            for city in FALLBACK_CITIES
+        ]
 
+    def create_communities(self, cities):
         communities = []
-        for i in range(10):
-            citta_scelta = random.choice(db_cities)
-            community = Community.objects.create(
-                name=f"Community {i} ({citta_scelta.name})",
-                city=citta_scelta
-            )
-            communities.append(community)
+        for i in range(NUMBER_OF_COMMUNITIES):
+            city = random.choice(cities)
+            communities.append(Community.objects.create(name=f"Community {i} ({city.name})", city=city))
+        return communities
 
-        for i in range(15):
-            # Create a standard Django user
+    def create_customers(self, communities):
+        for i in range(NUMBER_OF_CUSTOMERS):
             user = User.objects.create_user(
                 username=f'user{i}',
-                password='password123', # A default password
+                password=CUSTOMER_PASSWORD,
                 first_name=f'User {i}',
                 last_name=f'Surname {i}'
             )
-            # Create the corresponding Customer profile
             Customer.objects.create(
-                user=user,
-                name=user.first_name,
-                surname=user.last_name,
-                community=random.choice(communities)
+                user=user, name=user.first_name, surname=user.last_name, community=random.choice(communities)
             )
 
-        photovoltaic_systems = []
-        system_index = 0
+    def create_systems(self, communities, systems_per_community):
+        systems = []
         for community in communities:
-            for j in range(number_of_photovoltaic_systems_per_community):
-                photovoltaic_system = PhotovoltaicSystem.objects.create(
-                    name=f'System {system_index}',
+            for _ in range(systems_per_community):
+                index = len(systems)
+                systems.append(PhotovoltaicSystem.objects.create(
+                    name=f'System {index}',
                     max_power=random.uniform(3.0, 6.0),
                     area=random.uniform(20.0, 40.0),
-                    brand=f'Brand {system_index}',
+                    brand=f'Brand {index}',
                     inclination=random.randint(15, 45),
                     selling_rate_per_kwh=random.uniform(0.10, 0.15),
                     buying_rate_per_kwh=random.uniform(0.20, 0.25),
                     community=community
-                )
-                photovoltaic_systems.append(photovoltaic_system)
-                system_index += 1
+                ))
+        return systems
 
-        # Calculate start_date based on the number of days (default 4 days means start 3 days ago)
-        days_ago = max(0, number_of_days - 1)
-        start_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days_ago)
+    def create_panel_data(self, systems, number_of_days):
+        """One reading per minute from midnight number_of_days - 1 days ago until now."""
+        now = timezone.now()
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=max(0, number_of_days - 1))
+        end = min(now, start + timedelta(days=number_of_days))
 
-        panel_data_list = []
-        for system in photovoltaic_systems:
-            for day in range(number_of_days):
-                for minute in range(24 * 60):
-                    timestamp = start_date + timedelta(days=day, minutes=minute)
+        panel_data = []
+        for system in systems:
+            timestamp = start
+            while timestamp < end:
+                power_factor = solar_power_factor(timestamp.hour + timestamp.minute / 60.0)
+                if power_factor:
+                    # A little noise to make it realistic
+                    noise = random.uniform(0.85, 1.0)
+                    power = system.max_power * power_factor * noise
+                    lightness = 100.0 + power_factor * 900.0 * noise
+                else:
+                    power = 0.0
+                    lightness = random.uniform(0.0, 20.0)
+                panel_data.append(PanelData(
+                    system=system,
+                    time_stamp=timestamp,
+                    temperature=random.uniform(15.0, 35.0),
+                    lightness=lightness,
+                    power=power
+                ))
+                timestamp += timedelta(minutes=1)
 
-                    hour = timestamp.hour + timestamp.minute / 60.0
-                    # Simulate solar production: active between 6:00 and 20:00
-                    if 6 <= hour <= 20:
-                        # Bell curve (Gaussian) centered at 13:00 (1:00 PM)
-                        mu = 13.0
-                        sigma = 2.5
-                        power_factor = math.exp(-((hour - mu) ** 2) / (2 * sigma ** 2))
-                        # Add a little noise to make it realistic
-                        noise = random.uniform(0.85, 1.0)
-                        power = system.max_power * power_factor * noise
-                        lightness = 100.0 + power_factor * 900.0 * noise
-                    else:
-                        power = 0.0
-                        lightness = random.uniform(0.0, 20.0)
-
-                    if timezone.now() <= timestamp:
-                        break
-
-                    panel_data_list.append(
-                        PanelData(
-                            system=system,
-                            time_stamp=timestamp,
-                            temperature=random.uniform(15.0, 35.0),
-                            lightness=lightness,
-                            power=power
-                        )
-                    )
-
-        PanelData.objects.bulk_create(panel_data_list)
-
-        self.stdout.write(self.style.SUCCESS('Successfully populated the database.'))
+        PanelData.objects.bulk_create(panel_data, batch_size=5000)

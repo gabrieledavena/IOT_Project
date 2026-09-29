@@ -1,3 +1,4 @@
+import os
 import serial
 import threading
 import time
@@ -9,6 +10,13 @@ import requests
 SERIAL_PORT = 'COM2'    # Port connected to Arduino
 BAUD_RATE = 9600        # Baud rate of the serial communication
 URL = "http://127.0.0.1:8000/sp/panel-data/"
+# API token of the bridge user, read from the environment so it never ends up in the repository
+API_TOKEN = os.environ.get("SOLAR_BRIDGE_TOKEN")
+if not API_TOKEN:
+    print("ERROR: environment variable SOLAR_BRIDGE_TOKEN is not set.")
+    print("Get the token with: python manage.py create_bridge_user")
+    exit()
+
 try:
     ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1)
     print(f"Connected to serial port {SERIAL_PORT} at {BAUD_RATE} baud.")
@@ -21,7 +29,7 @@ except serial.SerialException as e:
 def send_data_to_server(payload):
     # Send data to the server via POST
     try:
-        response = requests.post(URL, json=payload)
+        response = requests.post(URL, json=payload, headers={"Authorization": f"Token {API_TOKEN}"})
         if response.status_code == 201:
             print(f"Data sent successfully: {payload}")
         else:

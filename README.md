@@ -43,6 +43,69 @@ The system optimizes self-consumption, monitors performance, and use collective 
    Each home reports its energy balance (surplus or deficit) via MQTT.
    The server computes the amount of energy that can be shared locally before importing from or exporting to the public grid, simulating the community's ability to be self-sustaining
 
+## Implementation status
+
+| Component / feature | Status |
+|---|---|
+| Sensor node (temperature, light, estimated power) and Python bridge | Implemented (the bridge sends data over HTTP; MQTT is not used yet) |
+| REST API for the measurements (token for the bridge, per-community read access) | Implemented |
+| Web dashboards for communities and single systems, with weather and map | Implemented |
+| 3. Short-term production forecasting | Implemented (Random Forest on daily yield per installed kW) |
+| Actuators, 1. self-consumption optimization, 2. CO₂ savings, 4. community benchmark, 5. energy community simulation | Not implemented yet |
+
+## Project structure
+
+```
+ArduinoBridge/            Arduino sketches, SimulIDE circuit and the Python bridge (serial -> REST API)
+backend/src/
+  config/                 Django settings and root URLs
+  SP/                     Core app
+    models.py             City, Community, Customer, PhotovoltaicSystem, PanelData, Intervention
+    production.py         Minute-by-minute production series and energy (kWh)
+    weather.py            Daily weather from Open-Meteo
+    api.py                REST API used by the bridge
+    views.py              Registration and production dashboards
+    management/commands/  import_cities, populate_db, create_bridge_user
+    tests/                Tests of the SP app
+  forecast/               Production forecast
+    predictor.py          Model loading and community forecast
+    views.py              Forecast page (today / tomorrow)
+    management/commands/  train_model_db
+    ml_models/            Trained models (.joblib)
+  templates/              Base layout and home page
+```
+
+## Getting started
+
+The backend runs in Docker (`backend/src` is mounted in the container, so code changes reload the server):
+
+```bash
+docker compose up -d --build
+docker exec iot_django_server python manage.py migrate
+docker exec iot_django_server python manage.py import_cities       # Italian municipalities with coordinates
+docker exec iot_django_server python manage.py populate_db         # fictitious communities, users (password123) and data
+docker exec iot_django_server python manage.py createsuperuser
+docker exec iot_django_server python manage.py train_model_db      # trains the forecast model
+```
+
+The web app is at http://localhost:8000.
+
+To send real measurements, create the bridge user and pass its token to the bridge through the environment:
+
+```bash
+docker exec iot_django_server python manage.py create_bridge_user
+pip install -r ArduinoBridge/requirements.txt
+SOLAR_BRIDGE_TOKEN=<token> python ArduinoBridge/SensorsBridge.py
+```
+
+## Tests
+
+```bash
+docker exec iot_django_server python manage.py test
+```
+
+The tests use a separate database and do not call Open-Meteo.
+
 # Possibili implementazioni
 
 ## 4. **Dynamic Community Benchmark (Collective Intelligence)**
@@ -100,7 +163,9 @@ The system optimizes self-consumption, monitors performance, and use collective 
 ```mermaid
 classDiagram
 direction BT
+class city
 class community
+class customer
 class intervention
 class paneldata
 class photovoltaicsystem
@@ -113,6 +178,10 @@ paneldata "0..*" --* "1" photovoltaicsystem
 
 photovoltaicsystem "0..*" --* "1" community
 
-user "0..*" --* "1" community
+customer "0..*" --* "1" community
+
+customer "0..1" -- "1" user
+
+community "0..*" --> "1" city
 
 ```

@@ -1,48 +1,42 @@
 from django.contrib import admin
-from .models import (
-    Community,
-    Customer,
-    PhotovoltaicSystem,
-    PanelData,
-    Intervention,
-    City
-)
 
+from .models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem
+
+
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ("name", "province", "region", "latitude", "longitude")
+    list_filter = ("region",)
+    search_fields = ("name", "province")
+
+
+@admin.register(Community)
 class CommunityAdmin(admin.ModelAdmin):
-    list_display = ("id", "name")
+    list_display = ("id", "name", "city")
+    list_select_related = ("city",)
+    # Le città sono migliaia: meglio la ricerca di un menu a tendina
+    autocomplete_fields = ("city",)
 
+
+@admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "surname", "community")
+    list_select_related = ("community",)
 
-class CityAdmin(admin.ModelAdmin):
-    list_display = ("name"
-    ,"province"
-    ,"region"
-    ,"latitude"
-    ,"longitude")
 
+@admin.register(PhotovoltaicSystem)
 class PhotovoltaicSystemAdmin(admin.ModelAdmin):
-    list_display = ("id", "name")
+    list_display = ("id", "name", "max_power", "community")
+    list_select_related = ("community",)
 
+
+@admin.register(PanelData)
 class PanelDataAdmin(admin.ModelAdmin):
-    list_display = ("id", "system_name", "time_stamp")
+    list_display = ("id", "system", "time_stamp")
+    list_select_related = ("system",)
 
-    def system_name(self, obj):
-        return obj.system.name
 
-    system_name.short_description = "System"
-
+@admin.register(Intervention)
 class InterventionAdmin(admin.ModelAdmin):
-    list_display = ("id", "system_name", "date", "code")
-
-    def system_name(self, obj):
-        return obj.system.name
-
-    system_name.short_description = "System"
-
-admin.site.register(Community, CommunityAdmin)
-admin.site.register(Customer, CustomerAdmin)
-admin.site.register(PhotovoltaicSystem, PhotovoltaicSystemAdmin)
-admin.site.register(PanelData, PanelDataAdmin)
-admin.site.register(Intervention, InterventionAdmin)
-admin.site.register(City, CityAdmin)
+    list_display = ("id", "system", "date", "code")
+    list_select_related = ("system",)

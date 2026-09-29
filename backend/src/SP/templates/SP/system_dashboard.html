@@ -1,0 +1,40 @@
+{% extends "SP/dashboard_base.html" %}
+
+{% block title %}Produzione impianto{% endblock %}
+
+{% block heading %}Panoramica Impianto {{ system.name }}{% endblock %}
+
+{% block subheading %}Monitoraggio in tempo reale della produzione solare, luminosità e temperatura.{% endblock %}
+
+{% block production_row_margin %}mb-4{% endblock %}
+
+{% block extra_charts %}
+<!-- Temperature and Lightness Charts -->
+<div class="row g-4 mb-5">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+                <h5 class="fw-bold text-dark mb-0"><i class="fas fa-sun text-warning me-2"></i>Andamento Luminosità</h5>
+            </div>
+            <div class="card-body p-4">
+                <div style="height: 250px; width: 100%;">
+                    <canvas id="lightnessChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+                <h5 class="fw-bold text-dark mb-0"><i class="fas fa-thermometer-half text-danger me-2"></i>Andamento Temperatura</h5>
+            </div>
+            <div class="card-body p-4">
+                <div style="height: 250px; width: 100%;">
+                    <canvas id="temperatureChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

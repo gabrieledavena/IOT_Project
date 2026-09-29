@@ -1,8 +1,10 @@
-# mia_app/urls.py
 from django.urls import path
-from .views import get_weather_data, view_test_previsione, view_test_previsione_oggi
+
+from .views import forecast_view
+
+app_name = "forecast"
 
 urlpatterns = [
-    path('tomorrow/', view_test_previsione, name='tomorrow'),
-    path('today/', view_test_previsione_oggi, name='today'),
+    path("today/", forecast_view, {"days_ahead": 0}, name="today"),
+    path("tomorrow/", forecast_view, {"days_ahead": 1}, name="tomorrow"),
 ]
