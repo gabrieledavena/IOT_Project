@@ -1,11 +1,13 @@
 from datetime import timedelta
+from unittest import mock
 
 from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from SP.benchmark import measured_city_yields
-from SP.tests.helpers import add_readings, create_city, create_community, create_system, utc
+from SP.benchmark import measured_city_yields, reference_yields
+from SP.models import PanelData
+from SP.tests.helpers import add_readings, create_city, create_community, create_system, reference_dataset, utc
 
 
 def at_noon(day):
@@ -37,14 +39,38 @@ class MeasuredCityYieldsTests(TestCase):
         self.assertNotIn(community.city_id, measured_city_yields())
 
 
-class CityBenchmarkPageTests(TestCase):
+class ReferenceYieldsTests(TestCase):
     def setUp(self):
         cache.clear()
-        yesterday = timezone.now().date() - timedelta(days=1)
+
+    def test_yield_is_the_average_of_every_day_of_each_location(self):
+        dataset = reference_dataset(locations=2, days=10)
+        with mock.patch("SP.benchmark.load_reference_dataset", return_value=dataset):
+            yields = reference_yields()
+
+        expected = dataset[dataset["location"] == "Località 1"]["specific_yield"].mean()
+        self.assertEqual(len(yields), 2)
+        self.assertEqual(
+            {k: yields[1][k] for k in ("name", "latitude", "longitude")},
+            {"name": "Località 1", "latitude": 39, "longitude": 12.0},
+        )
+        self.assertAlmostEqual(yields[1]["specific_yield"], expected)
+
+
+class CityBenchmarkPageTests(TestCase):
+    REFERENCE = [{"name": "Bari", "latitude": 41.117, "longitude": 16.872, "specific_yield": 4.046605}]
+
+    def setUp(self):
+        cache.clear()
+        self.yesterday = timezone.now().date() - timedelta(days=1)
         self.modena = create_city("Modena", province="Modena", region="Emilia-Romagna")
         self.bari = create_city("Bari", province="Bari", region="Puglia")
         system = create_system(create_community(city=self.modena), max_power=2.0)
-        add_readings(system, at_noon(yesterday), [3.0] * 61)
+        add_readings(system, at_noon(self.yesterday), [3.0] * 61)
+
+        patcher = mock.patch("SP.views.reference_yields", return_value=self.REFERENCE)
+        self.reference_yields = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_is_public_and_marks_cities_without_data(self):
         response = self.client.get("/sp/cities/")
@@ -69,3 +95,29 @@ class CityBenchmarkPageTests(TestCase):
 
         self.assertEqual(response.context["page"].paginator.num_pages, 2)
         self.assertContains(response, "?region=Lazio&amp;page=2")
+
+    def test_map_shows_the_measured_cities_with_coordinates_and_the_reference_yields(self):
+        # Città con misure ma senza coordinate: in tabella sì, sulla mappa no
+        unknown = create_city("Senza coordinate", latitude=None, longitude=None)
+        system = create_system(create_community("Community B", city=unknown))
+        add_readings(system, at_noon(self.yesterday), [1.0] * 61)
+
+        response = self.client.get("/sp/cities/?region=Puglia")
+
+        heatmap = response.context["heatmap"]
+        self.assertEqual(heatmap["measured"], [{
+            "name": "Modena", "province": "Modena", "latitude": self.modena.latitude, "longitude": self.modena.longitude,
+            "specific_yield": 1.5, "systems": 1, "days": 1,
+            "first_day": self.yesterday.strftime("%d/%m/%Y"), "last_day": self.yesterday.strftime("%d/%m/%Y"),
+        }])
+        self.assertEqual(heatmap["reference"], [{**self.REFERENCE[0], "specific_yield": 4.047}])
+        self.assertContains(response, 'id="heatmap-data"')
+        self.assertContains(response, "SP/city_heatmap.js")
+
+    def test_map_is_hidden_without_any_data(self):
+        PanelData.objects.all().delete()
+        self.reference_yields.return_value = []
+
+        response = self.client.get("/sp/cities/")
+
+        self.assertNotContains(response, "city-heatmap")

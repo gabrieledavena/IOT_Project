@@ -80,3 +80,33 @@ main > .container {
     transform: translateY(-5px);
     box-shadow: 0 1rem 3rem rgba(0, 0, 0, .1) !important;
 }
+
+/* --- Heatmap della resa (confronto tra città) --- */
+
+.heatmap-map {
+    height: 600px;
+    background-color: #f2f2f0;
+    z-index: 0; /* i controlli di Leaflet restano sotto la barra di navigazione */
+}
+
+@media (max-width: 991.98px) {
+    .heatmap-map {
+        height: 440px;
+    }
+}
+
+.heatmap-legend-bar {
+    height: 12px;
+}
+
+.heatmap-legend-ticks {
+    position: relative;
+    height: 1.4em;
+    margin-top: 0.25rem;
+}
+
+.heatmap-legend-ticks span {
+    position: absolute;
+    transform: translateX(-50%);
+    white-space: nowrap;
+}

@@ -5,12 +5,18 @@ from statistics import mean
 from django.core.cache import cache
 from django.utils import timezone
 
+from forecast.reference_data import load_reference_dataset
+
 from .models import PhotovoltaicSystem
 from .production import daily_energy_kwh, get_system_series
 
 CACHE_KEY = "measured_city_yields"
 # Le misure arrivano ogni minuto, ma la media di intere giornate cambia lentamente
 CACHE_SECONDS = 10 * 60
+
+REFERENCE_CACHE_KEY = "reference_yields"
+# Il dataset di riferimento cambia solo quando viene scaricato di nuovo
+REFERENCE_CACHE_SECONDS = 24 * 60 * 60
 
 
 def measured_city_yields():
@@ -49,4 +55,23 @@ def measured_city_yields():
         for city_id, values in per_city.items()
     }
     cache.set(CACHE_KEY, result, CACHE_SECONDS)
+    return result
+
+
+def reference_yields():
+    """Resa attesa (kWh/kWp al giorno) nelle località del dataset di riferimento, in tutta Italia.
+
+    È la media di tutte le giornate del dataset, cioè la media annua di un impianto da 1 kWp
+    calcolata da PVGIS con l'irraggiamento misurato dai satelliti: non dipende dalle community.
+    """
+    cached = cache.get(REFERENCE_CACHE_KEY)
+    if cached is not None:
+        return cached
+
+    means = load_reference_dataset().groupby(["location", "latitude", "longitude"])["specific_yield"].mean()
+    result = [
+        {"name": name, "latitude": latitude, "longitude": longitude, "specific_yield": specific_yield}
+        for (name, latitude, longitude), specific_yield in means.items()
+    ]
+    cache.set(REFERENCE_CACHE_KEY, result, REFERENCE_CACHE_SECONDS)
     return result

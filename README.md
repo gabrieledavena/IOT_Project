@@ -51,7 +51,7 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | REST API for the measurements (token for the bridge, per-community read access) | Implemented |
 | Web dashboards for communities and single systems, with weather and map | Implemented |
 | 3. Short-term production forecasting | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
-| 4. Community benchmark: public page with the measured yield per installed kW of every Italian city | Implemented (anomaly alerts not yet) |
+| 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented (anomaly alerts not yet) |
 | ROI calculator with printable quote, for staff consultants | Implemented |
 | Actuators, 1. self-consumption optimization, 2. CO₂ savings, 5. energy community simulation | Not implemented yet |
 
@@ -64,7 +64,7 @@ backend/src/
   SP/                     Core app
     models.py             City, Community, Customer, PhotovoltaicSystem, PanelData, Intervention
     production.py         Minute-by-minute production series and energy (kWh)
-    benchmark.py          Measured yield per installed kW of every city
+    benchmark.py          Measured yield per installed kW of every city, expected yield of the reference locations
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
     api.py                REST API used by the bridge
     views.py              Registration, city benchmark and production dashboards

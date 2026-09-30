@@ -9,7 +9,9 @@ from django.db.models import Case, IntegerField, Q, Value, When
 from django.shortcuts import redirect, render
 from django.views import View
 
-from .benchmark import measured_city_yields
+from forecast.reference_data import REFERENCE_YEARS
+
+from .benchmark import measured_city_yields, reference_yields
 from .forms import CustomerRegistrationForm
 from .models import City, Customer, PanelData, PhotovoltaicSystem
 from .production import energy_kwh, get_community_series, get_system_series
@@ -66,8 +68,33 @@ class CityBenchmarkView(View):
             "filters": filters.urlencode(),
             "cities_with_data": len(stats),
             "average_yield": mean(s["specific_yield"] for s in stats.values()) if stats else None,
+            "heatmap": self.heatmap_data(stats),
         }
         return render(request, self.template_name, context)
+
+    @staticmethod
+    def heatmap_data(stats):
+        """Punti della mappa: resa misurata delle città con dati e resa attesa di riferimento (PVGIS).
+
+        La mappa mostra sempre tutta l'Italia, qualunque siano i filtri della tabella.
+        """
+        cities = City.objects.filter(id__in=stats, latitude__isnull=False, longitude__isnull=False)
+        measured = [
+            {
+                "name": city.name,
+                "province": city.province,
+                "latitude": city.latitude,
+                "longitude": city.longitude,
+                "specific_yield": round(stats[city.id]["specific_yield"], 3),
+                "systems": stats[city.id]["systems"],
+                "days": stats[city.id]["days"],
+                "first_day": stats[city.id]["first_day"].strftime("%d/%m/%Y"),
+                "last_day": stats[city.id]["last_day"].strftime("%d/%m/%Y"),
+            }
+            for city in cities
+        ]
+        reference = [{**point, "specific_yield": round(point["specific_yield"], 3)} for point in reference_yields()]
+        return {"measured": measured, "reference": reference, "reference_years": REFERENCE_YEARS}
 
 
 class PhotovoltaicSystemListView(LoginRequiredMixin, View):
