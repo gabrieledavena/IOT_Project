@@ -95,18 +95,22 @@ docker exec iot_django_server python manage.py populate_db         # realistic d
 docker exec iot_django_server python manage.py createsuperuser
 ```
 
-The web app is at http://localhost:8000. `populate_db` replaces communities, customers, systems and readings with
-demo data: by default a community in 2–3 cities of every region (about 50), 2–4 customers per community, each
-owning 1–3 systems (the home and possibly a second home, a garage, a shop or a warehouse), and one reading per
-minute for the last 7 days: about 300 systems and 2.8 million readings, generated in about 20 seconds. The
-customers log in as `user0`, `user1`, ...; the staff account `consulente` (for the ROI calculator) has the same
-password, `password123`.
+The web app is at http://localhost:8000. A community is a company: it owns the photovoltaic systems and its
+users access it with their own accounts (each user belongs to exactly one community). Every community has one
+owner, one of its users: the first user of a community becomes its owner, and another one can be chosen from the
+admin; the owner can only be deleted together with the community.
+
+`populate_db` replaces communities, users, systems and readings with demo data: by default a company in 2–3 cities
+of every region (about 50), named after its owner (like "Rossi Trasporti"), with 2–4 users and 3–8 systems (the
+headquarters, warehouses, offices, shops, ...), and one reading per minute for the last 7 days: about 250 systems
+and 2.5 million readings, generated in about 20 seconds. The users log in as `user0`, `user1`, ...; the staff
+account `consulente` (for the ROI calculator) has the same password, `password123`.
 
 The readings are realistic: every day each system produces what the forecast model predicts with the real weather
 of its city (Open-Meteo), scaled by the orientation of the system (a few have dirty panels and produce 15–25%
 less). During the day the power follows the height of the sun, the clouds of that day (shared by the systems of a
 city) and the cell temperature; light and air temperature follow the same sun and the day's minimum and maximum.
-Options: `--days` (up to 90), `--cities_per_region`, `--customers_per_community` and `--systems_per_customer`
+Options: `--days` (up to 90), `--cities_per_region`, `--users_per_community` and `--systems_per_community`
 (a number or a range like `2-3`), `--seed` to generate the same data again.
 
 The trained forecast model is in the repository. To train it again (for example after changing the features):

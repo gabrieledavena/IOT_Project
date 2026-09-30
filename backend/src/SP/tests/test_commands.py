@@ -56,8 +56,8 @@ class PopulateDbCommandTests(TestCase):
                 mock.patch("SP.management.commands.populate_db.get_daily_weather", side_effect=weather), \
                 mock.patch("SP.management.commands.populate_db.system_performance", return_value=performance):
             return run(
-                "populate_db", "--days", "2", "--cities_per_region", "1", "--customers_per_community", "2",
-                "--systems_per_customer", "1", "--seed", "1", *args,
+                "populate_db", "--days", "2", "--cities_per_region", "1", "--users_per_community", "2",
+                "--systems_per_community", "2", "--seed", "1", *args,
             )
 
     def yesterday_yields(self):
@@ -87,16 +87,19 @@ class PopulateDbCommandTests(TestCase):
         regions = list(Community.objects.values_list("city__region", flat=True))
         self.assertEqual(sorted(regions), ["Lazio", "Lazio", "Piemonte", "Piemonte", "Sicilia", "Sicilia"])
 
-    def test_customers_own_several_systems_in_their_community(self):
-        self.populate(FakeModel(3.0), "--systems_per_customer", "3")
+    def test_each_company_has_its_owner_other_users_and_several_systems(self):
+        self.populate(FakeModel(3.0), "--users_per_community", "3", "--systems_per_community", "4")
 
-        for customer in Customer.objects.all():
-            systems = list(customer.photovoltaic_systems.all())
-            self.assertEqual(len(systems), 3)
-            self.assertEqual({system.community for system in systems}, {customer.community})
-            # La casa e due edifici diversi
-            self.assertEqual(len({system.name.split(customer.surname)[0] for system in systems}), 3)
-            self.assertIn(f"Casa {customer.surname}", [system.name.split(" (")[0] for system in systems])
+        for community in Community.objects.all():
+            users = list(community.customers.all())
+            self.assertEqual(len(users), 3)
+            # Il titolare è uno degli utenti e dà il nome all'azienda
+            self.assertIn(community.owner, users)
+            self.assertTrue(community.name.startswith(community.owner.surname))
+            names = list(community.photovoltaic_systems.values_list("name", flat=True))
+            self.assertEqual(len(names), 4)
+            self.assertIn("Sede", names)
+            self.assertEqual(len(set(names)), 4)
 
     def test_without_cities_uses_regional_capitals(self):
         City.objects.all().delete()
@@ -153,7 +156,7 @@ class PopulateDbCommandTests(TestCase):
             self.assertTrue(0.5 < specific_yield < 7)
 
     def test_invalid_options_are_a_command_error(self):
-        for option, value in [("--days", "0"), ("--systems_per_customer", "3-1"), ("--systems_per_customer", "9"),
+        for option, value in [("--days", "0"), ("--systems_per_community", "3-1"), ("--users_per_community", "0"),
                               ("--cities_per_region", "due")]:
             with self.subTest(option=option, value=value), self.assertRaises(CommandError):
                 call_command("populate_db", option, value, stdout=StringIO())

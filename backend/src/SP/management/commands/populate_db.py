@@ -2,7 +2,7 @@ import argparse
 import math
 import random
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import timedelta
 from itertools import repeat
 
@@ -52,12 +52,16 @@ SURNAMES = [
     "Rossi", "Russo", "Ferrari", "Esposito", "Bianchi", "Romano", "Colombo", "Ricci", "Marino", "Greco",
     "Bruno", "Gallo", "Conti", "De Luca", "Mancini", "Costa", "Giordano", "Rizzo", "Lombardi", "Moretti",
 ]
+# Each community is a company named after its owner, like "Rossi Trasporti"
+COMPANY_ACTIVITIES = ["Srl", "S.p.A.", "& Figli", "Costruzioni", "Trasporti", "Alimentari", "Meccanica", "Agricola"]
 PANEL_BRANDS = ["SunPower", "REC", "Jinko Solar", "Trina Solar", "LONGi", "Canadian Solar", "Q CELLS", "Futura Sun"]
 
-# The first system of each customer is the home; the others are further buildings of the same customer,
-# each with its typical number of modules (400-430 Wp, about 1.95 m² each)
-HOME = ("Casa", (8, 16))
-OTHER_BUILDINGS = [("Seconda casa", (6, 12)), ("Garage", (4, 8)), ("Negozio", (10, 20)), ("Capannone", (24, 48))]
+# The first system of each company is on its headquarters, the others on further buildings, each with its
+# typical number of modules (400-430 Wp, about 1.95 m² each)
+HEADQUARTERS = ("Sede", (20, 40))
+OTHER_BUILDINGS = [
+    ("Capannone", (40, 80)), ("Magazzino", (24, 60)), ("Uffici", (12, 30)), ("Punto vendita", (10, 24)), ("Officina", (16, 40)),
+]
 MODULE_POWERS_KW = (0.400, 0.410, 0.425, 0.430)
 MODULE_AREA_M2 = 1.95
 
@@ -160,9 +164,9 @@ def number_range(text):
 
 class Command(BaseCommand):
     help = (
-        "Replaces communities, customers, systems and readings with realistic demo data: communities in "
-        "several cities of every Italian region, customers with one or more systems and one reading per "
-        "minute that follows the real weather of each city."
+        "Replaces communities, users, systems and readings with realistic demo data: companies in several "
+        "cities of every Italian region, each with its owner, some other users and several systems, and one "
+        "reading per minute that follows the real weather of each city."
     )
 
     def add_arguments(self, parser):
@@ -172,19 +176,17 @@ class Command(BaseCommand):
             help='Cities with a community in each region, a number or a range like 2-3 (default)',
         )
         parser.add_argument(
-            '--customers_per_community', type=number_range, default=(2, 4), help='Customers in each community (default 2-4)'
+            '--users_per_community', type=number_range, default=(2, 4),
+            help='Users of each community, the owner included (default 2-4)',
         )
         parser.add_argument(
-            '--systems_per_customer', type=number_range, default=(1, 3),
-            help=f'Systems owned by each customer (default 1-3, at most {1 + len(OTHER_BUILDINGS)})',
+            '--systems_per_community', type=number_range, default=(3, 8), help='Systems of each community (default 3-8)'
         )
         parser.add_argument('--seed', type=int, help='Seed of the random choices, to generate the same data again')
 
     def handle(self, *args, **options):
         if not 1 <= options['days'] <= MAX_DAYS:
             raise CommandError(f'--days must be between 1 and {MAX_DAYS}.')
-        if options['systems_per_customer'][1] > 1 + len(OTHER_BUILDINGS):
-            raise CommandError(f'--systems_per_customer can be at most {1 + len(OTHER_BUILDINGS)}.')
         started = time.monotonic()
         self.random = random.Random(options['seed'])
         self.rng = np.random.default_rng(options['seed'])
@@ -193,12 +195,8 @@ class Command(BaseCommand):
             self.stdout.write('Deleting old data...')
             self.delete_old_data()
 
-            communities = [
-                Community.objects.create(name=f'CER {city}', city=city)
-                for city in self.pick_cities(options['cities_per_region'])
-            ]
-            customers = self.create_customers(communities, options['customers_per_community'])
-            systems = self.create_systems(customers, options['systems_per_customer'])
+            communities = self.create_communities(self.pick_cities(options['cities_per_region']), options['users_per_community'])
+            systems = self.create_systems(communities, options['systems_per_community'])
             User.objects.create_user(
                 username=STAFF_USERNAME, password=CUSTOMER_PASSWORD, first_name='Consulente', last_name='Demo',
                 is_staff=True,
@@ -206,18 +204,18 @@ class Command(BaseCommand):
             self.stdout.write(f'Generating the readings of {len(systems)} systems...')
             readings = self.create_panel_data(systems, options['days'])
 
+        users = Customer.objects.count()
         self.stdout.write(self.style.SUCCESS(
-            f'Created {len(communities)} communities, {len(customers)} customers (user0 ... user{len(customers) - 1}), '
+            f'Created {len(communities)} communities with {users} users (user0 ... user{users - 1}), '
             f'{len(systems)} systems and {readings} readings in {time.monotonic() - started:.0f} s.'
         ))
 
     def delete_old_data(self):
         PanelData.objects.all().delete()
-        Customer.objects.all().delete()
+        # Also deletes their users' profiles and their systems (an owner can only go with its community)
+        Community.objects.all().delete()
         # Keep the bridge user, otherwise its token would change at every run
         User.objects.filter(is_superuser=False).exclude(username=settings.BRIDGE_USERNAME).delete()
-        PhotovoltaicSystem.objects.all().delete()
-        Community.objects.all().delete()
 
     def pick_cities(self, cities_per_region):
         """Random cities with coordinates: in each region as many as cities_per_region (min, max) says."""
@@ -240,37 +238,56 @@ class Command(BaseCommand):
             picked += self.random.sample(by_region[region], min(self.random.randint(*cities_per_region), len(by_region[region])))
         return list(City.objects.filter(id__in=picked))
 
-    def create_customers(self, communities, customers_per_community):
-        """Customers of each community, who log in as user0, user1, ..."""
-        # All customers have the same password: hashing it once saves almost a second per customer
-        password = make_password(CUSTOMER_PASSWORD)
-        customers = []
-        for community in communities:
-            for _ in range(self.random.randint(*customers_per_community)):
-                first_name, surname = self.random.choice(FIRST_NAMES), self.random.choice(SURNAMES)
-                user = User.objects.create(
-                    username=f'user{len(customers)}', password=password, first_name=first_name, last_name=surname
-                )
-                customers.append(Customer.objects.create(user=user, name=first_name, surname=surname, community=community))
-        return customers
+    def create_communities(self, cities, users_per_community):
+        """A company in each city, with its users: they log in as user0, user1, ...
 
-    def create_systems(self, customers, systems_per_customer):
-        """Systems of each customer: the home and, for some customers, other buildings in the same city."""
+        The first user of each company is its owner, whose surname gives the company its name.
+        """
+        # All users have the same password: hashing it once saves almost a second per user
+        password = make_password(CUSTOMER_PASSWORD)
+        communities, users = [], 0
+        for city in cities:
+            owner_surname = self.random.choice(SURNAMES)
+            name = f'{owner_surname} {self.random.choice(COMPANY_ACTIVITIES)}'
+            if Community.objects.filter(name=name).exists():
+                name = f'{name} ({city.name})'
+            community = Community.objects.create(name=name, city=city)
+            for index in range(self.random.randint(*users_per_community)):
+                first_name = self.random.choice(FIRST_NAMES)
+                surname = owner_surname if index == 0 else self.random.choice(SURNAMES)
+                user = User.objects.create(
+                    username=f'user{users}', password=password, first_name=first_name, last_name=surname
+                )
+                # The first one becomes the owner (see Customer.save)
+                Customer.objects.create(user=user, name=first_name, surname=surname, community=community)
+                users += 1
+            communities.append(community)
+        return communities
+
+    def create_systems(self, communities, systems_per_community):
+        """Systems of each company: one on its headquarters and the others on further buildings in the same city."""
         systems = []
-        for customer in customers:
-            count = self.random.randint(*systems_per_customer)
-            for kind, modules_range in [HOME] + self.random.sample(OTHER_BUILDINGS, count - 1):
+        for community in communities:
+            count = self.random.randint(*systems_per_community)
+            buildings = [HEADQUARTERS] + self.random.choices(OTHER_BUILDINGS, k=count - 1)
+            kinds = Counter(kind for kind, _ in buildings)
+            numbers = Counter()
+            # The same electricity contract for all the systems of a company
+            selling_rate = round(self.random.uniform(0.08, 0.12), 3)
+            buying_rate = round(self.random.uniform(0.18, 0.28), 3)
+            for kind, modules_range in buildings:
+                numbers[kind] += 1
                 modules = self.random.randint(*modules_range)
                 systems.append(PhotovoltaicSystem.objects.create(
-                    name=f'{kind} {customer.surname} ({customer.name})',
+                    # "Capannone 1", "Capannone 2" when a company has more buildings of the same kind
+                    name=f'{kind} {numbers[kind]}' if kinds[kind] > 1 else kind,
                     max_power=round(modules * self.random.choice(MODULE_POWERS_KW), 2),
                     area=round(modules * MODULE_AREA_M2, 1),
                     brand=self.random.choice(PANEL_BRANDS),
                     inclination=self.random.randint(10, 35),
-                    selling_rate_per_kwh=round(self.random.uniform(0.08, 0.12), 3),
-                    buying_rate_per_kwh=round(self.random.uniform(0.22, 0.32), 3),
-                    community=customer.community,
-                    owner=customer,
+                    selling_rate_per_kwh=selling_rate,
+                    buying_rate_per_kwh=buying_rate,
+                    community=community,
                 ))
         return systems
 

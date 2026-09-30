@@ -2,6 +2,7 @@ from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.db.models import RestrictedError
 from django.test import TestCase
 
 from SP.models import Customer
@@ -115,27 +116,20 @@ class SystemListAndRegistrationTests(TestCase):
         self.assertContains(response, "Mio impianto")
         self.assertNotContains(response, "Impianto altrui")
 
-    def test_system_list_separates_the_customer_systems_from_the_community_ones(self):
-        community = create_community()
-        self.client.force_login(create_customer(community))
-        customer = Customer.objects.get()
-        neighbour = Customer.objects.get(user=create_customer(community, username="luigi"))
-        create_system(community, "Casa", owner=customer)
-        create_system(community, "Capannone", owner=customer)
-        create_system(community, "Casa del vicino", owner=neighbour)
+    def test_every_user_of_the_community_sees_all_its_systems_and_its_owner(self):
+        community = create_community("Rossi Trasporti")
+        create_customer(community)
+        colleague = User.objects.create_user("luigi", password="test-password")
+        Customer.objects.create(user=colleague, name="Luigi", surname="Verdi", community=community)
+        create_system(community, "Sede")
+        create_system(community, "Capannone")
+        self.client.force_login(colleague)
 
         response = self.client.get("/sp/system/")
 
-        self.assertEqual([s.name for s in response.context["own_systems"]], ["Capannone", "Casa"])
-        self.assertEqual([s.name for s in response.context["other_systems"]], ["Casa del vicino"])
-        self.assertContains(response, "Proprietario: <strong>Mario Rossi</strong>")
-
-    def test_owner_must_belong_to_the_system_community(self):
-        customer = Customer.objects.get(user=create_customer(create_community()))
-        system = create_system(create_community("Other"), owner=customer)
-
-        with self.assertRaisesMessage(ValidationError, "community"):
-            system.full_clean()
+        self.assertEqual([s.name for s in response.context["systems"]], ["Capannone", "Sede"])
+        self.assertContains(response, "Impianti di Rossi Trasporti")
+        self.assertContains(response, "Titolare: Mario Rossi")
 
     def test_registration_creates_customer_and_logs_in(self):
         community = create_community()
@@ -146,4 +140,60 @@ class SystemListAndRegistrationTests(TestCase):
         })
 
         self.assertRedirects(response, "/", fetch_redirect_response=False)
-        self.assertEqual(Customer.objects.get(user__username="nuovo").community, community)
+        customer = Customer.objects.get(user__username="nuovo")
+        self.assertEqual(customer.community, community)
+        # Primo utente della community: ne diventa il titolare
+        self.assertTrue(customer.is_owner)
+
+
+class CommunityOwnerTests(TestCase):
+    def setUp(self):
+        self.community = create_community()
+        self.owner = Customer.objects.get(user=create_customer(self.community))
+        self.member = Customer.objects.get(user=create_customer(self.community, username="luigi"))
+        self.community.refresh_from_db()
+
+    def test_the_first_user_is_the_only_owner(self):
+        self.assertEqual(self.community.owner, self.owner)
+        self.assertTrue(self.owner.is_owner)
+        self.assertFalse(self.member.is_owner)
+
+    def test_owner_must_be_a_user_of_the_community(self):
+        other = Customer.objects.get(user=create_customer(create_community("Other"), username="anna"))
+        self.community.owner = other
+
+        with self.assertRaisesMessage(ValidationError, "utenti della community"):
+            self.community.full_clean()
+
+    def test_community_with_users_needs_an_owner(self):
+        self.community.owner = None
+
+        with self.assertRaisesMessage(ValidationError, "titolare"):
+            self.community.full_clean()
+
+    def test_owner_cannot_be_deleted_or_moved_until_another_one_is_chosen(self):
+        with self.assertRaises(RestrictedError):
+            self.owner.user.delete()
+        self.owner.community = create_community("Other")
+        with self.assertRaisesMessage(ValidationError, "titolare"):
+            self.owner.full_clean()
+
+        self.community.owner = self.member
+        self.community.save()
+        User.objects.get(username="mario").delete()
+        self.assertEqual(list(self.community.customers.all()), [self.member])
+
+    def test_admin_offers_only_the_users_of_the_community_as_owner(self):
+        create_customer(create_community("Other"), username="anna")
+        self.client.force_login(User.objects.create_superuser("admin", password="test-password"))
+
+        response = self.client.get(f"/admin/SP/community/{self.community.pk}/change/")
+
+        owners = response.context["adminform"].form.fields["owner"].queryset
+        self.assertEqual(set(owners), {self.owner, self.member})
+
+    def test_deleting_the_community_deletes_its_users_profiles(self):
+        self.community.delete()
+
+        self.assertFalse(Customer.objects.exists())
+

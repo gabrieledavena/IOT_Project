@@ -39,8 +39,8 @@ def create_customer(community, username="mario"):
     return user
 
 
-def create_system(community, name="System A", max_power=4.0, owner=None):
-    return PhotovoltaicSystem.objects.create(name=name, max_power=max_power, community=community, owner=owner)
+def create_system(community, name="System A", max_power=4.0):
+    return PhotovoltaicSystem.objects.create(name=name, max_power=max_power, community=community)
 
 
 def add_readings(system, start, powers, step_minutes=1, temperature=20.0, lightness=500.0):

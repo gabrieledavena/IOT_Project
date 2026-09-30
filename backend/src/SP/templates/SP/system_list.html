@@ -1,40 +1,59 @@
 {% extends "base.html" %}
 
-{% block title %}I tuoi impianti{% endblock %}
+{% block title %}Impianti{% endblock %}
 
 {% block content %}
 <div class="container mb-5">
     <div class="row mb-4">
         <div class="col-12">
-            <h2 class="fw-bold text-dark mb-0">I Tuoi Impianti Fotovoltaici</h2>
-            <p class="text-muted">Seleziona un impianto per visualizzarne i dettagli: puoi consultare anche quelli degli altri membri della tua community.</p>
+            {% if community %}
+                <h2 class="fw-bold text-dark mb-0">Impianti di {{ community.name }}</h2>
+                <p class="text-muted mb-0">
+                    <i class="fas fa-map-marker-alt me-1"></i>{{ community.city }}
+                    {% if community.owner %}<span class="mx-2">·</span><i class="fas fa-user-tie me-1"></i>Titolare: {{ community.owner }}{% endif %}
+                </p>
+                <p class="text-muted">Seleziona un impianto per visualizzarne i dettagli.</p>
+            {% else %}
+                <h2 class="fw-bold text-dark mb-0">Impianti Fotovoltaici</h2>
+            {% endif %}
         </div>
     </div>
 
     {% if error %}
         {% include "partials/error_alert.html" %}
     {% else %}
-        <h4 class="fw-bold text-dark mb-3">I tuoi impianti</h4>
-        <div class="row g-4 mb-5">
-            {% for system in own_systems %}
-                {% include "SP/_system_card.html" %}
+        <div class="row g-4">
+            {% for system in systems %}
+                <div class="col-md-6 col-lg-4">
+                    <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift text-decoration-none">
+                        <div class="card-body p-4 d-flex flex-column">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="fw-bold text-dark mb-0">{{ system.name }}</h5>
+                                <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
+                                    <span class="fs-5">☀️</span>
+                                </div>
+                            </div>
+
+                            <ul class="list-unstyled text-muted mb-4 flex-grow-1">
+                                <li class="mb-2"><i class="fas fa-bolt me-2 text-warning"></i>Potenza Max: <strong>{{ system.max_power|floatformat:2 }} kW</strong></li>
+                                <li class="mb-2"><i class="fas fa-ruler-combined me-2 text-info"></i>Area: <strong>{{ system.area|floatformat:2 }} m²</strong></li>
+                                <li class="mb-2"><i class="fas fa-tag me-2 text-secondary"></i>Brand: <strong>{{ system.brand }}</strong></li>
+                            </ul>
+
+                            <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-primary w-100 rounded-pill fw-bold">
+                                Visualizza Dettagli <i class="fas fa-arrow-right ms-2"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
             {% empty %}
                 <div class="col-12">
                     <div class="alert alert-info shadow-sm rounded-4">
-                        <i class="fas fa-info-circle me-2"></i>Nessun impianto fotovoltaico registrato a tuo nome.
+                        <i class="fas fa-info-circle me-2"></i>Nessun impianto fotovoltaico associato alla tua community.
                     </div>
                 </div>
             {% endfor %}
         </div>
-
-        {% if other_systems %}
-            <h4 class="fw-bold text-dark mb-3">Altri impianti della community {{ community.name }}</h4>
-            <div class="row g-4">
-                {% for system in other_systems %}
-                    {% include "SP/_system_card.html" with show_owner=True %}
-                {% endfor %}
-            </div>
-        {% endif %}
     {% endif %}
 </div>
 {% endblock %}
