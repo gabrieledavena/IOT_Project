@@ -91,13 +91,23 @@ The backend runs in Docker (`backend/src` is mounted in the container, so code c
 docker compose up -d --build
 docker exec iot_django_server python manage.py migrate
 docker exec iot_django_server python manage.py import_cities       # Italian municipalities with coordinates
-docker exec iot_django_server python manage.py populate_db         # fictitious communities, users and data
+docker exec iot_django_server python manage.py populate_db         # realistic demo communities, users and readings
 docker exec iot_django_server python manage.py createsuperuser
 ```
 
-The web app is at http://localhost:8000. `populate_db` creates the customers `user0` ... `user14` and the staff
-account `consulente` (for the ROI calculator), all with password `password123`; each day of fictitious production
-follows the forecast model with the real weather of the community's city.
+The web app is at http://localhost:8000. `populate_db` replaces communities, customers, systems and readings with
+demo data: by default a community in 2–3 cities of every region (about 50), 2–4 customers per community, each
+owning 1–3 systems (the home and possibly a second home, a garage, a shop or a warehouse), and one reading per
+minute for the last 7 days: about 300 systems and 2.8 million readings, generated in about 20 seconds. The
+customers log in as `user0`, `user1`, ...; the staff account `consulente` (for the ROI calculator) has the same
+password, `password123`.
+
+The readings are realistic: every day each system produces what the forecast model predicts with the real weather
+of its city (Open-Meteo), scaled by the orientation of the system (a few have dirty panels and produce 15–25%
+less). During the day the power follows the height of the sun, the clouds of that day (shared by the systems of a
+city) and the cell temperature; light and air temperature follow the same sun and the day's minimum and maximum.
+Options: `--days` (up to 90), `--cities_per_region`, `--customers_per_community` and `--systems_per_customer`
+(a number or a range like `2-3`), `--seed` to generate the same data again.
 
 The trained forecast model is in the repository. To train it again (for example after changing the features):
 

@@ -22,12 +22,15 @@ class CommunityAdmin(admin.ModelAdmin):
 class CustomerAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "surname", "community")
     list_select_related = ("community",)
+    search_fields = ("name", "surname", "user__username")
 
 
 @admin.register(PhotovoltaicSystem)
 class PhotovoltaicSystemAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "max_power", "community")
-    list_select_related = ("community",)
+    list_display = ("id", "name", "max_power", "owner", "community")
+    list_select_related = ("community", "owner")
+    # I clienti possono essere centinaia: meglio la ricerca di un menu a tendina
+    autocomplete_fields = ("owner",)
 
 
 @admin.register(PanelData)

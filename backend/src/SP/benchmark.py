@@ -8,7 +8,7 @@ from django.utils import timezone
 from forecast.reference_data import load_reference_dataset
 
 from .models import PhotovoltaicSystem
-from .production import daily_energy_kwh, get_system_series
+from .production import system_daily_energy_kwh
 
 CACHE_KEY = "measured_city_yields"
 # Le misure arrivano ogni minuto, ma la media di intere giornate cambia lentamente
@@ -37,7 +37,7 @@ def measured_city_yields():
         .select_related("community")
     )
     for system in systems:
-        for day, energy in daily_energy_kwh(get_system_series(system)).items():
+        for day, energy in system_daily_energy_kwh(system).items():
             if day < today_utc:
                 city = per_city[system.community.city_id]
                 city["yields"].append(energy / system.max_power)

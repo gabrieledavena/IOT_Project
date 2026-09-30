@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -67,9 +68,22 @@ class PhotovoltaicSystem(models.Model):
     selling_rate_per_kwh = models.FloatField(null=True, blank=True)
     buying_rate_per_kwh = models.FloatField(null=True, blank=True)
     community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="photovoltaic_systems")
+    # Un cliente può avere più impianti (casa, capannone, ...), tutti nella sua community
+    owner = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="photovoltaic_systems",
+        verbose_name="Proprietario",
+    )
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        if self.owner and self.community_id and self.owner.community_id != self.community_id:
+            raise ValidationError({"owner": "Il proprietario deve far parte della community dell'impianto."})
 
 
 class Intervention(models.Model):

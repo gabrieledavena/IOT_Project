@@ -12,10 +12,11 @@ from django.utils import timezone
 from rest_framework.authtoken.models import Token
 
 from SP.management.commands.import_cities import NAME_COLUMN, PROVINCE_COLUMN, REGION_COLUMN
-from SP.management.commands.populate_db import CURVE_HOURS
+from SP.management.commands.populate_db import FALLBACK_CITIES, PERFORMANCE_RATIO
 from SP.models import City, Community, Customer, PanelData, PhotovoltaicSystem
 from SP.production import daily_energy_kwh, get_system_series
-from SP.tests.helpers import FakeModel, create_community, fake_weather
+from SP.tests.helpers import DEFAULT_WEATHER, FakeModel, create_community, fake_weather
+from SP.weather import WeatherUnavailable
 
 
 def run(command, *args):
@@ -43,11 +44,21 @@ class BridgeUserCommandTests(TestCase):
 
 
 class PopulateDbCommandTests(TestCase):
-    def populate(self, model):
+    def setUp(self):
+        for region in ("Piemonte", "Lazio", "Sicilia"):
+            for i in range(3):
+                City.objects.create(name=f"{region} {i}", region=region, latitude=42.0, longitude=12.0)
+
+    def populate(self, model, *args, weather=None, performance=1.0):
+        weather = weather or (lambda city, first, last: fake_weather(first, last))
+        # Rendimento fisso degli impianti, per confrontare la produzione con quella prevista
         with mock.patch("SP.management.commands.populate_db.load_model", return_value=model), \
-                mock.patch("SP.management.commands.populate_db.get_daily_weather",
-                           side_effect=lambda city, first, last: fake_weather(first, last)):
-            return run("populate_db", "--days", "2", "--systems_per_community", "1")
+                mock.patch("SP.management.commands.populate_db.get_daily_weather", side_effect=weather), \
+                mock.patch("SP.management.commands.populate_db.system_performance", return_value=performance):
+            return run(
+                "populate_db", "--days", "2", "--cities_per_region", "1", "--customers_per_community", "2",
+                "--systems_per_customer", "1", "--seed", "1", *args,
+            )
 
     def yesterday_yields(self):
         """kWh prodotti ieri da ogni impianto, per kW installato."""
@@ -57,31 +68,95 @@ class PopulateDbCommandTests(TestCase):
             for system in PhotovoltaicSystem.objects.all()
         ]
 
-    def test_creates_fictitious_data_and_keeps_the_bridge_user(self):
+    def test_creates_demo_data_and_keeps_the_bridge_user(self):
         run("create_bridge_user")
         token = Token.objects.get(user__username="bridge").key
 
         self.populate(FakeModel(3.0))
 
-        self.assertEqual(Community.objects.count(), 10)
-        self.assertEqual(Customer.objects.count(), 15)
-        self.assertEqual(PhotovoltaicSystem.objects.count(), 10)
-        self.assertTrue(PanelData.objects.exists())
+        self.assertEqual(Community.objects.count(), 3)
+        self.assertEqual({c.customers.count() for c in Community.objects.all()}, {2})
+        self.assertEqual(PhotovoltaicSystem.objects.count(), 6)
+        self.assertTrue(User.objects.get(username="user5").check_password("password123"))
         self.assertEqual(Token.objects.get(user__username="bridge").key, token)
         self.assertTrue(User.objects.get(username="consulente").is_staff)
+
+    def test_cities_per_region(self):
+        self.populate(FakeModel(3.0), "--cities_per_region", "2")
+
+        regions = list(Community.objects.values_list("city__region", flat=True))
+        self.assertEqual(sorted(regions), ["Lazio", "Lazio", "Piemonte", "Piemonte", "Sicilia", "Sicilia"])
+
+    def test_customers_own_several_systems_in_their_community(self):
+        self.populate(FakeModel(3.0), "--systems_per_customer", "3")
+
+        for customer in Customer.objects.all():
+            systems = list(customer.photovoltaic_systems.all())
+            self.assertEqual(len(systems), 3)
+            self.assertEqual({system.community for system in systems}, {customer.community})
+            # La casa e due edifici diversi
+            self.assertEqual(len({system.name.split(customer.surname)[0] for system in systems}), 3)
+            self.assertIn(f"Casa {customer.surname}", [system.name.split(" (")[0] for system in systems])
+
+    def test_without_cities_uses_regional_capitals(self):
+        City.objects.all().delete()
+
+        output = self.populate(FakeModel(3.0), "--days", "1")
+
+        self.assertIn("No cities with coordinates", output)
+        self.assertEqual(Community.objects.count(), len(FALLBACK_CITIES))
+
+    def test_one_reading_per_minute_until_now_following_the_sun(self):
+        self.populate(FakeModel(3.0))
+
+        system = PhotovoltaicSystem.objects.first()
+        readings = PanelData.objects.filter(system=system).order_by("time_stamp")
+        first, last = readings.first().time_stamp, readings.last().time_stamp
+        self.assertEqual(readings.count(), (last - first).total_seconds() / 60 + 1)
+        self.assertEqual(first.date(), timezone.now().date() - timedelta(days=1))
+        self.assertLess(timezone.now() - last, timedelta(minutes=2))
+        # Di notte (mezzanotte UTC in Italia) nessuna produzione, a mezzogiorno sì
+        midnight, noon = first, first + timedelta(hours=11)
+        self.assertEqual(readings.get(time_stamp=midnight).power, 0)
+        self.assertGreater(readings.get(time_stamp=noon).power, 0)
+        self.assertLessEqual(max(readings.values_list("power", flat=True)), system.max_power)
 
     def test_daily_production_follows_the_model_with_the_real_weather(self):
         self.populate(FakeModel(3.0))
 
         for specific_yield in self.yesterday_yields():
-            self.assertAlmostEqual(specific_yield, 3.0, delta=0.1)
+            self.assertAlmostEqual(specific_yield, 3.0, delta=0.05)
 
-    def test_without_model_production_ignores_the_weather(self):
+    def test_system_performance_lowers_the_production(self):
+        self.populate(FakeModel(3.0), performance=0.8)
+
+        for specific_yield in self.yesterday_yields():
+            self.assertAlmostEqual(specific_yield, 2.4, delta=0.05)
+
+    def test_without_model_production_follows_the_solar_radiation(self):
         output = self.populate(None)
 
         self.assertIn("No forecast model", output)
+        expected = DEFAULT_WEATHER["solar_radiation"] / 3.6 * PERFORMANCE_RATIO
         for specific_yield in self.yesterday_yields():
-            self.assertAlmostEqual(specific_yield, CURVE_HOURS, delta=0.2)
+            self.assertAlmostEqual(specific_yield, expected, delta=0.05)
+
+    def test_without_weather_uses_an_average_one(self):
+        def unavailable(city, first, last):
+            raise WeatherUnavailable("offline")
+
+        output = self.populate(FakeModel(3.0), weather=unavailable)
+
+        self.assertIn("Using an average weather", output)
+        # Radiazione a cielo sereno ridotta dalle nuvole medie: plausibile in ogni stagione
+        for specific_yield in self.yesterday_yields():
+            self.assertTrue(0.5 < specific_yield < 7)
+
+    def test_invalid_options_are_a_command_error(self):
+        for option, value in [("--days", "0"), ("--systems_per_customer", "3-1"), ("--systems_per_customer", "9"),
+                              ("--cities_per_region", "due")]:
+            with self.subTest(option=option, value=value), self.assertRaises(CommandError):
+                call_command("populate_db", option, value, stdout=StringIO())
 
 
 def geonames_place(name, admin1code, latitude, population=10000):

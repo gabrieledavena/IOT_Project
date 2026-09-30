@@ -1,6 +1,7 @@
 from unittest import mock
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
 from SP.models import Customer
@@ -113,6 +114,28 @@ class SystemListAndRegistrationTests(TestCase):
 
         self.assertContains(response, "Mio impianto")
         self.assertNotContains(response, "Impianto altrui")
+
+    def test_system_list_separates_the_customer_systems_from_the_community_ones(self):
+        community = create_community()
+        self.client.force_login(create_customer(community))
+        customer = Customer.objects.get()
+        neighbour = Customer.objects.get(user=create_customer(community, username="luigi"))
+        create_system(community, "Casa", owner=customer)
+        create_system(community, "Capannone", owner=customer)
+        create_system(community, "Casa del vicino", owner=neighbour)
+
+        response = self.client.get("/sp/system/")
+
+        self.assertEqual([s.name for s in response.context["own_systems"]], ["Capannone", "Casa"])
+        self.assertEqual([s.name for s in response.context["other_systems"]], ["Casa del vicino"])
+        self.assertContains(response, "Proprietario: <strong>Mario Rossi</strong>")
+
+    def test_owner_must_belong_to_the_system_community(self):
+        customer = Customer.objects.get(user=create_customer(create_community()))
+        system = create_system(create_community("Other"), owner=customer)
+
+        with self.assertRaisesMessage(ValidationError, "community"):
+            system.full_clean()
 
     def test_registration_creates_customer_and_logs_in(self):
         community = create_community()
