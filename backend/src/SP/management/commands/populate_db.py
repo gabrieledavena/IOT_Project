@@ -11,6 +11,7 @@ import pandas as pd
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.utils import timezone
@@ -65,11 +66,15 @@ OTHER_BUILDINGS = [
 MODULE_POWERS_KW = (0.400, 0.410, 0.425, 0.430)
 MODULE_AREA_M2 = 1.95
 
-# Production of each system compared to the forecast model, which assumes an optimally oriented system:
-# orientation and shading lower it a little, and a few systems have dirty panels
-ORIENTATION_RANGE = (0.85, 1.0)
-DIRTY_SHARE = 0.1
-DIRTY_RANGE = (0.75, 0.85)
+# Production of each system compared to the forecast model, which assumes an optimally oriented system.
+# Orientation and shading lower it a little, within the 10% the monitoring tolerates (see SP/monitoring.py);
+# a few systems have a fault (a broken string of modules, a failing inverter), and in a few cities the dust
+# (from the Sahara, a building site) makes all the systems produce less
+ORIENTATION_RANGE = (0.93, 1.0)
+FAULTY_SHARE = 0.05
+FAULT_RANGE = (0.5, 0.8)
+DUSTY_CITY_SHARE = 0.15
+DUST_RANGE = (0.78, 0.86)
 # Without the forecast model: share of the solar radiation turned into energy by a system
 PERFORMANCE_RATIO = 0.8
 
@@ -143,11 +148,16 @@ def air_temperature(hours_from_noon, day_length, temp_min, temp_max):
 
 
 def system_performance(rng):
-    """Production of a system compared to an optimally oriented one with clean panels."""
+    """Production of a system compared to an optimally oriented one without faults."""
     performance = rng.uniform(*ORIENTATION_RANGE)
-    if rng.random() < DIRTY_SHARE:
-        performance *= rng.uniform(*DIRTY_RANGE)
+    if rng.random() < FAULTY_SHARE:
+        performance *= rng.uniform(*FAULT_RANGE)
     return performance
+
+
+def area_soiling(rng):
+    """Share of the production the dust leaves to all the systems of a city: 1 in most cities."""
+    return rng.uniform(*DUST_RANGE) if rng.random() < DUSTY_CITY_SHARE else 1.0
 
 
 def number_range(text):
@@ -209,6 +219,13 @@ class Command(BaseCommand):
             f'Created {len(communities)} communities with {users} users (user0 ... user{users - 1}), '
             f'{len(systems)} systems and {readings} readings in {time.monotonic() - started:.0f} s.'
         ))
+
+        # The status of the systems right away, instead of at the next run of the scheduler
+        self.stdout.write('Checking the systems...')
+        try:
+            call_command('check_systems', stdout=self.stdout)
+        except CommandError as error:
+            self.stdout.write(self.style.WARNING(f'Systems not checked: {error}'))
 
     def delete_old_data(self):
         PanelData.objects.all().delete()
@@ -333,7 +350,7 @@ class Command(BaseCommand):
 
         # Every day the system produces the energy predicted for its city, scaled by its performance
         energy_by_day = np.bincount(profile['day'], weights=shape) / 60
-        target = profile['daily_yield'] * system.max_power * system_performance(self.rng)
+        target = profile['daily_yield'] * system.max_power * system_performance(self.rng) * profile['soiling']
         with np.errstate(divide='ignore', invalid='ignore'):
             scale = np.where(energy_by_day > 0, target / energy_by_day, 0)
         power = np.clip(shape * scale[profile['day']], 0, system.max_power)
@@ -378,6 +395,7 @@ class Command(BaseCommand):
                 'irradiance': clear_sky * cloud_transmittance(smooth['cloud_cover'], self.rng),
                 'temperature': air_temperature(hours_from_noon, day_length, smooth['temp_min'], smooth['temp_max']),
                 'daily_yield': np.asarray(daily_yield),
+                'soiling': area_soiling(self.rng),
                 'day': day,
             }
         return profiles

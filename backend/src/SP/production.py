@@ -69,18 +69,21 @@ def daily_energy_kwh(series):
     return {day: total / 60 for day, total in totals.items()}
 
 
-def system_daily_energy_kwh(system):
+def system_daily_energy_kwh(system, start=None, end=None):
     """Energia (kWh) prodotta dall'impianto in ciascun giorno: come daily_energy_kwh(get_system_series(system)).
 
-    Somma i punti interpolati di ogni intervallo tra due letture con una formula, senza costruire la
-    serie minuto per minuto: con settimane di misure è decine di volte più veloce.
+    Con start e/o end usa solo le misure da start (incluso) a end (escluso). Somma i punti interpolati di
+    ogni intervallo tra due letture con una formula, senza costruire la serie minuto per minuto: con
+    settimane di misure è decine di volte più veloce.
     """
+    readings = PanelData.objects.filter(system=system)
+    if start is not None:
+        readings = readings.filter(time_stamp__gte=start)
+    if end is not None:
+        readings = readings.filter(time_stamp__lt=end)
     # Gli orari arrivano come testo ("2026-09-28 12:00:00", in UTC) e numpy li converte tutti insieme:
     # molto più veloce che creare un datetime per ogni misura
-    readings = list(
-        PanelData.objects.filter(system=system).order_by("time_stamp")
-        .values_list(Cast("time_stamp", CharField()), "power")
-    )
+    readings = list(readings.order_by("time_stamp").values_list(Cast("time_stamp", CharField()), "power"))
     if len(readings) < 2:
         return {}
     seconds = np.array([time_stamp[:19] for time_stamp, _ in readings], dtype="datetime64[s]").astype(np.int64)

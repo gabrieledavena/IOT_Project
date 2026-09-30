@@ -6,6 +6,31 @@
 
 {% block subheading %}Monitoraggio in tempo reale della produzione solare, luminosità e temperatura.{% endblock %}
 
+{% block status %}
+{% if system %}
+<div class="card border-0 shadow-sm rounded-4 mb-4 border-start border-5 {% if system.last_check %}border-{{ status.color }}{% else %}border-secondary{% endif %}">
+    <div class="card-body p-4 d-flex flex-wrap align-items-center gap-3">
+        <div class="flex-grow-1">
+            <h6 class="text-muted fw-bold text-uppercase mb-2">Stato dell'impianto</h6>
+            {% if system.last_check %}
+                <span class="badge rounded-pill bg-{{ status.color }}{% if status.color == 'warning' %} text-dark{% endif %} fs-6">
+                    <i class="fas {{ status.icon }} me-1"></i>{{ system.get_status_display }}
+                </span>
+                <p class="text-muted small mb-0 mt-2">{{ status.description }}</p>
+            {% else %}
+                <span class="badge rounded-pill bg-secondary fs-6"><i class="fas fa-hourglass-half me-1"></i>In attesa del primo controllo</span>
+                <p class="text-muted small mb-0 mt-2">La produzione viene confrontata con la previsione ogni due giorni.</p>
+            {% endif %}
+        </div>
+        <div class="text-md-end">
+            <div class="text-muted small">Data ultimo controllo</div>
+            <div class="fw-bold text-dark">{{ system.last_check|date:"d/m/Y H:i"|default:"-" }}</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
 {% block production_row_margin %}mb-4{% endblock %}
 
 {% block extra_charts %}
