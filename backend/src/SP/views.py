@@ -101,16 +101,11 @@ class PhotovoltaicSystemListView(LoginRequiredMixin, View):
     template_name = "SP/system_list.html"
 
     def get(self, request):
-        customer = Customer.objects.select_related("community").filter(user=request.user).first()
-        if customer is None:
+        community = Customer.community_of(request.user)
+        if community is None:
             return render(request, self.template_name, {"error": NOT_A_CUSTOMER}, status=403)
-        # Prima gli impianti del cliente, poi gli altri della sua community (visibili a tutti i membri)
-        systems = customer.community.photovoltaic_systems.select_related("owner").order_by("name")
-        context = {
-            "community": customer.community,
-            "own_systems": [system for system in systems if system.owner_id == customer.id],
-            "other_systems": [system for system in systems if system.owner_id != customer.id],
-        }
+        # Gli impianti sono della community: ogni suo utente li vede tutti
+        context = {"community": community, "systems": community.photovoltaic_systems.order_by("name")}
         return render(request, self.template_name, context)
 
 
