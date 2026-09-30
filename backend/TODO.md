@@ -1,11 +1,12 @@
 # TODO List
-- [ ] Controllare status Arduino
 - [x] Aggiornare modello AI globale con dati veri
-- [ ] Aggiungere controllo manutenzione (Intervention)
 - [x] Previsione giorno successivo
 - [x] Previsione giorno corrente (nella dashboard del nibba)
 - [x] ROI (non pooling)
 - [X] Dashboard per pannelli (PhotovoltaicPanel)
-- [ ] Confronto con produzione città
+- [x] Confronto con produzione città
+- [ ] Aggiungere controllo manutenzione (Intervention)
+- [ ] Controllare status Arduino
 - [ ] Pompa d'acqua per lavaggio pannelli sporchi (forse)
 - [ ] Pagine management manutenzione pannelli
+- [ ] Pensare ad altre features
