@@ -3,7 +3,7 @@
 
 {% comment %}
 Struttura comune delle dashboard di produzione (community e impianto).
-Blocchi: heading, subheading, production_row_margin, extra_charts.
+Blocchi: heading, subheading, status, production_row_margin, extra_charts.
 {% endcomment %}
 
 {% block content %}
@@ -31,6 +31,8 @@ Blocchi: heading, subheading, production_row_margin, extra_charts.
             </div>
         </div>
     </div>
+
+    {% block status %}{% endblock %}
 
     {% if error %}
         {% include "partials/error_alert.html" %}

@@ -51,10 +51,14 @@ class PopulateDbCommandTests(TestCase):
 
     def populate(self, model, *args, weather=None, performance=1.0):
         weather = weather or (lambda city, first, last: fake_weather(first, last))
-        # Rendimento fisso degli impianti, per confrontare la produzione con quella prevista
+        # Rendimento fisso degli impianti e niente polvere, per confrontare la produzione con quella prevista;
+        # il controllo finale degli impianti usa lo stesso modello e lo stesso meteo
         with mock.patch("SP.management.commands.populate_db.load_model", return_value=model), \
+                mock.patch("forecast.predictor.load_model", return_value=model), \
                 mock.patch("SP.management.commands.populate_db.get_daily_weather", side_effect=weather), \
-                mock.patch("SP.management.commands.populate_db.system_performance", return_value=performance):
+                mock.patch("SP.monitoring.get_daily_weather", side_effect=weather), \
+                mock.patch("SP.management.commands.populate_db.system_performance", return_value=performance), \
+                mock.patch("SP.management.commands.populate_db.area_soiling", return_value=1.0):
             return run(
                 "populate_db", "--days", "2", "--cities_per_region", "1", "--users_per_community", "2",
                 "--systems_per_community", "2", "--seed", "1", *args,
@@ -124,6 +128,12 @@ class PopulateDbCommandTests(TestCase):
         self.assertGreater(readings.get(time_stamp=noon).power, 0)
         self.assertLessEqual(max(readings.values_list("power", flat=True)), system.max_power)
 
+    def test_systems_are_checked_at_the_end(self):
+        output = self.populate(FakeModel(3.0), "--days", "3")
+
+        self.assertIn("Checked 6 systems (6 OK", output)
+        self.assertFalse(PhotovoltaicSystem.objects.filter(last_check__isnull=True).exists())
+
     def test_daily_production_follows_the_model_with_the_real_weather(self):
         self.populate(FakeModel(3.0))
 
@@ -140,6 +150,7 @@ class PopulateDbCommandTests(TestCase):
         output = self.populate(None)
 
         self.assertIn("No forecast model", output)
+        self.assertIn("Systems not checked", output)
         expected = DEFAULT_WEATHER["solar_radiation"] / 3.6 * PERFORMANCE_RATIO
         for specific_yield in self.yesterday_yields():
             self.assertAlmostEqual(specific_yield, expected, delta=0.05)

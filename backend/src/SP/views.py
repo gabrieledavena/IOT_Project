@@ -19,6 +19,24 @@ from .weather import get_day_weather
 
 NOT_A_CUSTOMER = "Utente non associato a un cliente."
 
+# Come mostrare l'esito del controllo automatico (SP/monitoring.py) nella pagina dell'impianto
+SYSTEM_STATUSES = {
+    PhotovoltaicSystem.Status.OK: {
+        "color": "success", "icon": "fa-check-circle",
+        "description": "Nei due giorni controllati l'impianto ha prodotto quanto previsto dal modello per il meteo di quei giorni.",
+    },
+    PhotovoltaicSystem.Status.DIRTY: {
+        "color": "warning", "icon": "fa-broom",
+        "description": "Ha prodotto oltre il 10% in meno del previsto, come gli impianti vicini: probabilmente i pannelli "
+                       "sono sporchi (polvere, pollini). Si consiglia una pulizia.",
+    },
+    PhotovoltaicSystem.Status.FAULT: {
+        "color": "danger", "icon": "fa-exclamation-triangle",
+        "description": "Ha prodotto oltre il 10% in meno del previsto, mentre gli impianti vicini producono regolarmente: "
+                       "probabile guasto di pannelli o inverter. Si consiglia un intervento tecnico.",
+    },
+}
+
 
 def register_view(request):
     if request.method == "POST":
@@ -207,4 +225,4 @@ class PhotovoltaicSystemView(ProductionDashboardView):
         return get_system_series(self.system, day)
 
     def get_extra_context(self):
-        return {"system": self.system}
+        return {"system": self.system, "status": SYSTEM_STATUSES[self.system.status]}

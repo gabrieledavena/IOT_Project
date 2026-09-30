@@ -94,6 +94,11 @@ class Customer(models.Model):
 
 
 class PhotovoltaicSystem(models.Model):
+    class Status(models.TextChoices):
+        OK = "OK", "OK"
+        DIRTY = "DRT", "Pannelli sporchi"
+        FAULT = "FLT", "Probabile guasto"
+
     name = models.CharField(max_length=100)
     max_power = models.FloatField()  # Potenza di picco installata, in kW
     area = models.FloatField(null=True, blank=True)
@@ -103,6 +108,9 @@ class PhotovoltaicSystem(models.Model):
     buying_rate_per_kwh = models.FloatField(null=True, blank=True)
     # Gli impianti appartengono alla community, non ai singoli utenti
     community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="photovoltaic_systems")
+    # Esito dell'ultimo controllo automatico della produzione (vedi SP/monitoring.py)
+    status = models.CharField(max_length=3, choices=Status.choices, default=Status.OK, verbose_name="Stato")
+    last_check = models.DateTimeField(null=True, blank=True, verbose_name="Data ultimo controllo")
 
     def __str__(self):
         return self.name

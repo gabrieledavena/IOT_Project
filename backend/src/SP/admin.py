@@ -34,8 +34,9 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(PhotovoltaicSystem)
 class PhotovoltaicSystemAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "max_power", "community")
+    list_display = ("id", "name", "max_power", "community", "status", "last_check")
     list_select_related = ("community",)
+    list_filter = ("status",)
 
 
 @admin.register(PanelData)

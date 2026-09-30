@@ -14,5 +14,19 @@ services:
       # Se userai un DB vero in futuro (Postgres), le credenziali vanno qui
     restart: always
 
-# Se in futuro vorrai aggiungere il bridge python come container, 
+  # Controllo automatico degli impianti: ogni ora lancia check_systems, che controlla solo gli impianti non
+  # controllati negli ultimi 2 giorni. Così ogni impianto è controllato ogni 2 giorni anche dopo un riavvio.
+  scheduler:
+    build: ./backend
+    container_name: iot_scheduler
+    command: sh -c "while true; do python manage.py check_systems; sleep 3600; done"
+    volumes:
+      - ./backend/src:/app
+    environment:
+      - DEBUG=1
+    depends_on:
+      - django-server
+    restart: always
+
+# Se in futuro vorrai aggiungere il bridge python come container,
 # potrai aggiungerlo qui sotto come nuovo servizio.

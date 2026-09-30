@@ -51,7 +51,7 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | REST API for the measurements (token for the bridge, per-community read access) | Implemented |
 | Web dashboards for communities and single systems, with weather and map | Implemented |
 | 3. Short-term production forecasting | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
-| 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented (anomaly alerts not yet) |
+| 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented, with the automatic check of each system (see [System monitoring](#system-monitoring)) |
 | ROI calculator with printable quote, for staff consultants | Implemented |
 | Actuators, 1. self-consumption optimization, 2. CO₂ savings, 5. energy community simulation | Not implemented yet |
 
@@ -65,10 +65,11 @@ backend/src/
     models.py             City, Community, Customer, PhotovoltaicSystem, PanelData, Intervention
     production.py         Minute-by-minute production series and energy (kWh)
     benchmark.py          Measured yield per installed kW of every city, expected yield of the reference locations
+    monitoring.py         Check of each system: production compared with the forecast and with nearby systems
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
     api.py                REST API used by the bridge
     views.py              Registration, city benchmark and production dashboards
-    management/commands/  import_cities, populate_db, create_bridge_user
+    management/commands/  import_cities, populate_db, check_systems, create_bridge_user
     tests/                Tests of the SP app
   forecast/               Production forecast
     predictor.py          Features, model loading, community forecast and past-year yield of a city
@@ -107,8 +108,9 @@ and 2.5 million readings, generated in about 20 seconds. The users log in as `us
 account `consulente` (for the ROI calculator) has the same password, `password123`.
 
 The readings are realistic: every day each system produces what the forecast model predicts with the real weather
-of its city (Open-Meteo), scaled by the orientation of the system (a few have dirty panels and produce 15–25%
-less). During the day the power follows the height of the sun, the clouds of that day (shared by the systems of a
+of its city (Open-Meteo), scaled by the orientation of the system (up to 7% less). About 5% of the systems have a
+fault (20–50% less), and in about 15% of the cities the dust makes all the systems produce 14–22% less: the
+monitoring finds them as probable faults and dirty panels. During the day the power follows the height of the sun, the clouds of that day (shared by the systems of a
 city) and the cell temperature; light and air temperature follow the same sun and the day's minimum and maximum.
 Options: `--days` (up to 90), `--cities_per_region`, `--users_per_community` and `--systems_per_community`
 (a number or a range like `2-3`), `--seed` to generate the same data again.
@@ -126,6 +128,29 @@ To send real measurements, create the bridge user and pass its token to the brid
 docker exec iot_django_server python manage.py create_bridge_user
 pip install -r ArduinoBridge/requirements.txt
 SOLAR_BRIDGE_TOKEN=<token> python ArduinoBridge/SensorsBridge.py
+```
+
+## System monitoring
+
+Every 2 days each system is checked on the last 2 complete days (`SP/monitoring.py`):
+
+1. Its production is compared with what the forecast model predicts with the real weather of those days: if it is
+   more than 10% lower, the system has an anomaly.
+2. Only then it is compared with up to 10 nearby systems: those of the communities of the same city (first the ones
+   of its own community) or, if there are none with readings, those of the nearest city that has some. If at least
+   half of them also have an anomaly the cause is shared by the area and the panels are just **dirty**; otherwise
+   the system has a **probable fault**.
+
+The result (`OK`, `Pannelli sporchi`, `Probabile guasto`) and the date of the check are saved in the system and shown
+on its page. Days with less than 90% of the readings are not compared: the system is checked again at the next run.
+
+The `scheduler` service of docker compose runs `check_systems` every hour, and the command checks only the systems
+not checked in the last 2 days, so each system is checked every 2 days even after a restart. `populate_db` runs it
+at the end. To run it by hand:
+
+```bash
+docker exec iot_django_server python manage.py check_systems                   # systems due for a check
+docker exec iot_django_server python manage.py check_systems --all --community 3   # every system of community 3
 ```
 
 ## Tests
