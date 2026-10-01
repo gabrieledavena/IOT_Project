@@ -60,6 +60,12 @@ main > .container {
     color: #198754 !important;
 }
 
+/* Schede (nav-pills): la scheda attiva ha il fondo verde, quindi il testo bianco */
+.nav-pills .nav-link.active {
+    color: #ffffff !important;
+    background-color: #198754;
+}
+
 .navbar .badge {
     padding: 0.3em 0.6em !important;
     font-size: 0.8em;
@@ -109,4 +115,34 @@ main > .container {
     position: absolute;
     transform: translateX(-50%);
     white-space: nowrap;
+}
+
+/* --- Avanzamento di un intervento (richiesta, accettazione, esecuzione) --- */
+
+.intervention-step {
+    width: 3rem;
+    height: 3rem;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: #e9ecef;
+    color: #adb5bd;
+    font-size: 1.2rem;
+}
+
+.intervention-step.done {
+    background-color: #198754;
+    color: #ffffff;
+}
+
+/* --- Mappa della città dentro la scheda meteo delle dashboard di produzione --- */
+
+.dashboard-map {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-height: 220px;
+    border: 0;
 }

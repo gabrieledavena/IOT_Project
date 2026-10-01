@@ -3,23 +3,16 @@ import hashlib
 from datetime import date
 
 import pandas as pd
-from django.contrib.auth.mixins import UserPassesTestMixin
 from django.shortcuts import redirect, render
 from django.views import View
 
 from forecast.predictor import ForecastError, estimate_past_year_yield
+from SP.access import StaffRequiredMixin
 
 from .calculator import calculate_roi
 from .forms import RoiForm
 
 MONTHS = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
-
-
-class StaffRequiredMixin(UserPassesTestMixin):
-    """Solo staff e amministratori: gli altri utenti ricevono 403, i visitatori vanno al login."""
-
-    def test_func(self):
-        return self.request.user.is_staff or self.request.user.is_superuser
 
 
 def simulate(form):

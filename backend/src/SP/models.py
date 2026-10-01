@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
+from django.utils import timezone
 
 
 class City(models.Model):
@@ -115,6 +117,20 @@ class PhotovoltaicSystem(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def can_request_intervention(self):
+        """True se ha un probabile guasto non ancora affidato a un intervento.
+
+        Il guasto è già affidato se c'è una richiesta aperta o un intervento eseguito dopo il controllo
+        che lo ha rilevato: in quel caso si aspetta il prossimo controllo della produzione.
+        """
+        if self.status != self.Status.FAULT:
+            return False
+        handled = ~Q(status=Intervention.Status.DONE)
+        if self.last_check:
+            handled |= Q(executed_on__gte=timezone.localdate(self.last_check))
+        return not self.interventions.filter(handled).exists()
+
 
 class Intervention(models.Model):
     class InterventionType(models.TextChoices):
@@ -127,22 +143,66 @@ class Intervention(models.Model):
         MINOR_REPLACEMENT = "RPL", "Sostituzione Componenti Minori (Fusibili/Connettori)"
         OTHER = "OTH", "Altro"
 
+    class Status(models.TextChoices):
+        REQUESTED = "REQ", "Richiesta inoltrata"
+        ACCEPTED = "ACC", "Richiesta accettata"
+        DONE = "DON", "Intervento eseguito"
+
     system = models.ForeignKey(
         PhotovoltaicSystem,
         on_delete=models.CASCADE,
         related_name="interventions",
         verbose_name="Impianto Fotovoltaico",
     )
-    code = models.CharField(max_length=3, choices=InterventionType.choices, verbose_name="Tipo di Intervento")
-    date = models.DateField()
-    notes = models.TextField(null=True, blank=True)
-    cost = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    status = models.CharField(max_length=3, choices=Status.choices, default=Status.REQUESTED, verbose_name="Stato")
+
+    # Richiesta del cliente
+    requested_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="requested_interventions",
+        verbose_name="Richiesto da",
+    )
+    requested_at = models.DateTimeField(default=timezone.now, verbose_name="Data della richiesta")
+    preferred_date = models.DateField(verbose_name="Giorno richiesto dal cliente")
+    customer_notes = models.TextField(blank=True, default="", verbose_name="Note del cliente")
+
+    # Gestione: il membro dello staff che accetta la richiesta la prende in carico e ne registra l'esecuzione
+    staff = models.ForeignKey(
+        User, on_delete=models.PROTECT, null=True, blank=True, limit_choices_to={"is_staff": True},
+        related_name="managed_interventions", verbose_name="Gestito da",
+    )
+    code = models.CharField(max_length=3, choices=InterventionType.choices, blank=True, verbose_name="Tipo di Intervento")
+    executed_on = models.DateField(null=True, blank=True, verbose_name="Data di esecuzione")
+    notes = models.TextField(null=True, blank=True, verbose_name="Lavori eseguiti")
+    cost = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True, verbose_name="Costo (€)")
 
     def __str__(self):
-        return f"Intervento su {self.system.name} del {self.date}"
+        return f"Intervento su {self.system.name} richiesto il {timezone.localdate(self.requested_at):%d/%m/%Y}"
+
+    def clean(self):
+        errors = {}
+        if self.staff and not self.staff.is_staff:
+            errors["staff"] = "Gli interventi sono gestiti dai membri dello staff."
+        if self.status != self.Status.REQUESTED:
+            if not self.staff_id:
+                errors["staff"] = "Una richiesta accettata deve essere gestita da un membro dello staff."
+            if not self.code:
+                errors["code"] = "Indica il tipo di intervento."
+        if self.status == self.Status.DONE and not self.executed_on:
+            errors["executed_on"] = "Indica il giorno in cui è stato eseguito l'intervento."
+        if errors:
+            raise ValidationError(errors)
+
+    @property
+    def is_done(self):
+        return self.status == self.Status.DONE
+
+    @property
+    def number(self):
+        """Numero dell'intervento nei report, come INT-00042."""
+        return f"INT-{self.pk:05d}"
 
     class Meta:
-        ordering = ["-date"]
+        ordering = ["-requested_at"]
         verbose_name = "Intervento di Manutenzione"
         verbose_name_plural = "Interventi di Manutenzione"
 

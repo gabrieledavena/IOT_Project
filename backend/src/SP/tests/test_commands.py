@@ -13,7 +13,7 @@ from rest_framework.authtoken.models import Token
 
 from SP.management.commands.import_cities import NAME_COLUMN, PROVINCE_COLUMN, REGION_COLUMN
 from SP.management.commands.populate_db import FALLBACK_CITIES, PERFORMANCE_RATIO
-from SP.models import City, Community, Customer, PanelData, PhotovoltaicSystem
+from SP.models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem
 from SP.production import daily_energy_kwh, get_system_series
 from SP.tests.helpers import DEFAULT_WEATHER, FakeModel, create_community, fake_weather
 from SP.weather import WeatherUnavailable
@@ -84,6 +84,11 @@ class PopulateDbCommandTests(TestCase):
         self.assertTrue(User.objects.get(username="user5").check_password("password123"))
         self.assertEqual(Token.objects.get(user__username="bridge").key, token)
         self.assertTrue(User.objects.get(username="consulente").is_staff)
+        # Tecnici dello staff con lo storico degli interventi già eseguiti (uno per impianto, qui sono 6)
+        self.assertTrue(User.objects.get(username="tecnico1").is_staff)
+        done = Intervention.objects.filter(status=Intervention.Status.DONE)
+        self.assertEqual(done.count(), 6)
+        self.assertFalse(done.filter(staff__is_staff=False).exists())
 
     def test_cities_per_region(self):
         self.populate(FakeModel(3.0), "--cities_per_region", "2")

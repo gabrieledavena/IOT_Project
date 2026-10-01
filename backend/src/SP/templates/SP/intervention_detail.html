@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% load interventions %}
+
+{% block title %}Intervento {{ intervention.number }}{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12 d-flex flex-wrap justify-content-between align-items-end gap-3">
+            <div>
+                <a href="{% url 'SP:intervention_dashboard' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutti gli interventi</a>
+                <h2 class="fw-bold text-dark mb-1 mt-2">Intervento {{ intervention.number }}</h2>
+                <span class="badge rounded-pill {{ intervention.status|status_badge }} fs-6">
+                    <i class="fas {{ intervention.status|status_icon }} me-1"></i>{{ intervention.get_status_display }}
+                </span>
+            </div>
+            <a href="{% url 'SP:intervention_report' intervention.pk %}" class="btn btn-outline-secondary rounded-pill" target="_blank">
+                <i class="fas fa-print me-2"></i>Stampa report
+            </a>
+        </div>
+    </div>
+
+    <!-- Avanzamento: richiesta, accettazione, esecuzione -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+            <div class="row text-center g-3">
+                <div class="col-4">
+                    <div class="intervention-step done"><i class="fas fa-paper-plane"></i></div>
+                    <div class="fw-bold small mt-2">Richiesta inoltrata</div>
+                    <div class="text-muted small">{{ intervention.requested_at|date:"d/m/Y H:i" }}</div>
+                </div>
+                <div class="col-4">
+                    <div class="intervention-step {% if intervention.staff %}done{% endif %}"><i class="fas fa-user-check"></i></div>
+                    <div class="fw-bold small mt-2">Richiesta accettata</div>
+                    <div class="text-muted small">{% if intervention.staff %}da {{ intervention.staff|person }}{% else %}in attesa{% endif %}</div>
+                </div>
+                <div class="col-4">
+                    <div class="intervention-step {% if intervention.is_done %}done{% endif %}"><i class="fas fa-check-double"></i></div>
+                    <div class="fw-bold small mt-2">Intervento eseguito</div>
+                    <div class="text-muted small">{% if intervention.is_done %}il {{ intervention.executed_on|date:"d/m/Y" }}{% else %}giorno richiesto: {{ intervention.preferred_date|date:"d/m/Y" }}{% endif %}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-7 d-flex flex-column gap-4">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase mb-3">Richiesta del cliente</h6>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5 text-muted fw-normal">Richiesta da</dt>
+                        <dd class="col-sm-7">{{ intervention.requested_by|person }}</dd>
+                        <dt class="col-sm-5 text-muted fw-normal">Data della richiesta</dt>
+                        <dd class="col-sm-7">{{ intervention.requested_at|date:"d/m/Y H:i" }}</dd>
+                        <dt class="col-sm-5 text-muted fw-normal">Giorno richiesto</dt>
+                        <dd class="col-sm-7 fw-bold">{{ intervention.preferred_date|date:"l d/m/Y" }}</dd>
+                        <dt class="col-sm-5 text-muted fw-normal">Note del cliente</dt>
+                        <dd class="col-sm-7 mb-0">{{ intervention.customer_notes|default:"-"|linebreaksbr }}</dd>
+                    </dl>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <h6 class="text-muted fw-bold text-uppercase mb-0">Impianto</h6>
+                        <a href="{% url 'SP:photovoltaic_system' system.id %}" class="small text-decoration-none">Produzione <i class="fas fa-arrow-right ms-1"></i></a>
+                    </div>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5 text-muted fw-normal">Impianto</dt>
+                        <dd class="col-sm-7 fw-bold">{{ system.name }}</dd>
+                        <dt class="col-sm-5 text-muted fw-normal">Community</dt>
+                        <dd class="col-sm-7">{{ system.community.name }}{% if system.community.owner %} <span class="text-muted">(titolare {{ system.community.owner }})</span>{% endif %}</dd>
+                        <dt class="col-sm-5 text-muted fw-normal">Città</dt>
+                        <dd class="col-sm-7">{{ system.community.city }}</dd>
+                        <dt class="col-sm-5 text-muted fw-normal">Potenza installata</dt>
+                        <dd class="col-sm-7">{{ system.max_power|floatformat:2 }} kWp · {{ system.brand }}</dd>
+                        <dt class="col-sm-5 text-muted fw-normal">Stato attuale</dt>
+                        <dd class="col-sm-7 mb-0">{{ system.get_status_display }} <span class="text-muted small">(controllo del {{ system.last_check|date:"d/m/Y H:i"|default:"-" }})</span></dd>
+                    </dl>
+                </div>
+            </div>
+
+            {% if history %}
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-body p-4">
+                        <h6 class="text-muted fw-bold text-uppercase mb-3">Altri interventi sull'impianto</h6>
+                        <ul class="list-unstyled mb-0">
+                            {% for other in history %}
+                                <li class="d-flex justify-content-between align-items-center py-2 {% if not forloop.last %}border-bottom{% endif %}">
+                                    <span>
+                                        <a href="{% url 'SP:intervention_detail' other.pk %}" class="text-decoration-none">{{ other.number }}</a>
+                                        <span class="text-muted small ms-2">{{ other.get_code_display|default:"Tipo da definire" }} · richiesto il {{ other.requested_at|date:"d/m/Y" }}</span>
+                                    </span>
+                                    <span class="badge rounded-pill {{ other.status|status_badge }}">{{ other.get_status_display }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 border-top border-5 {% if intervention.is_done %}border-success{% elif intervention.staff %}border-primary{% else %}border-warning{% endif %}">
+                <div class="card-body p-4">
+                    {% if intervention.status == intervention.Status.REQUESTED %}
+                        <h5 class="fw-bold text-dark">Valuta la richiesta</h5>
+                        <p class="text-muted small">Indica di che intervento si tratta. Accettando, la richiesta passa in carico a te e il cliente la vede accettata nella pagina dell'impianto.</p>
+                    {% elif form %}
+                        <h5 class="fw-bold text-dark">Intervento eseguito</h5>
+                        <p class="text-muted small">L'intervento è in carico a te: dopo averlo eseguito, registra cosa è stato fatto.</p>
+                    {% elif intervention.is_done %}
+                        <h5 class="fw-bold text-dark">Intervento eseguito</h5>
+                    {% else %}
+                        <h5 class="fw-bold text-dark">In carico a {{ intervention.staff|person }}</h5>
+                        <p class="text-muted small mb-0">Solo il membro dello staff che ha accettato la richiesta può registrare l'intervento eseguito.</p>
+                    {% endif %}
+
+                    {% if form %}
+                        <form method="post" novalidate>
+                            {% csrf_token %}
+                            {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+                            {% for field in form %}
+                                <div class="mb-3">
+                                    <label for="{{ field.id_for_label }}" class="form-label fw-bold small text-muted">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+                                    {{ field }}
+                                    {% for error in field.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                                </div>
+                            {% endfor %}
+                            <button type="submit" class="btn {% if intervention.status == intervention.Status.REQUESTED %}btn-success{% else %}btn-primary{% endif %} w-100 rounded-pill fw-bold mt-2">
+                                {% if intervention.status == intervention.Status.REQUESTED %}
+                                    <i class="fas fa-check me-2"></i>Accetta richiesta
+                                {% else %}
+                                    <i class="fas fa-clipboard-check me-2"></i>Registra intervento eseguito
+                                {% endif %}
+                            </button>
+                        </form>
+                    {% elif intervention.is_done %}
+                        <dl class="row mb-0">
+                            <dt class="col-5 text-muted fw-normal">Eseguito il</dt><dd class="col-7 fw-bold">{{ intervention.executed_on|date:"d/m/Y" }}</dd>
+                            <dt class="col-5 text-muted fw-normal">Tipo</dt><dd class="col-7">{{ intervention.get_code_display }}</dd>
+                            <dt class="col-5 text-muted fw-normal">Tecnico</dt><dd class="col-7">{{ intervention.staff|person }}</dd>
+                            <dt class="col-5 text-muted fw-normal">Costo</dt><dd class="col-7">{% if intervention.cost is not None %}{{ intervention.cost|floatformat:"2g" }} €{% else %}-{% endif %}</dd>
+                            <dt class="col-12 text-muted fw-normal mt-2">Lavori eseguiti</dt><dd class="col-12 mb-0">{{ intervention.notes|linebreaksbr }}</dd>
+                        </dl>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

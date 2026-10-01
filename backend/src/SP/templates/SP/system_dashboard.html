@@ -1,4 +1,5 @@
 {% extends "SP/dashboard_base.html" %}
+{% load interventions %}
 
 {% block title %}Produzione impianto{% endblock %}
 
@@ -25,9 +26,15 @@
         <div class="text-md-end">
             <div class="text-muted small">Data ultimo controllo</div>
             <div class="fw-bold text-dark">{{ system.last_check|date:"d/m/Y H:i"|default:"-" }}</div>
+            {% if can_request_intervention %}
+                <a href="{% url 'SP:intervention_request' system.id %}" class="btn btn-danger rounded-pill fw-bold mt-3">
+                    <i class="fas fa-tools me-2"></i>Richiedi intervento
+                </a>
+            {% endif %}
         </div>
     </div>
 </div>
+
 {% endif %}
 {% endblock %}
 
@@ -62,4 +69,49 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block page_end %}
+{% if interventions %}
+<div class="card border-0 shadow-sm rounded-4 mb-4 mt-2">
+    <div class="card-body p-4">
+        <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-tools me-2"></i>Interventi di manutenzione</h6>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr class="small text-muted">
+                        <th>Richiesto il</th><th>Giorno richiesto</th><th>Tipo</th><th>Stato</th><th>Tecnico</th><th>Eseguito il</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for intervention in interventions %}
+                        <tr>
+                            <td>{{ intervention.requested_at|date:"d/m/Y" }}</td>
+                            <td>{{ intervention.preferred_date|date:"d/m/Y" }}</td>
+                            <td>{{ intervention.get_code_display|default:"Da definire" }}</td>
+                            <td>
+                                <span class="badge rounded-pill {{ intervention.status|status_badge }}">
+                                    <i class="fas {{ intervention.status|status_icon }} me-1"></i>{{ intervention.get_status_display }}
+                                </span>
+                            </td>
+                            <td>{{ intervention.staff|person }}</td>
+                            <td>{{ intervention.executed_on|date:"d/m/Y"|default:"-" }}</td>
+                            <td class="text-end text-nowrap">
+                                {% if user.is_staff %}
+                                    <a href="{% url 'SP:intervention_detail' intervention.pk %}" class="btn btn-sm btn-outline-primary rounded-pill">Gestisci</a>
+                                {% endif %}
+                                {% if intervention.is_done %}
+                                    <a href="{% url 'SP:intervention_report' intervention.pk %}" class="btn btn-sm btn-outline-secondary rounded-pill" target="_blank">
+                                        <i class="fas fa-print me-1"></i>Report
+                                    </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

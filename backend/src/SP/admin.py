@@ -47,5 +47,6 @@ class PanelDataAdmin(admin.ModelAdmin):
 
 @admin.register(Intervention)
 class InterventionAdmin(admin.ModelAdmin):
-    list_display = ("id", "system", "date", "code")
-    list_select_related = ("system",)
+    list_display = ("id", "system", "status", "requested_at", "preferred_date", "staff", "code", "executed_on")
+    list_select_related = ("system", "staff")
+    list_filter = ("status", "code")

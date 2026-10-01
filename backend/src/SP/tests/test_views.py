@@ -139,7 +139,7 @@ class SystemListAndRegistrationTests(TestCase):
             "name": "Anna", "surname": "Bianchi", "community": community.id,
         })
 
-        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertRedirects(response, "/sp/dashboard/", fetch_redirect_response=False)
         customer = Customer.objects.get(user__username="nuovo")
         self.assertEqual(customer.community, community)
         # Primo utente della community: ne diventa il titolare

@@ -67,6 +67,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'SP.context_processors.pending_interventions',
             ],
         },
     },
@@ -124,7 +125,8 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 LOGIN_URL = 'SP:login'
-LOGIN_REDIRECT_URL = 'home'
+# Dopo il login: la dashboard con gli impianti dell'utente e il loro stato
+LOGIN_REDIRECT_URL = 'SP:dashboard'
 LOGOUT_REDIRECT_URL = 'SP:login'
 
 # Default primary key field type
