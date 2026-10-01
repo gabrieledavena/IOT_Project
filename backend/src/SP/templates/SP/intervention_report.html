@@ -1,0 +1,107 @@
+{% load interventions %}<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report intervento {{ intervention.number }} · Solar Family</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; color: #212529; background: #f4f6f9; }
+        .sheet { max-width: 210mm; margin: 2rem auto; padding: 15mm; background: #fff; box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, .08); }
+        .brand { color: #198754; font-weight: 700; }
+        h2 { font-size: 1.05rem; font-weight: 700; text-transform: uppercase; color: #198754; margin: 1.5rem 0 0.6rem; }
+        table { font-size: 0.9rem; }
+        table td:first-child { width: 40%; color: #6c757d; }
+        .status { display: inline-block; padding: 0.15rem 0.6rem; border: 2px solid #198754; border-radius: 1rem; font-weight: 700; color: #198754; }
+        .status.open { border-color: #6c757d; color: #6c757d; }
+        .work { white-space: pre-line; border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 0.8rem; min-height: 5rem; font-size: 0.9rem; }
+        .signature { border-top: 1px solid #212529; padding-top: 0.3rem; margin-top: 3.5rem; font-size: 0.8rem; color: #6c757d; }
+        .notes { font-size: 0.75rem; color: #6c757d; }
+        @page { size: A4; margin: 12mm; }
+        @media print {
+            body { background: #fff; }
+            .sheet { margin: 0; padding: 0; box-shadow: none; max-width: none; }
+            .no-print { display: none !important; }
+            h2 { break-after: avoid; }
+            tr { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+<div class="no-print d-flex justify-content-center gap-2 mt-3">
+    <button type="button" class="btn btn-success" onclick="window.print()">Stampa / salva in PDF</button>
+    {% if user.is_staff %}
+        <a href="{% url 'SP:intervention_detail' intervention.pk %}" class="btn btn-outline-secondary">Torna all'intervento</a>
+    {% else %}
+        <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-secondary">Torna all'impianto</a>
+    {% endif %}
+</div>
+
+<div class="sheet">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <div class="brand fs-4">Solar Family</div>
+            <div class="text-muted small">Comunità energetiche e impianti fotovoltaici</div>
+        </div>
+        <div class="text-end">
+            <div class="fw-bold">Rapporto di intervento n. {{ intervention.number }}</div>
+            <div class="small">Stampato il {{ today|date:"d/m/Y" }}</div>
+        </div>
+    </div>
+
+    <h1 class="fs-3 fw-bold mt-4 mb-2">Rapporto di intervento tecnico</h1>
+    <span class="status{% if not intervention.is_done %} open{% endif %}">{{ intervention.get_status_display }}</span>
+
+    <h2>Cliente</h2>
+    <table class="table table-sm">
+        <tbody>
+            <tr><td>Community</td><td>{{ system.community.name }}</td></tr>
+            <tr><td>Titolare</td><td>{{ system.community.owner|default:"-" }}</td></tr>
+            <tr><td>Città</td><td>{{ system.community.city }}</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Impianto</h2>
+    <table class="table table-sm">
+        <tbody>
+            <tr><td>Impianto</td><td>{{ system.name }}</td></tr>
+            <tr><td>Potenza installata</td><td>{{ system.max_power|floatformat:2 }} kWp</td></tr>
+            <tr><td>Moduli</td><td>{{ system.brand }}{% if system.area %} · {{ system.area|floatformat:1 }} m²{% endif %}{% if system.inclination %} · inclinazione {{ system.inclination }}°{% endif %}</td></tr>
+            <tr><td>Stato al momento della stampa</td><td>{{ system.get_status_display }} (controllo del {{ system.last_check|date:"d/m/Y H:i"|default:"-" }})</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Richiesta</h2>
+    <table class="table table-sm">
+        <tbody>
+            <tr><td>Data della richiesta</td><td>{{ intervention.requested_at|date:"d/m/Y H:i" }}</td></tr>
+            <tr><td>Richiesta da</td><td>{{ intervention.requested_by|person }}</td></tr>
+            <tr><td>Giorno richiesto</td><td>{{ intervention.preferred_date|date:"l d/m/Y" }}</td></tr>
+            <tr><td>Note del cliente</td><td>{{ intervention.customer_notes|default:"-"|linebreaksbr }}</td></tr>
+        </tbody>
+    </table>
+
+    <h2>Intervento</h2>
+    <table class="table table-sm">
+        <tbody>
+            <tr><td>Tipo di intervento</td><td>{{ intervention.get_code_display|default:"Da definire" }}</td></tr>
+            <tr><td>Tecnico responsabile</td><td>{{ intervention.staff|person }}</td></tr>
+            <tr><td>Data di esecuzione</td><td>{{ intervention.executed_on|date:"d/m/Y"|default:"Non ancora eseguito" }}</td></tr>
+            <tr><td>Costo</td><td>{% if intervention.cost is not None %}{{ intervention.cost|floatformat:"2g" }} €{% else %}-{% endif %}</td></tr>
+        </tbody>
+    </table>
+    <div class="small text-muted mb-1">Lavori eseguiti</div>
+    <div class="work">{{ intervention.notes|default:"" }}</div>
+
+    <div class="row mt-4">
+        <div class="col-6"><div class="signature">Firma del tecnico</div></div>
+        <div class="col-6"><div class="signature">Firma del cliente</div></div>
+    </div>
+
+    <p class="notes mt-4 mb-0">
+        L'intervento è stato richiesto dopo il controllo automatico della produzione, che confronta ogni due giorni
+        l'energia prodotta dall'impianto con la previsione del modello per il meteo reale e con gli impianti vicini.
+    </p>
+</div>
+</body>
+</html>

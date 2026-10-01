@@ -3,7 +3,7 @@
 
 {% comment %}
 Struttura comune delle dashboard di produzione (community e impianto).
-Blocchi: heading, subheading, status, production_row_margin, extra_charts.
+Blocchi: heading, subheading, status, production_row_margin, extra_charts, page_end (in fondo alla pagina).
 {% endcomment %}
 
 {% block content %}
@@ -39,7 +39,7 @@ Blocchi: heading, subheading, status, production_row_margin, extra_charts.
     {% elif chart_data %}
         <!-- Main Stats and Weather -->
         <div class="row g-4 mb-5">
-            <div class="col-md-8">
+            <div class="col-md-5 col-lg-4">
                 <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5 hover-lift">
                     <div class="card-body p-4">
                         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -54,64 +54,67 @@ Blocchi: heading, subheading, status, production_row_margin, extra_charts.
                 </div>
             </div>
 
-            <div class="col-md-4">
-                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-info border-5 hover-lift overflow-hidden position-relative">
-                    <div class="card-body p-4 position-relative" style="z-index: 1;">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div>
-                                <h6 class="text-muted fw-bold text-uppercase mb-0">Previsioni Meteo</h6>
-                                <h4 class="fw-bold text-dark mb-0 mt-1"><i class="fas fa-map-marker-alt text-danger me-2"></i>{{ community.city.name }}</h4>
+            <div class="col-md-7 col-lg-8">
+                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-info border-5 overflow-hidden">
+                    <div class="card-body p-4">
+                        <div class="row g-4 h-100">
+                            <div class="{% if community.city.has_coordinates %}col-lg-6{% else %}col-12{% endif %}">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div>
+                                        <h6 class="text-muted fw-bold text-uppercase mb-0">Previsioni Meteo</h6>
+                                        <h4 class="fw-bold text-dark mb-0 mt-1"><i class="fas fa-map-marker-alt text-danger me-2"></i>{{ community.city.name }}</h4>
+                                    </div>
+                                    <div class="bg-info bg-opacity-25 text-info p-3 rounded-circle shadow-sm">
+                                        <span class="fs-4">☁️</span>
+                                    </div>
+                                </div>
+
+                                {% if weather %}
+                                    <div class="row text-center mb-3 mt-4">
+                                        <div class="col-6">
+                                            <div class="small text-muted fw-bold text-uppercase">Max</div>
+                                            <div class="fs-3 fw-bold text-danger">{{ weather.temp_max|default:"-" }}°C</div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="small text-muted fw-bold text-uppercase">Min</div>
+                                            <div class="fs-3 fw-bold text-primary">{{ weather.temp_min|default:"-" }}°C</div>
+                                        </div>
+                                    </div>
+
+                                    <hr class="text-muted opacity-25">
+
+                                    <div class="row text-center mt-3">
+                                        <div class="col-6">
+                                            <div class="small text-muted fw-bold text-uppercase"><i class="fas fa-cloud me-1"></i>Nuvole</div>
+                                            <div class="fw-bold fs-5 text-dark">{{ weather.cloud_cover|default:"-" }}%</div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="small text-muted fw-bold text-uppercase"><i class="fas fa-sun me-1 text-warning"></i>Solare</div>
+                                            <div class="fw-bold fs-5 text-dark">{{ weather.solar_radiation|default:"-" }} <span class="fs-6 small">MJ/m²</span></div>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <div class="alert alert-light border shadow-sm mt-4 text-center">
+                                        <p class="text-muted mb-0 small">Dati meteo non disponibili per la data selezionata.</p>
+                                    </div>
+                                {% endif %}
                             </div>
-                            <div class="bg-info bg-opacity-25 text-info p-3 rounded-circle shadow-sm" style="backdrop-filter: blur(2px);">
-                                <span class="fs-4">☁️</span>
-                            </div>
+
+                            {% if community.city.has_coordinates %}
+                                <div class="col-lg-6">
+                                    <iframe
+                                        class="dashboard-map rounded-3"
+                                        title="Mappa di {{ community.city.name }}"
+                                        loading="lazy"
+                                        referrerpolicy="no-referrer-when-downgrade"
+                                        src="https://maps.google.com/maps?q={{ community.city.latitude|stringformat:'f' }},{{ community.city.longitude|stringformat:'f' }}&hl=it&z=13&amp;output=embed&disableDefaultUI=true">
+                                    </iframe>
+                                </div>
+                            {% endif %}
                         </div>
-
-                        {% if weather %}
-                            <div class="row text-center mb-3 mt-4">
-                                <div class="col-6">
-                                    <div class="small text-muted fw-bold text-uppercase">Max</div>
-                                    <div class="fs-3 fw-bold text-danger">{{ weather.temp_max|default:"-" }}°C</div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="small text-muted fw-bold text-uppercase">Min</div>
-                                    <div class="fs-3 fw-bold text-primary">{{ weather.temp_min|default:"-" }}°C</div>
-                                </div>
-                            </div>
-
-                            <hr class="text-muted opacity-25">
-
-                            <div class="row text-center mt-3">
-                                <div class="col-6">
-                                    <div class="small text-muted fw-bold text-uppercase"><i class="fas fa-cloud me-1"></i>Nuvole</div>
-                                    <div class="fw-bold fs-5 text-dark">{{ weather.cloud_cover|default:"-" }}%</div>
-                                </div>
-                                <div class="col-6">
-                                    <div class="small text-muted fw-bold text-uppercase"><i class="fas fa-sun me-1 text-warning"></i>Solare</div>
-                                    <div class="fw-bold fs-5 text-dark">{{ weather.solar_radiation|default:"-" }} <span class="fs-6 small">MJ/m²</span></div>
-                                </div>
-                            </div>
-                        {% else %}
-                            <div class="alert alert-light border shadow-sm mt-4 text-center">
-                                <p class="text-muted mb-0 small">Dati meteo non disponibili per la data selezionata.</p>
-                            </div>
-                        {% endif %}
                     </div>
                 </div>
             </div>
-
-            {% if community.city.has_coordinates %}
-            <div class="col-md-4">
-                <iframe
-                    width="100%"
-                    height="100%"
-                    frameborder="0"
-                    style="border:0;"
-                    referrerpolicy="no-referrer-when-downgrade"
-                    src="https://maps.google.com/maps?q={{ community.city.latitude|stringformat:'f' }},{{ community.city.longitude|stringformat:'f' }}&hl=it&z=13&amp;output=embed&disableDefaultUI=true">
-                </iframe>
-            </div>
-            {% endif %}
         </div>
 
         <!-- Production Chart -->
@@ -146,6 +149,8 @@ Blocchi: heading, subheading, status, production_row_margin, extra_charts.
             <i class="fas fa-info-circle me-2"></i>Nessun dato disponibile per la selezione corrente.
         </div>
     {% endif %}
+
+    {% if not error %}{% block page_end %}{% endblock %}{% endif %}
 </div>
 {% endblock %}
 

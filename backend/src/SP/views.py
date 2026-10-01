@@ -5,19 +5,18 @@ from statistics import mean
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.shortcuts import redirect, render
 from django.views import View
 
 from forecast.reference_data import REFERENCE_YEARS
 
+from .access import NOT_A_CUSTOMER, AccessError, is_staff, visible_system
 from .benchmark import measured_city_yields, reference_yields
 from .forms import CustomerRegistrationForm
 from .models import City, Customer, PanelData, PhotovoltaicSystem
 from .production import energy_kwh, get_community_series, get_system_series
 from .weather import get_day_weather
-
-NOT_A_CUSTOMER = "Utente non associato a un cliente."
 
 # Come mostrare l'esito del controllo automatico (SP/monitoring.py) nella pagina dell'impianto
 SYSTEM_STATUSES = {
@@ -43,10 +42,62 @@ def register_view(request):
         form = CustomerRegistrationForm(request.POST)
         if form.is_valid():
             login(request, form.save())
-            return redirect("home")
+            return redirect("SP:dashboard")
     else:
         form = CustomerRegistrationForm()
     return render(request, "SP/register.html", {"form": form})
+
+
+class UserDashboardView(LoginRequiredMixin, View):
+    """Pagina dopo il login: gli impianti con il loro stato e il link alla pagina di dettaglio.
+
+    I clienti vedono quelli della propria community, lo staff quelli di tutte; prima quelli con un problema.
+    """
+
+    template_name = "SP/user_dashboard.html"
+    per_page = 50
+    Status = PhotovoltaicSystem.Status
+    checked = Q(last_check__isnull=False)
+    # Filtri per stato: mai controllati a parte, perché il loro stato è solo quello iniziale
+    FILTERS = {
+        "fault": checked & Q(status=Status.FAULT),
+        "dirty": checked & Q(status=Status.DIRTY),
+        "ok": checked & Q(status=Status.OK),
+        "new": Q(last_check__isnull=True),
+    }
+
+    def get(self, request):
+        staff = is_staff(request.user)
+        community = None if staff else Customer.community_of(request.user)
+        if not staff and community is None:
+            return render(request, self.template_name, {"error": NOT_A_CUSTOMER}, status=403)
+
+        systems = PhotovoltaicSystem.objects.select_related("community__city")
+        if community:
+            systems = systems.filter(community=community)
+        counts = systems.aggregate(total=Count("id"), **{
+            name: Count("id", filter=condition) for name, condition in self.FILTERS.items()
+        })
+        selected = request.GET.get("status") if request.GET.get("status") in self.FILTERS else ""
+        if selected:
+            systems = systems.filter(self.FILTERS[selected])
+        priority = Case(
+            *(When(self.FILTERS[name], then=Value(rank)) for rank, name in enumerate(self.FILTERS)),
+            output_field=IntegerField(),
+        )
+        systems = systems.order_by(priority, "community__name", "name")
+
+        page = Paginator(systems, self.per_page).get_page(request.GET.get("page"))
+        context = {
+            "staff": staff,
+            "community": community,
+            "is_owner": bool(community) and community.owner_id is not None and community.owner.user_id == request.user.id,
+            "counts": counts,
+            "selected": selected,
+            "page": page,
+            "rows": [(system, SYSTEM_STATUSES[system.status] if system.last_check else None) for system in page],
+        }
+        return render(request, self.template_name, context)
 
 
 class CityBenchmarkView(View):
@@ -127,15 +178,6 @@ class PhotovoltaicSystemListView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
-class DashboardError(Exception):
-    """La dashboard non si può mostrare: il messaggio compare nella pagina con lo status HTTP indicato."""
-
-    def __init__(self, message, status):
-        super().__init__(message)
-        self.message = message
-        self.status = status
-
-
 class ProductionDashboardView(LoginRequiredMixin, View):
     """Parte comune delle dashboard: giorno selezionato, energia prodotta, grafici, meteo e mappa.
 
@@ -162,7 +204,7 @@ class ProductionDashboardView(LoginRequiredMixin, View):
     def get(self, request, **kwargs):
         try:
             self.load(request, **kwargs)
-        except DashboardError as error:
+        except AccessError as error:
             return render(request, self.template_name, {"error": error.message}, status=error.status)
 
         days = [day.isoformat() for day in self.get_readings().dates("time_stamp", "day", order="DESC")]
@@ -192,7 +234,7 @@ class SolarCommunityView(ProductionDashboardView):
     def load(self, request):
         self.community = Customer.community_of(request.user)
         if self.community is None:
-            raise DashboardError(NOT_A_CUSTOMER, status=403)
+            raise AccessError(NOT_A_CUSTOMER, status=403)
 
     def get_readings(self):
         return PanelData.objects.filter(system__community=self.community)
@@ -205,18 +247,8 @@ class PhotovoltaicSystemView(ProductionDashboardView):
     template_name = "SP/system_dashboard.html"
 
     def load(self, request, system_id):
-        self.system = PhotovoltaicSystem.objects.select_related("community__city").filter(pk=system_id).first()
-        if self.system is None:
-            raise DashboardError("Impianto non trovato.", status=404)
+        self.system = visible_system(request.user, system_id)
         self.community = self.system.community
-
-        # Staff e superuser vedono tutti gli impianti, i clienti solo quelli della propria community
-        if not (request.user.is_staff or request.user.is_superuser):
-            customer_community = Customer.community_of(request.user)
-            if customer_community is None:
-                raise DashboardError(NOT_A_CUSTOMER, status=403)
-            if customer_community != self.community:
-                raise DashboardError("Non sei autorizzato a visualizzare questo impianto.", status=403)
 
     def get_readings(self):
         return PanelData.objects.filter(system=self.system)
@@ -225,4 +257,11 @@ class PhotovoltaicSystemView(ProductionDashboardView):
         return get_system_series(self.system, day)
 
     def get_extra_context(self):
-        return {"system": self.system, "status": SYSTEM_STATUSES[self.system.status]}
+        is_member = Customer.community_of(self.request.user) == self.community
+        return {
+            "system": self.system,
+            "status": SYSTEM_STATUSES[self.system.status],
+            # Lo stato delle richieste di intervento, visibile anche al cliente
+            "interventions": self.system.interventions.select_related("staff")[:5],
+            "can_request_intervention": is_member and self.system.can_request_intervention,
+        }

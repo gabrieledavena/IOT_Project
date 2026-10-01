@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Richiesta di intervento{% endblock %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css"
+          integrity="sha384-RkASv+6KfBMW9eknReJIJ6b3UnjKOKC5bOUaNgIY778NFbQ8MtWq9Lr/khUgqtTt" crossorigin="anonymous">
+{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    {% if error %}
+        {% include "partials/error_alert.html" %}
+    {% else %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <a href="{% url 'SP:photovoltaic_system' system.id %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Torna all'impianto</a>
+                <h2 class="fw-bold text-dark mb-0 mt-2">Richiesta di intervento</h2>
+                <p class="text-muted">Scegli il giorno in cui un tecnico può intervenire su <strong>{{ system.name }}</strong>.</p>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-danger border-5">
+                    <div class="card-body p-4">
+                        <h6 class="text-muted fw-bold text-uppercase mb-3">Impianto</h6>
+                        <h4 class="fw-bold text-dark mb-1">{{ system.name }}</h4>
+                        <p class="text-muted mb-3"><i class="fas fa-building me-1"></i>{{ system.community.name }} · {{ system.community.city }}</p>
+                        <span class="badge rounded-pill bg-danger fs-6 mb-3"><i class="fas fa-exclamation-triangle me-1"></i>{{ system.get_status_display }}</span>
+                        <ul class="list-unstyled text-muted small mb-0">
+                            <li class="mb-1">Rilevato dal controllo del {{ system.last_check|date:"d/m/Y H:i" }}</li>
+                            <li class="mb-1">Potenza installata: <strong>{{ system.max_power|floatformat:2 }} kWp</strong></li>
+                            <li>Pannelli: <strong>{{ system.brand }}</strong></li>
+                        </ul>
+                        <hr>
+                        <p class="small text-muted mb-0">
+                            Negli ultimi giorni l'impianto ha prodotto oltre il 10% in meno del previsto, mentre gli impianti
+                            vicini producono regolarmente. Un tecnico verificherà pannelli e inverter.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <form method="post" class="card border-0 shadow-sm rounded-4">
+                    {% csrf_token %}
+                    <div class="card-body p-4">
+                        {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+                        <div class="row g-4">
+                            <div class="col-md-6">
+                                <label for="{{ form.preferred_date.id_for_label }}" class="form-label fw-bold text-muted">{{ form.preferred_date.label }}</label>
+                                {{ form.preferred_date }}
+                                <div id="intervention-calendar" class="mt-1"></div>
+                                <p class="small text-muted mt-2 mb-0">
+                                    Disponibile dal {{ first_day|date:"d/m/Y" }} al {{ last_day|date:"d/m/Y" }}.
+                                    <span id="chosen-day" class="d-block fw-bold text-dark mt-1" aria-live="polite"></span>
+                                </p>
+                                {% for error in form.preferred_date.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="col-md-6 d-flex flex-column">
+                                <label for="{{ form.customer_notes.id_for_label }}" class="form-label fw-bold text-muted">{{ form.customer_notes.label }}</label>
+                                {{ form.customer_notes }}
+                                {% for error in form.customer_notes.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                                <p class="small text-muted mt-3">
+                                    Lo staff valuterà la richiesta e la accetterà prendendola in carico: ne vedrai lo stato nella
+                                    pagina dell'impianto.
+                                </p>
+                                <div class="mt-auto d-flex gap-2">
+                                    <button type="submit" class="btn btn-danger rounded-pill fw-bold flex-grow-1">
+                                        <i class="fas fa-paper-plane me-2"></i>Invia richiesta
+                                    </button>
+                                    <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-secondary rounded-pill">Annulla</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if not error %}
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"
+            integrity="sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/l10n/it.js"
+            integrity="sha384-XmcRqh+m1SV0CoktEURItyTPYrm018EIiFIZnaIFP1lRvHRna9DduiTvO+TQzcTJ" crossorigin="anonymous"></script>
+    <script src="{% static 'SP/intervention_calendar.js' %}"></script>
+{% endif %}
+{% endblock %}

@@ -49,10 +49,11 @@ The system optimizes self-consumption, monitors performance, and use collective 
 |---|---|
 | Sensor node (temperature, light, estimated power) and Python bridge | Implemented (the bridge sends data over HTTP; MQTT is not used yet) |
 | REST API for the measurements (token for the bridge, per-community read access) | Implemented |
-| Web dashboards for communities and single systems, with weather and map | Implemented |
+| Web dashboards for communities and single systems, with weather and map; after login, a dashboard with the status of each system | Implemented |
 | 3. Short-term production forecasting | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
 | 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented, with the automatic check of each system (see [System monitoring](#system-monitoring)) |
 | ROI calculator with printable quote, for staff consultants | Implemented |
+| Maintenance interventions: requests of the customers, staff dashboard and printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
 | Actuators, 1. self-consumption optimization, 2. CO₂ savings, 5. energy community simulation | Not implemented yet |
 
 ## Project structure
@@ -66,6 +67,8 @@ backend/src/
     production.py         Minute-by-minute production series and energy (kWh)
     benchmark.py          Measured yield per installed kW of every city, expected yield of the reference locations
     monitoring.py         Check of each system: production compared with the forecast and with nearby systems
+    interventions.py      Maintenance interventions: request, staff dashboard, acceptance, execution, report
+    access.py             Who can see which systems, staff-only pages
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
     api.py                REST API used by the bridge
     views.py              Registration, city benchmark and production dashboards
@@ -105,7 +108,9 @@ admin; the owner can only be deleted together with the community.
 of every region (about 50), named after its owner (like "Rossi Trasporti"), with 2–4 users and 3–8 systems (the
 headquarters, warehouses, offices, shops, ...), and one reading per minute for the last 7 days: about 250 systems
 and 2.5 million readings, generated in about 20 seconds. The users log in as `user0`, `user1`, ...; the staff
-account `consulente` (for the ROI calculator) has the same password, `password123`.
+accounts `consulente` (for the ROI calculator) and the technicians `tecnico1` and `tecnico2` have the same password,
+`password123`. After checking the systems it creates intervention requests for most of the probable faults (some
+already accepted) and 25 interventions executed in the last months.
 
 The readings are realistic: every day each system produces what the forecast model predicts with the real weather
 of its city (Open-Meteo), scaled by the orientation of the system (up to 7% less). About 5% of the systems have a
@@ -152,6 +157,23 @@ at the end. To run it by hand:
 docker exec iot_django_server python manage.py check_systems                   # systems due for a check
 docker exec iot_django_server python manage.py check_systems --all --community 3   # every system of community 3
 ```
+
+## Maintenance interventions
+
+When the check finds a probable fault, the page of the system shows the **Richiedi intervento** button to the users
+of its community: it opens a calendar to choose the day of the intervention (from tomorrow to two months ahead). A
+system can have one open request at a time; after an intervention a new one can be requested only if a later check
+finds the fault again. The users see the status of the requests on the page of the system:
+
+1. **Richiesta inoltrata**: the request waits for the staff;
+2. **Richiesta accettata**: a staff member chose the kind of intervention and accepted the request, taking charge of
+   it. Only that staff member can record the execution;
+3. **Intervento eseguito**: the date of execution, the work done and the cost are recorded.
+
+The staff dashboard (`/sp/interventions/`, menu **Interventi**, with the number of requests to accept) shows the
+requests to accept, the interventions in progress and the executed ones, with the requests whose day has passed.
+Every intervention has a printable report (or saved as PDF from the browser), available to the staff and to the
+users of the community.
 
 ## Tests
 

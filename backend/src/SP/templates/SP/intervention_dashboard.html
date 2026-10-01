@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% load interventions %}
+
+{% block title %}Interventi{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2 class="fw-bold text-dark mb-0">Interventi di manutenzione</h2>
+            <p class="text-muted">Richieste dei clienti, interventi in corso ed eseguiti. Accettando una richiesta la prendi in carico.</p>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-6 col-lg-3">
+            <a href="?tab=pending" class="card border-0 shadow-sm rounded-4 h-100 border-start border-warning border-5 text-decoration-none hover-lift">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase small mb-2">Da accettare</h6>
+                    <h2 class="fw-bold text-dark mb-0">{{ pending_count }}</h2>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-lg-3">
+            <a href="?tab=accepted&amp;mine=1" class="card border-0 shadow-sm rounded-4 h-100 border-start border-primary border-5 text-decoration-none hover-lift">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase small mb-2">In carico a te</h6>
+                    <h2 class="fw-bold text-dark mb-0">{{ my_open_count }}</h2>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-danger border-5">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase small mb-2">Giorno richiesto passato</h6>
+                    <h2 class="fw-bold {% if overdue_count %}text-danger{% else %}text-dark{% endif %} mb-0">{{ overdue_count }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <a href="?tab=done" class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5 text-decoration-none hover-lift">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase small mb-2">Eseguiti negli ultimi 30 giorni</h6>
+                    <h2 class="fw-bold text-dark mb-0">{{ done_last_30_days }}</h2>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+                <ul class="nav nav-pills">
+                    {% for key, label, count in tabs %}
+                        <li class="nav-item">
+                            <a class="nav-link{% if key == tab %} active{% endif %}" href="?tab={{ key }}{% if mine %}&amp;mine=1{% endif %}"
+                               {% if key == tab %}aria-current="page"{% endif %}>
+                                {{ label }} <span class="badge rounded-pill {% if key == tab %}bg-light text-dark{% else %}bg-secondary{% endif %} ms-1">{{ count }}</span>
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+                {% if tab != "pending" %}
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Responsabile">
+                        <a href="?tab={{ tab }}" class="btn btn-outline-primary{% if not mine %} active{% endif %}">Tutti</a>
+                        <a href="?tab={{ tab }}&amp;mine=1" class="btn btn-outline-primary{% if mine %} active{% endif %}">Solo i miei</a>
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr class="small text-muted">
+                            <th>N.</th>
+                            <th>Impianto</th>
+                            <th>Community</th>
+                            {% if tab == "done" %}
+                                <th>Eseguito il</th><th>Tipo</th><th>Tecnico</th><th class="text-end">Costo</th>
+                            {% else %}
+                                <th>Richiesto il</th><th>Giorno richiesto</th><th>{% if tab == "pending" %}Richiesto da{% else %}Tipo{% endif %}</th>
+                                {% if tab == "accepted" %}<th>Tecnico</th>{% endif %}
+                            {% endif %}
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for intervention in page %}
+                            <tr>
+                                <td class="text-muted small">{{ intervention.number }}</td>
+                                <td class="fw-bold">{{ intervention.system.name }}</td>
+                                <td>{{ intervention.system.community.name }}<div class="small text-muted">{{ intervention.system.community.city }}</div></td>
+                                {% if tab == "done" %}
+                                    <td>{{ intervention.executed_on|date:"d/m/Y" }}</td>
+                                    <td>{{ intervention.get_code_display }}</td>
+                                    <td>{{ intervention.staff|person }}</td>
+                                    <td class="text-end">{% if intervention.cost is not None %}{{ intervention.cost|floatformat:"2g" }} €{% else %}-{% endif %}</td>
+                                {% else %}
+                                    <td>{{ intervention.requested_at|date:"d/m/Y H:i" }}</td>
+                                    <td>
+                                        {% if intervention.preferred_date < today %}
+                                            <span class="text-danger fw-bold" title="Il giorno richiesto è passato">{{ intervention.preferred_date|date:"d/m/Y" }} <i class="fas fa-exclamation-circle"></i></span>
+                                        {% else %}
+                                            {{ intervention.preferred_date|date:"D d/m/Y" }}
+                                        {% endif %}
+                                    </td>
+                                    {% if tab == "pending" %}
+                                        <td>{{ intervention.requested_by|person }}</td>
+                                    {% else %}
+                                        <td>{{ intervention.get_code_display }}</td>
+                                        <td>
+                                            {{ intervention.staff|person }}
+                                            {% if intervention.staff_id == user.id %}<span class="badge bg-primary ms-1">Tu</span>{% endif %}
+                                        </td>
+                                    {% endif %}
+                                {% endif %}
+                                <td class="text-end text-nowrap">
+                                    {% if intervention.is_done %}
+                                        <a href="{% url 'SP:intervention_report' intervention.pk %}" class="btn btn-sm btn-outline-secondary rounded-pill" target="_blank"><i class="fas fa-print"></i></a>
+                                    {% endif %}
+                                    <a href="{% url 'SP:intervention_detail' intervention.pk %}" class="btn btn-sm btn-primary rounded-pill">
+                                        {% if tab == "pending" %}Valuta{% else %}Apri{% endif %} <i class="fas fa-arrow-right ms-1"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="8" class="text-muted text-center py-4">
+                                {% if tab == "pending" %}Nessuna richiesta da accettare.{% elif tab == "accepted" %}Nessun intervento in corso.{% else %}Nessun intervento eseguito.{% endif %}
+                            </td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if page.has_other_pages %}
+                <nav class="mt-4" aria-label="Pagine">
+                    <ul class="pagination justify-content-center mb-0">
+                        {% if page.has_previous %}
+                            <li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if mine %}&amp;mine=1{% endif %}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>
+                        {% endif %}
+                        <li class="page-item disabled"><span class="page-link">Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span></li>
+                        {% if page.has_next %}
+                            <li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if mine %}&amp;mine=1{% endif %}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>
+                        {% endif %}
+                    </ul>
+                </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

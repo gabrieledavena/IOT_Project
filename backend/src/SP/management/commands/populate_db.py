@@ -3,7 +3,9 @@ import math
 import random
 import time
 from collections import Counter, defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
+from datetime import time as dt_time
+from datetime import timezone as dt_timezone
 from itertools import repeat
 
 import numpy as np
@@ -19,12 +21,34 @@ from scipy.signal import lfilter
 from scipy.stats import norm
 
 from forecast.predictor import ForecastError, load_model, predict_specific_yield
-from SP.models import City, Community, Customer, PanelData, PhotovoltaicSystem
+from SP.models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem
 from SP.weather import WeatherUnavailable, get_daily_weather
 
 CUSTOMER_PASSWORD = "password123"
-# Staff account (same password) to try the ROI calculator, reserved to staff
+# Staff accounts (same password): a consultant for the ROI calculator and the technicians who handle the
+# maintenance interventions
 STAFF_USERNAME = "consulente"
+TECHNICIANS = [("tecnico1", "Paolo", "Neri"), ("tecnico2", "Sara", "Gialli")]
+
+# Demo interventions: notes of the customers, and work done and cost range (€) for each kind of intervention
+CUSTOMER_NOTES = [
+    "", "L'inverter segnala un errore da qualche giorno.", "Il tecnico può accedere al tetto dalle 8 alle 12.",
+    "La produzione è molto bassa anche nelle giornate di sole.", "Chiamare il titolare prima di venire.",
+]
+FAULT_KINDS = ["INV", "SBT", "RPL"]
+COMPLETED_WORK = {
+    "CLN": ("Lavaggio dei moduli con acqua demineralizzata e spazzole morbide.", (150, 300)),
+    "ELC": ("Serraggio dei morsetti del quadro di campo e verifica dell'isolamento.", (120, 250)),
+    "INF": ("Ispezione termografica dei moduli: nessun punto caldo rilevato.", (200, 400)),
+    "INV": ("Sostituita la scheda di potenza dell'inverter, verificati i parametri di rete.", (600, 1500)),
+    "RPL": ("Sostituiti i fusibili di stringa e due connettori MC4 ossidati.", (80, 200)),
+    "SBT": ("Sostituiti due moduli con celle danneggiate, individuate con la termocamera.", (400, 900)),
+}
+# Share of the systems with a probable fault whose customers have not requested an intervention yet, and of
+# the requests already accepted; executed interventions of the last months on random systems
+NOT_REQUESTED_SHARE = 0.3
+ACCEPTED_SHARE = 0.5
+PAST_INTERVENTIONS = 25
 
 # The Open-Meteo forecast API, used for the weather of the recent days, goes back about 3 months
 MAX_DAYS = 90
@@ -200,6 +224,8 @@ class Command(BaseCommand):
         started = time.monotonic()
         self.random = random.Random(options['seed'])
         self.rng = np.random.default_rng(options['seed'])
+        # All demo users have the same password: hashing it once saves almost a second per user
+        self.password = make_password(CUSTOMER_PASSWORD)
 
         with transaction.atomic():
             self.stdout.write('Deleting old data...')
@@ -211,6 +237,11 @@ class Command(BaseCommand):
                 username=STAFF_USERNAME, password=CUSTOMER_PASSWORD, first_name='Consulente', last_name='Demo',
                 is_staff=True,
             )
+            technicians = [
+                User.objects.create(username=username, password=self.password, first_name=first_name, last_name=last_name,
+                                    is_staff=True)
+                for username, first_name, last_name in TECHNICIANS
+            ]
             self.stdout.write(f'Generating the readings of {len(systems)} systems...')
             readings = self.create_panel_data(systems, options['days'])
 
@@ -226,6 +257,59 @@ class Command(BaseCommand):
             call_command('check_systems', stdout=self.stdout)
         except CommandError as error:
             self.stdout.write(self.style.WARNING(f'Systems not checked: {error}'))
+
+        requested, done = self.create_interventions(technicians)
+        self.stdout.write(self.style.SUCCESS(
+            f'Created {requested} intervention requests for the probable faults and {done} past interventions, '
+            f'handled by {", ".join(username for username, _, _ in TECHNICIANS)}.'
+        ))
+
+    def create_interventions(self, technicians):
+        """Requests for the systems with a probable fault and interventions executed in the last months.
+
+        Returns how many requests and executed interventions it created.
+        """
+        today, now = timezone.localdate(), timezone.now()
+        requested = 0
+        # The owner of the company asks for the intervention; some requests are already accepted
+        for system in PhotovoltaicSystem.objects.filter(status=PhotovoltaicSystem.Status.FAULT).select_related('community__owner'):
+            if self.random.random() < NOT_REQUESTED_SHARE:
+                continue
+            intervention = Intervention(
+                system=system,
+                requested_by=system.community.owner.user,
+                requested_at=now - timedelta(hours=self.random.randint(1, 36)),
+                preferred_date=today + timedelta(days=self.random.randint(2, 14)),
+                customer_notes=self.random.choice(CUSTOMER_NOTES),
+            )
+            if self.random.random() < ACCEPTED_SHARE:
+                intervention.status = Intervention.Status.ACCEPTED
+                intervention.staff = self.random.choice(technicians)
+                intervention.code = self.random.choice(FAULT_KINDS)
+            intervention.save()
+            requested += 1
+
+        systems = list(PhotovoltaicSystem.objects.select_related('community__owner'))
+        past = self.random.sample(systems, min(PAST_INTERVENTIONS, len(systems)))
+        for system in past:
+            executed_on = today - timedelta(days=self.random.randint(10, 180))
+            requested_on = executed_on - timedelta(days=self.random.randint(3, 15))
+            code = self.random.choice(list(COMPLETED_WORK))
+            work, (min_cost, max_cost) = COMPLETED_WORK[code]
+            Intervention.objects.create(
+                system=system,
+                status=Intervention.Status.DONE,
+                requested_by=system.community.owner.user,
+                requested_at=datetime.combine(requested_on, dt_time(9), tzinfo=dt_timezone.utc)
+                             + timedelta(minutes=self.random.randint(0, 9 * 60)),
+                preferred_date=executed_on - timedelta(days=self.random.randint(0, 2)),
+                staff=self.random.choice(technicians),
+                code=code,
+                executed_on=executed_on,
+                notes=work,
+                cost=round(self.random.uniform(min_cost, max_cost), -1),
+            )
+        return requested, len(past)
 
     def delete_old_data(self):
         PanelData.objects.all().delete()
@@ -260,8 +344,6 @@ class Command(BaseCommand):
 
         The first user of each company is its owner, whose surname gives the company its name.
         """
-        # All users have the same password: hashing it once saves almost a second per user
-        password = make_password(CUSTOMER_PASSWORD)
         communities, users = [], 0
         for city in cities:
             owner_surname = self.random.choice(SURNAMES)
@@ -273,7 +355,7 @@ class Command(BaseCommand):
                 first_name = self.random.choice(FIRST_NAMES)
                 surname = owner_surname if index == 0 else self.random.choice(SURNAMES)
                 user = User.objects.create(
-                    username=f'user{users}', password=password, first_name=first_name, last_name=surname
+                    username=f'user{users}', password=self.password, first_name=first_name, last_name=surname
                 )
                 # The first one becomes the owner (see Customer.save)
                 Customer.objects.create(user=user, name=first_name, surname=surname, community=community)

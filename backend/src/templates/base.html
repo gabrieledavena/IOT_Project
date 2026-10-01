@@ -44,10 +44,20 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'home' %}"><i class="fas fa-home me-1"></i>Home</a>
                     </li>
+                    {% if user.is_authenticated %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'SP:dashboard' %}"><i class="fas fa-th-large me-1"></i>Dashboard</a>
+                    </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'SP:city_benchmark' %}"><i class="fas fa-map-marked-alt me-1"></i>Confronto città</a>
                     </li>
                     {% if user.is_staff %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'SP:intervention_dashboard' %}"><i class="fas fa-tools me-1"></i>Interventi
+                            {% if pending_interventions %}<span class="badge rounded-pill bg-danger ms-1" title="Richieste da accettare">{{ pending_interventions }}</span>{% endif %}
+                        </a>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'roi:calculator' %}"><i class="fas fa-calculator me-1"></i>ROI</a>
                     </li>
