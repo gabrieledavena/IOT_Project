@@ -51,6 +51,32 @@ class FakeNode:
         self.closed = True
 
 
+class BootloaderNode(FakeNode):
+    """Una scheda USB appena riavviata dall'apertura della porta, come Arduino Mega: se riceve dati mentre è
+    attivo il bootloader resta in attesa di essere programmata e lo sketch non parte più."""
+
+    def __init__(self, clock, boot_time=1.0, announces=True):
+        super().__init__(clock, protocol.identity_line())
+        self.boot_time, self.announces = boot_time, announces
+        self.stuck = self.booted = False
+
+    def write_line(self, line):
+        if self.clock() < self.boot_time:
+            self.stuck = True
+        elif not self.stuck:
+            super().write_line(line)
+
+    def readline(self):
+        self.clock.now += 0.1
+        if self.stuck:
+            return None
+        if not self.booted and self.clock() >= self.boot_time:
+            # Lo sketch parte e si presenta (o, se non lo fa, chiede la configurazione)
+            self.booted = True
+            return protocol.identity_line() if self.announces else "READY"
+        return self.pending.pop(0) if self.pending else None
+
+
 class ListPortsTests(unittest.TestCase):
     def test_macos_tries_only_usb_boards_and_virtual_ports(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -102,6 +128,33 @@ class IdentifyTests(unittest.TestCase):
 
         self.assertEqual(identity, protocol.Identity("SolarNode", 1))
         self.assertGreaterEqual(node.queries, 3)
+
+    def test_nothing_is_written_while_the_board_restarts(self):
+        node = BootloaderNode(self.clock)
+
+        identity, _ = serial_ports.identify(node, timeout=3, clock=self.clock)
+
+        self.assertEqual(identity, protocol.Identity("SolarNode", 1))
+        self.assertEqual(node.queries, 0)
+
+    def test_board_that_does_not_introduce_itself_is_asked_once_started(self):
+        node = BootloaderNode(self.clock, announces=False)
+
+        identity, _ = serial_ports.identify(node, timeout=3, clock=self.clock)
+
+        self.assertEqual(identity, protocol.Identity("SolarNode", 1))
+        self.assertFalse(node.stuck)
+        # Ha chiesto appena lo sketch ha inviato READY, senza aspettare la fine di BOOT_WAIT
+        self.assertLess(self.clock.now, serial_ports.BOOT_WAIT)
+
+    def test_writing_during_the_bootloader_blocks_the_board(self):
+        # Il comportamento di prima: ID subito dopo l'apertura della porta
+        node = BootloaderNode(self.clock)
+
+        identity, _ = serial_ports.identify(node, timeout=3, clock=self.clock, boot_wait=0)
+
+        self.assertIsNone(identity)
+        self.assertTrue(node.stuck)
 
     def test_silent_port(self):
         identity, last_line = serial_ports.identify(FakeNode(self.clock), timeout=3, clock=self.clock)
@@ -221,22 +274,23 @@ class RealSerialPortTests(unittest.TestCase):
                     os.write(master, (protocol.identity_line() + "\r\n").encode())
 
     def test_finds_the_node_and_keeps_the_port_for_itself(self):
-        node, port = serial_ports.find_node([Port(self.path, VIRTUAL, "")], timeout=2, log=lambda message: None)
+        node, port = serial_ports.find_node([Port(self.path, VIRTUAL, "")], timeout=2, log=lambda message: None,
+                                            boot_wait=0.2)
         self.addCleanup(node.close)
 
         self.assertEqual(port.device, self.path)
         # Un secondo bridge non può aprire la stessa porta e rubare i dati al primo
-        other, outcome = serial_ports.probe(Port(self.path, VIRTUAL, ""), timeout=1)
+        other, outcome = serial_ports.probe(Port(self.path, VIRTUAL, ""), timeout=1, boot_wait=0.2)
         self.assertIsNone(other)
         self.assertIn("occupata da un altro programma", outcome)
 
     def test_explicit_port(self):
-        node, port = serial_ports.connect(self.path, timeout=2)
+        node, port = serial_ports.connect(self.path, timeout=2, boot_wait=0.2)
         node.close()
         self.assertEqual(port.device, self.path)
 
         with self.assertRaisesRegex(NodeNotFound, "usare la porta /dev/does-not-exist: non si può aprire"):
-            serial_ports.connect("/dev/does-not-exist", timeout=1)
+            serial_ports.connect("/dev/does-not-exist", timeout=1, boot_wait=0.2)
 
 
 class SerialNodeTests(unittest.TestCase):

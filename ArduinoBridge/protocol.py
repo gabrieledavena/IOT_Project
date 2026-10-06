@@ -1,7 +1,7 @@
 """Protocollo seriale (UART, 9600 baud) tra Arduino e bridge: una riga di testo per messaggio, campi separati da |.
 
 Arduino -> bridge
-    ID|SolarNode|1        identità: tipo di dispositivo e versione del protocollo (risposta a ID)
+    ID|SolarNode|1        identità: tipo di dispositivo e versione del protocollo (all'accensione e in risposta a ID)
     READY                 Arduino non ha ancora la configurazione (la chiede ogni 2 secondi)
     ACK|CFG|6000          configurazione ricevuta: potenza massima in W
     D|23.40|812.0|3420.5  misura: temperatura (°C), luce (lux), potenza stimata (W)
