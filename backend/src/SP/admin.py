@@ -1,6 +1,9 @@
 from django.contrib import admin
+from django.db import transaction
+from django.utils import timezone
 
-from .models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem
+from . import mqtt
+from .models import City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem
 
 
 @admin.register(City)
@@ -37,6 +40,32 @@ class PhotovoltaicSystemAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "max_power", "community", "status", "last_check")
     list_select_related = ("community",)
     list_filter = ("status",)
+    # Aggiornati da save_model quando cambia lo stato
+    readonly_fields = ("previous_status", "status_changed_at")
+
+    def save_model(self, request, obj, form, change):
+        if change and "status" in form.changed_data:
+            # Un cambiamento di stato come quelli del controllo automatico: il dispositivo lo riconosce
+            # dalla data e reagisce (con DRT aziona la pompa)
+            obj.previous_status, obj.status_changed_at = form.initial["status"], timezone.now()
+        super().save_model(request, obj, form, change)
+        # Il dispositivo dell'impianto riceve subito i dati aggiornati, come la potenza massima
+        if change:
+            transaction.on_commit(lambda: mqtt.publish_state([obj]))
+
+
+@admin.register(Device)
+class DeviceAdmin(admin.ModelAdmin):
+    """Solo consultazione: installazione e credenziali si gestiscono dalla pagina Installazioni."""
+
+    list_display = ("username", "system", "installed_by", "installed_at", "online", "last_seen", "last_cleaning")
+    list_select_related = ("system", "installed_by")
+    list_filter = ("online",)
+    readonly_fields = ("system", "installed_by", "installed_at", "online", "last_seen", "pump_running", "last_cleaning")
+    exclude = ("token_hash",)
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(PanelData)

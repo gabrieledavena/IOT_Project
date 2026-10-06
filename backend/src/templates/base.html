@@ -31,7 +31,7 @@
     </div>
     {% endif %}
 
-    <nav class="navbar navbar-expand-lg navbar-light shadow-sm sticky-top">
+    <nav class="navbar navbar-expand-xl navbar-light shadow-sm sticky-top">
         <div class="container">
             <a class="navbar-brand d-flex align-items-center py-0" href="{% url 'home' %}">
                 <i class="fas fa-solar-panel me-2"></i> Solar Family
@@ -40,7 +40,7 @@
                 <span class="navbar-toggler-icon" style="width: 1.0em; height: 1.0em;"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0 align-items-center">
+                <ul class="navbar-nav me-auto mb-2 mb-xl-0 align-items-center">
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'home' %}"><i class="fas fa-home me-1"></i>Home</a>
                     </li>
@@ -59,6 +59,9 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="{% url 'SP:installation_list' %}"><i class="fas fa-microchip me-1"></i>Installazioni</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="{% url 'roi:calculator' %}"><i class="fas fa-calculator me-1"></i>ROI</a>
                     </li>
                     <li class="nav-item">
@@ -66,7 +69,7 @@
                     </li>
                     {% endif %}
                 </ul>
-                <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-center">
+                <ul class="navbar-nav ms-auto mb-2 mb-xl-0 align-items-center">
                     {% if user.is_authenticated %}
                         <li class="nav-item text-muted">
                             <span class="badge bg-light text-dark border rounded-pill">

@@ -5,7 +5,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from .models import Community, Customer, Intervention
+from .models import Community, Customer, Intervention, PhotovoltaicSystem
 
 class CustomerRegistrationForm(UserCreationForm):
     name = forms.CharField(max_length=100, required=True)
@@ -108,3 +108,40 @@ class InterventionCompletionForm(forms.ModelForm):
         if day < timezone.localdate(self.instance.requested_at):
             raise forms.ValidationError("L'intervento non può essere precedente alla richiesta.")
         return day
+
+
+class InstallationForm(forms.ModelForm):
+    """Nuova installazione: l'impianto viene creato nella community scelta, con il suo dispositivo."""
+
+    class Meta:
+        model = PhotovoltaicSystem
+        fields = ("community", "name", "max_power", "area", "brand", "inclination",
+                  "selling_rate_per_kwh", "buying_rate_per_kwh")
+        labels = {
+            "community": "Community", "name": "Nome dell'impianto", "max_power": "Potenza di picco (kW)",
+            "area": "Superficie (m²)", "brand": "Marca dei pannelli", "inclination": "Inclinazione (°)",
+            "selling_rate_per_kwh": "Prezzo di vendita (€/kWh)", "buying_rate_per_kwh": "Prezzo di acquisto (€/kWh)",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["community"].queryset = Community.objects.select_related("city").order_by("name")
+        self.fields["max_power"].min_value = 0.1
+        self.fields["max_power"].widget.attrs.update(min="0.1", step="0.01")
+        for name, field in self.fields.items():
+            field.widget.attrs["class"] = "form-select" if name == "community" else "form-control"
+
+    def clean_max_power(self):
+        max_power = self.cleaned_data["max_power"]
+        if max_power <= 0:
+            raise forms.ValidationError("La potenza di picco deve essere maggiore di zero.")
+        return max_power
+
+
+class ForceStatusForm(forms.Form):
+    """Simulazione: lo staff imposta lo stato dell'impianto come se l'avesse trovato il controllo automatico."""
+
+    status = forms.ChoiceField(
+        choices=PhotovoltaicSystem.Status.choices, label="Nuovo stato",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )

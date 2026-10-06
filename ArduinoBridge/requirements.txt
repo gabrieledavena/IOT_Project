@@ -1,2 +1,2 @@
 pyserial==3.5
-requests>=2.31
+paho-mqtt==2.1.0

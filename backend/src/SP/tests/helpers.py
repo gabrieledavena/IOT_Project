@@ -6,7 +6,7 @@ import pandas as pd
 from django.contrib.auth.models import User
 
 from forecast.predictor import FEATURE_COLUMNS
-from SP.models import City, Community, Customer, PanelData, PhotovoltaicSystem
+from SP.models import City, Community, Customer, Device, PanelData, PhotovoltaicSystem
 from SP.weather import WEATHER_COLUMNS
 
 DEFAULT_WEATHER = {
@@ -41,6 +41,14 @@ def create_customer(community, username="mario"):
 
 def create_system(community, name="System A", max_power=4.0):
     return PhotovoltaicSystem.objects.create(name=name, max_power=max_power, community=community)
+
+
+def install_device(system):
+    """Installa il dispositivo sull'impianto; restituisce il dispositivo e il suo token."""
+    device = Device(system=system)
+    token = device.new_token()
+    device.save()
+    return device, token
 
 
 def add_readings(system, start, powers, step_minutes=1, temperature=20.0, lightness=500.0):

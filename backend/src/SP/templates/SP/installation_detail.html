@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% load interventions %}
+
+{% block title %}Installazione {{ system.name }}{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12 d-flex flex-wrap justify-content-between align-items-end gap-3">
+            <div>
+                <a href="{% url 'SP:installation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le installazioni</a>
+                <h2 class="fw-bold text-dark mb-1 mt-2">{{ system.name }}</h2>
+                <span class="text-muted">{{ system.community.name }} · {{ system.community.city }} · {{ system.max_power|floatformat:2 }} kW</span>
+            </div>
+            <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-secondary rounded-pill"><i class="fas fa-chart-area me-2"></i>Produzione</a>
+        </div>
+    </div>
+
+    {% if token %}
+        <div class="card border-0 shadow-sm rounded-4 mb-4 border-start border-warning border-5">
+            <div class="card-body p-4">
+                <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-key me-1"></i>Credenziali del dispositivo</h6>
+                <p class="small text-muted">Copiale ora: il token viene mostrato una volta sola. Se lo perdi, genera nuove credenziali.</p>
+                <dl class="row mb-3">
+                    <dt class="col-sm-3 text-muted fw-normal">Username</dt><dd class="col-sm-9"><code>{{ device.username }}</code></dd>
+                    <dt class="col-sm-3 text-muted fw-normal">Token</dt><dd class="col-sm-9"><code class="user-select-all">{{ token }}</code></dd>
+                </dl>
+                <div class="small text-muted mb-1">Avvio del bridge con Arduino (SimulIDE o scheda USB): la porta seriale la trova il bridge, oppure indicala con <code>--serial</code>:</div>
+                <pre class="bg-light rounded-3 p-2 small user-select-all mb-3">{{ commands.serial }}</pre>
+                <div class="small text-muted mb-1">Avvio del bridge con un Arduino simulato (nessuna porta seriale):</div>
+                <pre class="bg-light rounded-3 p-2 small user-select-all mb-0">{{ commands.simulate }}</pre>
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="row g-4">
+        <div class="col-lg-7 d-flex flex-column gap-4">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase mb-3">Dispositivo</h6>
+                    {% if device %}
+                        <dl class="row mb-3">
+                            <dt class="col-sm-5 text-muted fw-normal">Username MQTT</dt>
+                            <dd class="col-sm-7"><code>{{ device.username }}</code></dd>
+                            <dt class="col-sm-5 text-muted fw-normal">Collegamento</dt>
+                            <dd class="col-sm-7">
+                                {% if device.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>
+                                {% else %}<span class="badge rounded-pill bg-secondary">Scollegato</span>{% endif %}
+                            </dd>
+                            <dt class="col-sm-5 text-muted fw-normal">Ultimo messaggio</dt>
+                            <dd class="col-sm-7">{{ device.last_seen|date:"d/m/Y H:i:s"|default:"-" }}</dd>
+                            <dt class="col-sm-5 text-muted fw-normal">Pompa di lavaggio</dt>
+                            <dd class="col-sm-7">{% if device.pump_running %}<span class="badge rounded-pill bg-info text-dark"><i class="fas fa-tint me-1"></i>In funzione</span>{% else %}Ferma{% endif %}</dd>
+                            <dt class="col-sm-5 text-muted fw-normal">Ultimo lavaggio</dt>
+                            <dd class="col-sm-7">{{ device.last_cleaning|date:"d/m/Y H:i:s"|default:"-" }}</dd>
+                            <dt class="col-sm-5 text-muted fw-normal">Installato</dt>
+                            <dd class="col-sm-7 mb-0">il {{ device.installed_at|date:"d/m/Y H:i" }}{% if device.installed_by %} da {{ device.installed_by|person }}{% endif %}</dd>
+                        </dl>
+                        <div class="d-flex flex-wrap gap-2">
+                            <form method="post" class="m-0" onsubmit="return confirm('Le credenziali attuali smetteranno di funzionare. Continuare?');">
+                                {% csrf_token %}
+                                <button type="submit" name="action" value="regenerate" class="btn btn-outline-warning rounded-pill"><i class="fas fa-key me-2"></i>Nuove credenziali</button>
+                            </form>
+                            <form method="post" class="m-0" onsubmit="return confirm('Disinstallare il dispositivo? Non potrà più collegarsi come questo impianto.');">
+                                {% csrf_token %}
+                                <button type="submit" name="action" value="uninstall" class="btn btn-outline-danger rounded-pill"><i class="fas fa-unlink me-2"></i>Disinstalla</button>
+                            </form>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">Nessun dispositivo installato: installalo per collegare un bridge (vero o simulato) come questo impianto.</p>
+                        <form method="post" class="m-0">
+                            {% csrf_token %}
+                            <button type="submit" name="action" value="install" class="btn btn-success rounded-pill fw-bold"><i class="fas fa-microchip me-2"></i>Installa dispositivo</button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase mb-3">Topic MQTT dell'impianto</h6>
+                    <ul class="list-unstyled small mb-0">
+                        {% for topic in topics %}<li><code>{{ topic }}</code></li>{% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase mb-3">Simula lo stato</h6>
+                    <dl class="row small mb-3">
+                        <dt class="col-6 text-muted fw-normal">Stato attuale</dt><dd class="col-6 fw-bold">{{ system.get_status_display }}</dd>
+                        <dt class="col-6 text-muted fw-normal">Ultimo cambiamento</dt><dd class="col-6">{{ system.status_changed_at|date:"d/m/Y H:i"|default:"-" }}</dd>
+                        <dt class="col-6 text-muted fw-normal">Ultimo controllo</dt><dd class="col-6 mb-0">{{ system.last_check|date:"d/m/Y H:i"|default:"-" }}</dd>
+                    </dl>
+                    <p class="small text-muted">Lo stato viene salvato come se l'avesse trovato il controllo automatico (il prossimo arriva dopo due giorni) e inviato al dispositivo: con <strong>Pannelli sporchi</strong> Arduino aziona la pompa per 10 secondi.</p>
+                    <form method="post" class="m-0">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="force_status">
+                        <label for="{{ form.status.id_for_label }}" class="form-label fw-bold small text-muted">{{ form.status.label }}</label>
+                        <div class="d-flex gap-2">
+                            {{ form.status }}
+                            <button type="submit" class="btn btn-primary rounded-pill text-nowrap">Imposta</button>
+                        </div>
+                        {% for error in form.status.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

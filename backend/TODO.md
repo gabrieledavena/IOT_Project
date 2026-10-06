@@ -6,7 +6,7 @@
 - [X] Dashboard per pannelli (PhotovoltaicPanel)
 - [x] Confronto con produzione città
 - [ ] Aggiungere controllo manutenzione (Intervention)
-- [ ] Controllare status Arduino
-- [ ] Pompa d'acqua per lavaggio pannelli sporchi (forse)
+- [x] Controllare status Arduino
+- [x] Pompa d'acqua per lavaggio pannelli sporchi
 - [ ] Pagine management manutenzione pannelli
 - [ ] Pensare ad altre features

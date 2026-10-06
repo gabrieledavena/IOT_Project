@@ -10,7 +10,6 @@ from itertools import repeat
 
 import numpy as np
 import pandas as pd
-from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -315,8 +314,7 @@ class Command(BaseCommand):
         PanelData.objects.all().delete()
         # Also deletes their users' profiles and their systems (an owner can only go with its community)
         Community.objects.all().delete()
-        # Keep the bridge user, otherwise its token would change at every run
-        User.objects.filter(is_superuser=False).exclude(username=settings.BRIDGE_USERNAME).delete()
+        User.objects.filter(is_superuser=False).delete()
 
     def pick_cities(self, cities_per_region):
         """Random cities with coordinates: in each region as many as cities_per_region (min, max) says."""

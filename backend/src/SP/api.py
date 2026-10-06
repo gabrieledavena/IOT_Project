@@ -1,4 +1,4 @@
-"""API REST delle misure dei pannelli: il bridge Arduino le invia, gli utenti le consultano."""
+"""API REST delle misure dei pannelli: gli utenti le consultano, i dispositivi le inviano via MQTT (SP/mqtt.py)."""
 from rest_framework import generics
 from rest_framework.permissions import DjangoModelPermissions
 
@@ -8,8 +8,7 @@ from .serializers import PanelDataSerializer
 
 class PanelDataAccessMixin:
     serializer_class = PanelDataSerializer
-    # Lettura per gli utenti autenticati; scrittura solo con i permessi add/change/delete
-    # su PanelData (l'utente del bridge ha solo add, i superuser tutti)
+    # Lettura per gli utenti autenticati; modifiche solo con i permessi change/delete su PanelData (i superuser)
     permission_classes = [DjangoModelPermissions]
 
     def get_queryset(self):
@@ -21,7 +20,7 @@ class PanelDataAccessMixin:
         return queryset.filter(system__community__customers__user=user)
 
 
-class PanelDataList(PanelDataAccessMixin, generics.ListCreateAPIView):
+class PanelDataList(PanelDataAccessMixin, generics.ListAPIView):
     pass
 
 

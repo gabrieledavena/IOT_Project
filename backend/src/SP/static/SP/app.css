@@ -53,6 +53,8 @@ main > .container {
     padding: 0.2rem 0.6rem !important;
     transition: color 0.2s ease;
     font-size: 0.9rem;
+    /* Icona e testo sulla stessa riga: se le voci non ci stanno, il menu si chiude nel pulsante */
+    white-space: nowrap;
 }
 
 .nav-link:hover,
@@ -74,6 +76,7 @@ main > .container {
 .navbar .btn {
     padding: 0.15rem 0.6rem;
     font-size: 0.85rem;
+    white-space: nowrap;
 }
 
 /* --- Card --- */

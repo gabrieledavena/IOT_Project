@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from forecast.predictor import ForecastError
+from SP import mqtt
 from SP.models import PhotovoltaicSystem
 from SP.monitoring import ANOMALY_THRESHOLD, CHECK_DAYS, SystemChecker, systems_to_check
 
@@ -33,6 +34,7 @@ class Command(BaseCommand):
             self.stdout.write('No system to check.')
             return
 
+        changed = []
         try:
             checker = SystemChecker(today=now.date())
             counts = Counter()
@@ -42,11 +44,14 @@ class Command(BaseCommand):
                     result = checker.check(system)
                     counts[result.status if result else None] += 1
                     self.stdout.write(f'  {system.name}: {self.describe(result)}')
-                    if result:
-                        system.status, system.last_check = result.status, now
-                        system.save(update_fields=['status', 'last_check'])
+                    if result and system.set_status(result.status, now):
+                        changed.append(system)
         except ForecastError as error:
             raise CommandError(str(error)) from error
+
+        # I dispositivi degli impianti il cui stato è cambiato lo ricevono via MQTT (con DRT parte il lavaggio)
+        if mqtt.publish_status(changed):
+            self.stdout.write(f'Status change sent to the devices of {len(mqtt.installed(changed))} systems.')
 
         summary = ', '.join(f'{counts[status]} {status.label}' for status in Status)
         self.stdout.write(self.style.SUCCESS(
