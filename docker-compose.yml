@@ -1,3 +1,13 @@
+# Impostazioni comuni ai servizi Django. La password con cui il server si collega al broker MQTT si può
+# cambiare con la variabile MQTT_SERVER_PASSWORD (per esempio in un file .env accanto a questo)
+x-django-environment: &django-environment
+  DEBUG: "1"
+  MQTT_HOST: mosquitto
+  MQTT_PORT: "1883"
+  MQTT_USERNAME: solarfamily-server
+  MQTT_PASSWORD: ${MQTT_SERVER_PASSWORD:-solarfamily-dev}
+  # Se userai un DB vero in futuro (Postgres), le credenziali vanno qui
+
 services:
   django-server:
     build: ./backend
@@ -9,9 +19,7 @@ services:
       - ./backend/src:/app
     ports:
       - "8000:8000"
-    environment:
-      - DEBUG=1
-      # Se userai un DB vero in futuro (Postgres), le credenziali vanno qui
+    environment: *django-environment
     restart: always
 
   # Controllo automatico degli impianti: ogni ora lancia check_systems, che controlla solo gli impianti non
@@ -22,11 +30,36 @@ services:
     command: sh -c "while true; do python manage.py check_systems; sleep 3600; done"
     volumes:
       - ./backend/src:/app
-    environment:
-      - DEBUG=1
+    environment: *django-environment
     depends_on:
       - django-server
     restart: always
 
-# Se in futuro vorrai aggiungere il bridge python come container,
-# potrai aggiungerlo qui sotto come nuovo servizio.
+  # Broker MQTT: smista i messaggi tra i bridge degli impianti e il server. Chi può collegarsi e a quali
+  # topic lo chiede a Django (plugin mosquitto-go-auth). La porta 1883 è aperta per i bridge sul PC.
+  mosquitto:
+    image: iegomez/mosquitto-go-auth:3.0.0-mosquitto_2.0.18
+    container_name: iot_mosquitto
+    volumes:
+      - ./mosquitto/mosquitto.conf:/etc/mosquitto/mosquitto.conf:ro
+      - mosquitto-data:/var/lib/mosquitto
+    ports:
+      - "1883:1883"
+    depends_on:
+      - django-server
+    restart: always
+
+  # Riceve dal broker le misure e gli eventi dei dispositivi e li salva; pubblica lo stato degli impianti
+  mqtt-worker:
+    build: ./backend
+    container_name: iot_mqtt_worker
+    command: python manage.py mqtt_worker
+    volumes:
+      - ./backend/src:/app
+    environment: *django-environment
+    depends_on:
+      - mosquitto
+    restart: always
+
+volumes:
+  mosquitto-data:

@@ -37,7 +37,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'rest_framework.authtoken',
     'corsheaders',
     'SP',
     'forecast',
@@ -83,6 +82,8 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        # Web, scheduler e worker MQTT scrivono sullo stesso file: si aspetta invece di fallire subito
+        'OPTIONS': {'timeout': 30},
     }
 }
 
@@ -137,9 +138,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True
 
 REST_FRAMEWORK = {
-    # Il bridge si autentica con un token, il browser con la sessione di login
+    # L'API serve solo a leggere le misure dal browser: il bridge le invia via MQTT
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
@@ -149,5 +149,20 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 100,
 }
 
-# Utente con cui il bridge invia le misure (vedi il comando create_bridge_user)
-BRIDGE_USERNAME = 'bridge'
+# Broker MQTT (Mosquitto, servizio mosquitto di docker compose). Il server vi si collega con questo account,
+# che può leggere e scrivere ogni topic; i dispositivi con le proprie credenziali (vedi SP/mqtt.py)
+MQTT_HOST = os.environ.get('MQTT_HOST', 'localhost')
+MQTT_PORT = int(os.environ.get('MQTT_PORT', '1883'))
+MQTT_USERNAME = os.environ.get('MQTT_USERNAME', 'solarfamily-server')
+MQTT_PASSWORD = os.environ.get('MQTT_PASSWORD', '')
+# Disattivato durante i test (config.test_runner): non si pubblica sul broker vero
+MQTT_ENABLED = os.environ.get('MQTT_ENABLED', '1') == '1'
+
+TEST_RUNNER = 'config.test_runner.TestRunner'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {'console': {'class': 'logging.StreamHandler'}},
+    'loggers': {'SP.mqtt': {'handlers': ['console'], 'level': 'INFO'}},
+}

@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, time, timedelta
 from datetime import timezone as dt_timezone
 from io import StringIO
@@ -10,7 +11,9 @@ from django.utils import timezone
 
 from SP.models import PanelData, PhotovoltaicSystem
 from SP.monitoring import SystemChecker
-from SP.tests.helpers import FakeModel, create_city, create_community, create_customer, create_system, fake_weather
+from SP.tests.helpers import (
+    FakeModel, create_city, create_community, create_customer, create_system, fake_weather, install_device,
+)
 from SP.weather import WeatherUnavailable
 
 Status = PhotovoltaicSystem.Status
@@ -154,6 +157,38 @@ class CheckSystemsCommandTests(MonitoringTestCase):
         self.assertIn("Checked 2 systems", self.run_command("--all"))
         PhotovoltaicSystem.objects.update(last_check=timezone.now() - timedelta(days=2))
         self.assertIn("Checked 2 systems", self.run_command())
+
+    def test_status_changes_are_sent_to_the_installed_devices(self):
+        # Due impianti su tre producono poco: i loro pannelli sono sporchi
+        dirty = self.recent_system(0.6, name="Sporco")
+        healthy = self.recent_system(1.0, name="Sano")
+        not_installed = self.recent_system(0.6, name="Senza dispositivo")
+        install_device(dirty)
+        install_device(healthy)
+
+        with mock.patch("SP.mqtt.publish", return_value=True) as publish:
+            output = self.run_command()
+
+        # Solo l'impianto installato il cui stato è cambiato (quello sano resta OK)
+        [message] = publish.call_args.args[0]
+        self.assertEqual(message["topic"], f"solarfamily/systems/{dirty.id}/status")
+        self.assertTrue(message["retain"])
+        payload = json.loads(message["payload"])
+        dirty.refresh_from_db()
+        self.assertEqual((payload["status"], payload["previous"]), ("DRT", "OK"))
+        self.assertEqual(payload["changed_at"], dirty.status_changed_at.isoformat())
+        self.assertEqual(dirty.status_changed_at, dirty.last_check)
+        self.assertIn("Status change sent to the devices of 1 systems", output)
+        not_installed.refresh_from_db()
+        self.assertEqual(not_installed.status, Status.DIRTY)
+
+        # Al controllo successivo lo stato non cambia: niente da inviare, la data del cambiamento resta quella
+        changed_at = dirty.status_changed_at
+        with mock.patch("SP.mqtt.publish", return_value=False) as publish:
+            self.run_command("--all")
+        self.assertEqual(publish.call_args.args[0], [])
+        dirty.refresh_from_db()
+        self.assertEqual(dirty.status_changed_at, changed_at)
 
     def test_community_option_and_systems_without_readings(self):
         self.recent_system(1.0)

@@ -4,6 +4,7 @@ django-cors-headers==4.9.0
 pandas==2.3.3
 openpyxl==3.1.5
 requests==2.34.2
+paho-mqtt==2.1.0
 geonamescache==3.0.2
 # The forecast model (.joblib) must be loaded with the scikit-learn version it was saved with
 scikit-learn==1.7.2

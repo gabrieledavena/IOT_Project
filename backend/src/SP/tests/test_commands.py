@@ -9,13 +9,12 @@ from django.contrib.auth.models import User
 from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.utils import timezone
-from rest_framework.authtoken.models import Token
 
 from SP.management.commands.import_cities import NAME_COLUMN, PROVINCE_COLUMN, REGION_COLUMN
 from SP.management.commands.populate_db import FALLBACK_CITIES, PERFORMANCE_RATIO
-from SP.models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem
+from SP.models import City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem
 from SP.production import daily_energy_kwh, get_system_series
-from SP.tests.helpers import DEFAULT_WEATHER, FakeModel, create_community, fake_weather
+from SP.tests.helpers import DEFAULT_WEATHER, FakeModel, create_community, create_system, fake_weather
 from SP.weather import WeatherUnavailable
 
 
@@ -25,22 +24,35 @@ def run(command, *args):
     return out.getvalue()
 
 
-class BridgeUserCommandTests(TestCase):
-    def token_from_output(self, *args):
-        return run("create_bridge_user", *args).splitlines()[1]
+class DeviceCredentialsCommandTests(TestCase):
+    def credentials(self, system):
+        lines = run("device_credentials", str(system.id)).splitlines()
+        return lines[1].split()[-1], lines[2].split()[-1]
 
-    def test_is_idempotent_and_reset_generates_a_new_token(self):
-        first, second, reset = self.token_from_output(), self.token_from_output(), self.token_from_output("--reset")
+    def test_installs_the_device_and_every_run_gives_a_new_token(self):
+        system = create_system(create_community(), "Magazzino")
 
-        self.assertEqual(first, second)
-        self.assertNotEqual(second, reset)
+        username, token = self.credentials(system)
+        self.assertEqual(username, f"pv-{system.id}")
+        self.assertTrue(system.device.check_token(token))
 
-    def test_bridge_user_can_only_add_readings(self):
-        run("create_bridge_user")
-        user = User.objects.get(username="bridge")
+        _, new_token = self.credentials(system)
+        system.device.refresh_from_db()
+        self.assertFalse(system.device.check_token(token))
+        self.assertTrue(system.device.check_token(new_token))
+        self.assertEqual(Device.objects.count(), 1)
 
-        self.assertFalse(user.has_usable_password())
-        self.assertEqual(user.get_all_permissions(), {"SP.add_paneldata"})
+    def test_prints_the_commands_to_start_the_bridge(self):
+        system = create_system(create_community())
+
+        output = run("device_credentials", str(system.id))
+
+        self.assertIn(f"bridge.py --device pv-{system.id} --token", output)
+        self.assertIn("--simulate", output)
+
+    def test_unknown_system_is_a_command_error(self):
+        with self.assertRaisesMessage(CommandError, "not found"):
+            run("device_credentials", "999")
 
 
 class PopulateDbCommandTests(TestCase):
@@ -72,17 +84,13 @@ class PopulateDbCommandTests(TestCase):
             for system in PhotovoltaicSystem.objects.all()
         ]
 
-    def test_creates_demo_data_and_keeps_the_bridge_user(self):
-        run("create_bridge_user")
-        token = Token.objects.get(user__username="bridge").key
-
+    def test_creates_demo_data(self):
         self.populate(FakeModel(3.0))
 
         self.assertEqual(Community.objects.count(), 3)
         self.assertEqual({c.customers.count() for c in Community.objects.all()}, {2})
         self.assertEqual(PhotovoltaicSystem.objects.count(), 6)
         self.assertTrue(User.objects.get(username="user5").check_password("password123"))
-        self.assertEqual(Token.objects.get(user__username="bridge").key, token)
         self.assertTrue(User.objects.get(username="consulente").is_staff)
         # Tecnici dello staff con lo storico degli interventi già eseguiti (uno per impianto, qui sono 6)
         self.assertTrue(User.objects.get(username="tecnico1").is_staff)

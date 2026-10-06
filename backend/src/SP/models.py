@@ -1,3 +1,7 @@
+import hashlib
+import hmac
+import secrets
+
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -113,9 +117,21 @@ class PhotovoltaicSystem(models.Model):
     # Esito dell'ultimo controllo automatico della produzione (vedi SP/monitoring.py)
     status = models.CharField(max_length=3, choices=Status.choices, default=Status.OK, verbose_name="Stato")
     last_check = models.DateTimeField(null=True, blank=True, verbose_name="Data ultimo controllo")
+    # Ultimo cambiamento di stato: il dispositivo lo riceve via MQTT e reagisce una volta sola a ogni cambiamento
+    previous_status = models.CharField(max_length=3, choices=Status.choices, blank=True, verbose_name="Stato precedente")
+    status_changed_at = models.DateTimeField(null=True, blank=True, verbose_name="Data cambiamento di stato")
 
     def __str__(self):
         return self.name
+
+    def set_status(self, status, checked_at):
+        """Salva l'esito di un controllo; restituisce True se lo stato è cambiato."""
+        changed = status != self.status
+        if changed:
+            self.previous_status, self.status, self.status_changed_at = self.status, status, checked_at
+        self.last_check = checked_at
+        self.save(update_fields=["status", "last_check", "previous_status", "status_changed_at"])
+        return changed
 
     @property
     def can_request_intervention(self):
@@ -223,3 +239,65 @@ class PanelData(models.Model):
 
     def __str__(self):
         return f"{self.system} - {self.time_stamp:%Y-%m-%d %H:%M}"
+
+    class Meta:
+        constraints = [
+            # Con MQTT QoS 1 una misura può arrivare due volte: la seconda viene scartata
+            models.UniqueConstraint(fields=["system", "time_stamp"], name="unique_reading_per_minute"),
+        ]
+
+
+class Device(models.Model):
+    """Dispositivo (Arduino e bridge) installato su un impianto: invia le misure e riceve lo stato via MQTT.
+
+    Si collega al broker con username pv-<id dell'impianto> e un token casuale; del token si salva solo
+    l'hash, quindi lo si vede una volta sola, quando viene generato.
+    """
+
+    USERNAME_PREFIX = "pv-"
+
+    system = models.OneToOneField(
+        PhotovoltaicSystem, on_delete=models.CASCADE, related_name="device", verbose_name="Impianto Fotovoltaico",
+    )
+    token_hash = models.CharField(max_length=64)
+    installed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="installed_devices",
+        verbose_name="Installato da",
+    )
+    installed_at = models.DateTimeField(default=timezone.now, verbose_name="Data di installazione")
+    # Aggiornati dal worker MQTT (SP/mqtt.py)
+    online = models.BooleanField(default=False)
+    last_seen = models.DateTimeField(null=True, blank=True, verbose_name="Ultimo messaggio")
+    pump_running = models.BooleanField(default=False, verbose_name="Pompa in funzione")
+    last_cleaning = models.DateTimeField(null=True, blank=True, verbose_name="Ultimo lavaggio")
+
+    def __str__(self):
+        return self.username
+
+    @property
+    def username(self):
+        return f"{self.USERNAME_PREFIX}{self.system_id}"
+
+    @classmethod
+    def system_id_from_username(cls, username):
+        """Id dell'impianto di uno username come pv-42, o None se non è lo username di un dispositivo."""
+        number = username.removeprefix(cls.USERNAME_PREFIX) if username.startswith(cls.USERNAME_PREFIX) else ""
+        return int(number) if number.isdigit() else None
+
+    @staticmethod
+    def hash_token(token):
+        # Il token è casuale a 160 bit: basta un hash veloce, quelli lenti servono per le password scelte dalle persone
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def new_token(self):
+        """Genera un nuovo token (il precedente smette di funzionare) e lo restituisce; va poi salvato il dispositivo."""
+        token = secrets.token_hex(20)
+        self.token_hash = self.hash_token(token)
+        return token
+
+    def check_token(self, token):
+        return hmac.compare_digest(self.token_hash, self.hash_token(token))
+
+    class Meta:
+        verbose_name = "Dispositivo"
+        verbose_name_plural = "Dispositivi"
