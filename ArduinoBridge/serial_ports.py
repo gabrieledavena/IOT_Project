@@ -25,7 +25,11 @@ import protocol
 
 BAUD_RATE = 9600
 READ_TIMEOUT = 0.1
-# Una scheda collegata via USB si riavvia quando si apre la porta: le serve circa un secondo per rispondere
+# Una scheda collegata via USB si riavvia quando si apre la porta. Finché lo sketch non parte non le si scrive
+# nulla: il bootloader di alcune schede (come Arduino Mega) se riceve dati resta in attesa di essere programmato
+# e lo sketch non parte. Lo sketch si presenta da solo appena acceso; se non lo fa, dopo BOOT_WAIT secondi
+# (o appena invia una riga qualsiasi) il bridge chiede ID per IDENTIFY_TIMEOUT secondi.
+BOOT_WAIT = 2.5
 IDENTIFY_TIMEOUT = 3.0
 IDENTIFY_INTERVAL = 0.5
 
@@ -150,12 +154,15 @@ def open_error(error, platform=sys.platform):
     return f"non si può aprire ({error})"
 
 
-def identify(node, timeout=IDENTIFY_TIMEOUT, clock=time.monotonic):
-    """Chiede al dispositivo chi è (ID), ripetendo la domanda finché non risponde o scade il tempo.
+def identify(node, timeout=IDENTIFY_TIMEOUT, clock=time.monotonic, boot_wait=BOOT_WAIT):
+    """Riconosce il dispositivo: aspetta che si presenti o, se non lo fa, gli chiede chi è (ID).
 
-    Restituisce l'identità (o None) e l'ultima altra riga ricevuta, utile a capire cosa c'è sulla porta.
+    Per i primi boot_wait secondi ascolta soltanto, finché il dispositivo non invia una riga (lo sketch è
+    partito); poi ripete ID finché non risponde o non scade il tempo. Restituisce l'identità (o None) e
+    l'ultima altra riga ricevuta, utile a capire cosa c'è sulla porta.
     """
-    deadline, next_query, last_line = clock() + timeout, clock(), None
+    start = clock()
+    deadline, next_query, last_line = start + boot_wait + timeout, start + boot_wait, None
     while clock() < deadline:
         if clock() >= next_query:
             node.write_line(protocol.identify_command())
@@ -166,11 +173,15 @@ def identify(node, timeout=IDENTIFY_TIMEOUT, clock=time.monotonic):
         kind, value = protocol.parse_line(line)
         if kind == protocol.IDENTIFY:
             return value, last_line
+        if kind != protocol.UNKNOWN:
+            # Una riga dello sketch (READY, una misura...): non è più nel bootloader, si può chiedere subito.
+            # I byte casuali che alcune schede inviano mentre si riavviano non contano
+            next_query = min(next_query, clock())
         last_line = line
     return None, last_line
 
 
-def probe(port, open_node=SerialNode.open, timeout=IDENTIFY_TIMEOUT, clock=time.monotonic):
+def probe(port, open_node=SerialNode.open, timeout=IDENTIFY_TIMEOUT, clock=time.monotonic, boot_wait=BOOT_WAIT):
     """Apre la porta e verifica che ci sia un SolarNode compatibile.
 
     Restituisce il nodo, lasciato aperto (riaprire la porta riavvierebbe una scheda USB), oppure None;
@@ -181,7 +192,7 @@ def probe(port, open_node=SerialNode.open, timeout=IDENTIFY_TIMEOUT, clock=time.
     except Exception as error:  # porta occupata da un altro programma, inesistente o senza permessi
         return None, open_error(error)
     try:
-        identity, last_line = identify(node, timeout, clock)
+        identity, last_line = identify(node, timeout, clock, boot_wait)
     except Exception as error:  # dispositivo scollegato mentre lo si interroga
         node.close()
         return None, f"errore di comunicazione ({error})"
@@ -209,11 +220,12 @@ def help_text(platform=sys.platform):
             f"/tmp/solarnode-simulide e la coppia virtuale creata con:\n    {SOCAT_COMMAND}")
 
 
-def find_node(ports, open_node=SerialNode.open, timeout=IDENTIFY_TIMEOUT, clock=time.monotonic, log=print):
+def find_node(ports, open_node=SerialNode.open, timeout=IDENTIFY_TIMEOUT, clock=time.monotonic, log=print,
+              boot_wait=BOOT_WAIT):
     """Prova le porte candidate nell'ordine e restituisce (nodo aperto, porta) della prima con un SolarNode."""
     tried = []
     for port in ports:
-        node, outcome = probe(port, open_node, timeout, clock)
+        node, outcome = probe(port, open_node, timeout, clock, boot_wait)
         log(f"Porta {port.device} ({port.kind}): {outcome}")
         if node is not None:
             return node, port
@@ -223,12 +235,12 @@ def find_node(ports, open_node=SerialNode.open, timeout=IDENTIFY_TIMEOUT, clock=
     raise NodeNotFound("Nessun SolarNode risponde sulle porte provate:\n" + "\n".join(tried) + "\n" + help_text())
 
 
-def connect(device="auto", open_node=SerialNode.open, timeout=IDENTIFY_TIMEOUT, log=print):
+def connect(device="auto", open_node=SerialNode.open, timeout=IDENTIFY_TIMEOUT, log=print, boot_wait=BOOT_WAIT):
     """Apre la porta di Arduino: quella indicata o, con "auto", la prima a cui risponde un SolarNode."""
     if device == "auto":
-        return find_node(candidates(list_ports()), open_node, timeout, log=log)
+        return find_node(candidates(list_ports()), open_node, timeout, log=log, boot_wait=boot_wait)
     port = Port(normalize(device), "scelta con --serial", "")
-    node, outcome = probe(port, open_node, timeout)
+    node, outcome = probe(port, open_node, timeout, boot_wait=boot_wait)
     if node is None:
         raise NodeNotFound(f"Non è possibile usare la porta {port.device}: {outcome}.\n{help_text()}")
     return node, port

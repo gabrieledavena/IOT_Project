@@ -262,7 +262,8 @@ class SimulatedNodeTests(unittest.TestCase):
         return lines
 
     def test_asks_for_the_configuration_then_sends_readings(self):
-        self.assertEqual(self.lines(), ["READY"])
+        # Appena acceso si presenta, come lo sketch
+        self.assertEqual(self.lines(), ["ID|SolarNode|1", "READY"])
         self.node.write_line("ID")
         self.assertEqual(self.lines(), ["ID|SolarNode|1"])
 

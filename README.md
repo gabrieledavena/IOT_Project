@@ -230,11 +230,13 @@ bridge uses `/dev/cu.*`. A COM port of Windows can be opened by one program at a
 bridge locks the port, so that two programs do not steal each other's data.
 
 **Identity check.** With `--serial auto` (the default) the bridge opens only the ports that can be an Arduino:
-USB boards (original Arduino first) and virtual pairs. Bluetooth and system ports are never opened. On each one it
-sends `ID` and waits up to 3 seconds for `ID|SolarNode|1` (device type and protocol version), sending it again
-every half second because a USB board restarts when its port is opened. It keeps the first port that answers so
-(without closing it, which would restart the board again) and explains why the others were discarded: busy,
-silent, another device, an old sketch or another protocol version. An explicit `--serial` port is checked the
+USB boards (original Arduino first) and virtual pairs. Bluetooth and system ports are never opened. It waits for
+`ID|SolarNode|1` (device type and protocol version), which the sketch sends when it starts and as answer to `ID`.
+A USB board restarts when its port is opened, and some bootloaders (like the one of Arduino Mega) stay waiting to
+be programmed if they receive data in the meantime: so the bridge first only listens, and sends `ID` (every half
+second, for 3 seconds) only after a line of the sketch or after 2.5 seconds. It keeps the first port where a
+SolarNode answers (without closing it, which would restart the board again) and explains why the others were
+discarded: busy, silent, another device, an old sketch or another protocol version. An explicit `--serial` port is checked the
 same way. To see the ports and who answers on each:
 
 ```bash
@@ -249,9 +251,10 @@ The Arduino of the project runs in SimulIDE; a real board on USB works the same 
 
 1. Start the server: `docker compose up -d --build` (the first time also `migrate`, see [Getting started](#getting-started)).
 2. Compile the sketch with Arduino IDE 2: install the library *DHT sensor library* by Adafruit (with its
-   dependencies), open `ArduinoBridge/SolarNode/SolarNode.ino`, choose *Arduino Uno* and use
-   *Sketch → Export Compiled Binary*. The file to use is `ArduinoBridge/SolarNode/build/arduino.avr.uno/SolarNode.ino.hex`
-   (not the one `with_bootloader`); the `build` folder is ignored by git.
+   dependencies), open `ArduinoBridge/SolarNode/SolarNode.ino`, choose the board (*Arduino Uno* for SimulIDE, or
+   the board you connect, like *Arduino Mega*) and use *Sketch → Export Compiled Binary*. For SimulIDE the file to
+   use is `ArduinoBridge/SolarNode/build/arduino.avr.uno/SolarNode.ino.hex` (not the one `with_bootloader`); the
+   `build` folder is ignored by git. A real board is programmed directly with *Upload*.
 3. In SimulIDE open `ArduinoBridge/SensorsArchitecture.sim1`, right-click the Arduino → *Load firmware* → the
    `.hex` above, and save the circuit. Optionally add the pump and the status LEDs, each with a 220 Ω resistor to
    GND: pump (a LED) on D7, green on D8, yellow on D9, red on D10. The circuit has a thermistor on A4 while the
@@ -325,7 +328,7 @@ as `/dev/cu.usbserial-…` (the same ports also appear as `/dev/tty.*`: the brid
 | Message | What to do |
 |---|---|
 | no port that can be an Arduino | Windows: com0com is not installed or not recognized, try `--serial COM2`; macOS: socat is not running |
-| nessuna risposta | the simulation is not running, the port is not open in SimulIDE or SimulIDE uses another port |
+| nessuna risposta | the simulation is not running, the port is not open in SimulIDE or SimulIDE uses another port; with a USB board, upload the sketch again and close the Serial Monitor |
 | non è un SolarNode aggiornato | SimulIDE still has the old `.hex`: load `SolarNode.ino.hex` |
 | occupata da un altro programma | another bridge or the Serial Monitor is open (on Windows it is normal for COM1, kept by SimulIDE) |
 

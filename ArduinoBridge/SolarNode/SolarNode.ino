@@ -7,7 +7,8 @@
 #include <DHT.h>
 
 // --- IDENTITÀ ---
-// Il bridge invia ID a ogni porta seriale e usa quella che risponde ID|SolarNode|<versione del protocollo>
+// Il bridge usa la porta seriale su cui arriva ID|SolarNode|<versione del protocollo>: lo sketch lo invia
+// appena acceso e in risposta al comando ID
 const char TIPO_DISPOSITIVO[] = "SolarNode";
 const int VERSIONE_PROTOCOLLO = 1;
 
@@ -64,6 +65,13 @@ void setup() {
   pinMode(pinLedSporco, OUTPUT);
   pinMode(pinLedGuasto, OUTPUT);
   aggiornaUscite();
+
+  // Appena acceso si presenta e chiede la configurazione. Aprire la porta USB riavvia la scheda: così il bridge
+  // la riconosce senza scriverle mentre è ancora attivo il bootloader (quello di Arduino Mega, se riceve dati,
+  // resta in attesa di essere programmato e lo sketch non parte)
+  inviaIdentita();
+  Serial.println("READY");
+  ultimoReady = millis();
 }
 
 void loop() {
@@ -140,10 +148,7 @@ void eseguiComando(char *riga) {
   }
 
   if (strcmp(tipo, "ID") == 0) {
-    Serial.print("ID|");
-    Serial.print(TIPO_DISPOSITIVO);
-    Serial.print("|");
-    Serial.println(VERSIONE_PROTOCOLLO);
+    inviaIdentita();
   } else if (strcmp(tipo, "CFG") == 0) {
     char *watt = strtok(NULL, "|");
     if (watt != NULL && atol(watt) > 0) {
@@ -171,6 +176,14 @@ void eseguiComando(char *riga) {
     }
     aggiornaUscite();
   }
+}
+
+// ID|SolarNode|1: tipo di dispositivo e versione del protocollo
+void inviaIdentita() {
+  Serial.print("ID|");
+  Serial.print(TIPO_DISPOSITIVO);
+  Serial.print("|");
+  Serial.println(VERSIONE_PROTOCOLLO);
 }
 
 void avviaPompa() {

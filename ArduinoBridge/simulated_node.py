@@ -30,7 +30,8 @@ class SimulatedNode:
         self.max_power_w = 0
         self.status = None
         self.pump_until = None
-        self.outbox = deque()
+        # Come lo sketch, appena acceso si presenta
+        self.outbox = deque([protocol.identity_line()])
         self.next_ready = self.next_reading = clock()
 
     @property
