@@ -149,3 +149,79 @@ main > .container {
     min-height: 220px;
     border: 0;
 }
+
+/* --- Legenda del grafico delle previsioni: previsioni meteo e stima storica --- */
+
+.forecast-swatch {
+    display: inline-block;
+    width: 0.8em;
+    height: 0.8em;
+    border-radius: 2px;
+    background-color: #198754;
+    vertical-align: -0.05em;
+}
+
+.forecast-swatch.history {
+    background-color: rgba(25, 135, 84, 0.3);
+}
+
+/* --- Vetrina dei servizi (home dei visitatori) --- */
+
+.landing-hero {
+    background: linear-gradient(135deg, #0f5132 0%, #198754 60%, #20c997 100%);
+}
+
+.landing-eyebrow {
+    background-color: rgba(255, 255, 255, 0.15);
+    font-weight: 500;
+    font-size: 0.85rem;
+    padding: 0.5em 1em;
+}
+
+.landing-lead {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Istogramma dell'anteprima: la produzione di una giornata */
+.landing-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 90px;
+}
+
+.landing-bars span {
+    flex: 1;
+    background-color: #198754;
+    border-radius: 3px 3px 0 0;
+}
+
+.landing-icon {
+    width: 3rem;
+    height: 3rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 1rem;
+    background-color: rgba(25, 135, 84, 0.1);
+    color: #198754;
+    font-size: 1.25rem;
+}
+
+.landing-step {
+    width: 2.75rem;
+    height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background-color: #198754;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+.landing-cta {
+    background-color: #e8f5ee;
+    border: 1px solid rgba(25, 135, 84, 0.2);
+}

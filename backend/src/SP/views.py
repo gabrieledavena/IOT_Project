@@ -1,11 +1,11 @@
-"""Pagine web: registrazione, confronto tra città, elenco impianti e dashboard di produzione."""
+"""Pagine web: home (vetrina o dashboard), registrazione, confronto tra città, elenco impianti e dashboard di produzione."""
 from datetime import date
 from statistics import mean
 
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, IntegerField, Q, Value, When
+from django.db.models import Case, Count, IntegerField, Q, Sum, Value, When
 from django.shortcuts import redirect, render
 from django.views import View
 
@@ -14,7 +14,7 @@ from forecast.reference_data import REFERENCE_YEARS
 from .access import NOT_A_CUSTOMER, AccessError, is_staff, visible_system
 from .benchmark import measured_city_yields, reference_yields
 from .forms import CustomerRegistrationForm
-from .models import City, Customer, PanelData, PhotovoltaicSystem
+from .models import City, Community, Customer, PanelData, PhotovoltaicSystem
 from .production import energy_kwh, get_community_series, get_system_series
 from .weather import get_day_weather
 
@@ -42,14 +42,36 @@ def register_view(request):
         form = CustomerRegistrationForm(request.POST)
         if form.is_valid():
             login(request, form.save())
-            return redirect("SP:dashboard")
+            return redirect("home")
     else:
         form = CustomerRegistrationForm()
     return render(request, "SP/register.html", {"form": form})
 
 
+def home(request):
+    """Home del sito: la dashboard degli impianti per chi ha fatto il login, la vetrina dei servizi per i visitatori."""
+    view = UserDashboardView if request.user.is_authenticated else LandingView
+    return view.as_view()(request)
+
+
+class LandingView(View):
+    """Vetrina dei servizi per i visitatori, con i numeri degli impianti seguiti e il link al confronto tra città."""
+
+    template_name = "SP/landing.html"
+
+    def get(self, request):
+        systems = PhotovoltaicSystem.objects.aggregate(count=Count("id"), power=Sum("max_power"))
+        context = {
+            "systems": systems["count"],
+            "installed_power": systems["power"] or 0,
+            "communities": Community.objects.count(),
+            "cities": Community.objects.values("city").distinct().count(),
+        }
+        return render(request, self.template_name, context)
+
+
 class UserDashboardView(LoginRequiredMixin, View):
-    """Pagina dopo il login: gli impianti con il loro stato e il link alla pagina di dettaglio.
+    """Home, la pagina dopo il login: gli impianti con il loro stato e il link alla pagina di dettaglio.
 
     I clienti vedono quelli della propria community, lo staff quelli di tutte; prima quelli con un problema.
     """
@@ -97,7 +119,29 @@ class UserDashboardView(LoginRequiredMixin, View):
             "page": page,
             "rows": [(system, SYSTEM_STATUSES[system.status] if system.last_check else None) for system in page],
         }
+        if community:
+            context.update(self.today_production(community))
         return render(request, self.template_name, context)
+
+    @staticmethod
+    def today_production(community):
+        """Produzione di oggi della community: energia, picco di potenza, resa per kW installato, meteo e grafico."""
+        today = date.today()
+        series = get_community_series(community, today)
+        if not series:
+            return {"today": {"day": today}}
+        energy = energy_kwh(series)
+        installed_power = community.photovoltaic_systems.aggregate(total=Sum("max_power"))["total"]
+        return {
+            "today": {
+                "day": today,
+                "energy": energy,
+                "peak": max(point["value"] for point in series),
+                "specific_yield": energy / installed_power if installed_power else None,
+                "weather": get_day_weather(community.city, today),
+            },
+            "chart_data": series[:: ProductionDashboardView.chart_step],
+        }
 
 
 class CityBenchmarkView(View):

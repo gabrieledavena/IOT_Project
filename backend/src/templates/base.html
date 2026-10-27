@@ -44,9 +44,12 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'home' %}"><i class="fas fa-home me-1"></i>Home</a>
                     </li>
-                    {% if user.is_authenticated %}
+                    {% if user.is_authenticated and not user.is_staff %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'SP:dashboard' %}"><i class="fas fa-th-large me-1"></i>Dashboard</a>
+                        <a class="nav-link" href="{% url 'SP:solar_community' %}"><i class="fas fa-chart-area me-1"></i>Produzione</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'forecast:index' %}"><i class="fas fa-cloud-sun me-1"></i>Previsioni</a>
                     </li>
                     {% endif %}
                     <li class="nav-item">
@@ -100,9 +103,11 @@
     </nav>
 
     <main class="flex-shrink-0">
+        {% block main %}
         <div class="container" data-aos="fade-up">
             {% block content %}{% endblock %}
         </div>
+        {% endblock %}
     </main>
 
     <footer class="py-2 text-center bg-white mt-auto border-top">

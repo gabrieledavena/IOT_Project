@@ -1,57 +1,145 @@
 {% extends "base.html" %}
+{% load static %}
 
-{% block title %}Previsione produzione{% endblock %}
+{% block title %}Previsioni{% endblock %}
 
 {% block content %}
 <div class="container mb-5">
-    <!-- Header Section -->
     <div class="row mb-4">
-        <div class="col-12 text-center">
-            <h2 class="fw-bold text-dark mb-1">🔮 Previsione Produzione Solare</h2>
-            <p class="text-muted">Calcola la produzione della tua community prevista per {{ day_label }} in base alle previsioni meteo.</p>
+        <div class="col-12">
+            <h2 class="fw-bold text-dark mb-0">Previsioni di produzione</h2>
+            {% if community %}
+                <p class="text-muted mb-0">
+                    <strong>{{ community.name }}</strong> · {{ community.city }}
+                    {% if total_power %}· {{ total_power|floatformat:2 }} kWp installati{% endif %}
+                </p>
+            {% endif %}
         </div>
     </div>
 
-    <!-- Main Content -->
-    <div class="row">
-        <div class="col-lg-6 col-md-8 mx-auto">
-            <div class="card border-0 shadow-sm rounded-4">
-                <div class="card-body p-4 text-center">
-
-                    {% if prediction is not None %}
-                    <div class="card border-0 shadow-sm rounded-4 mt-4 border-start border-primary border-5 text-start">
-                        <div class="card-body p-4">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h6 class="text-muted fw-bold text-uppercase mb-0">Previsione per il {{ day|date:"d/m/Y" }}</h6>
-                                <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
-                                    <span class="fs-5">💡</span>
-                                </div>
-                            </div>
-                            <h2 class="display-5 fw-bold text-dark mb-0">{{ prediction }} <span class="fs-4 text-muted">kWh</span></h2>
-                            <hr class="my-4">
-                            <p class="text-muted small mb-2"><strong>Dati meteo considerati:</strong></p>
-                            <ul class="list-unstyled text-muted small">
-                                <li><i class="fas fa-sun fa-fw me-2 text-warning"></i><strong>Irraggiamento:</strong> {{ weather.solar_radiation }} MJ/m²</li>
-                                <li><i class="fas fa-cloud fa-fw me-2 text-info"></i><strong>Nuvolosità:</strong> {{ weather.cloud_cover }}%</li>
-                                <li><i class="fas fa-thermometer-half fa-fw me-2 text-danger"></i><strong>Temp Max:</strong> {{ weather.temp_max }}°C</li>
-                            </ul>
+    {% if error %}
+        {% include "partials/error_alert.html" %}
+    {% else %}
+        <!-- Totali per orizzonte -->
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-lg-3">
+                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5">
+                    <div class="card-body p-3 p-md-4">
+                        <div class="text-muted fw-bold text-uppercase small">Oggi</div>
+                        <div class="fs-2 fw-bold text-dark">{{ today.production|floatformat:"1g" }} <span class="fs-6 text-muted">kWh</span></div>
+                        <div class="small text-muted"><i class="fas {{ week.0.icon }} me-1"></i>{{ today.Date|date:"l d/m" }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5">
+                    <div class="card-body p-3 p-md-4">
+                        <div class="text-muted fw-bold text-uppercase small">Domani</div>
+                        <div class="fs-2 fw-bold text-dark">{{ tomorrow.production|floatformat:"1g" }} <span class="fs-6 text-muted">kWh</span></div>
+                        <div class="small text-muted"><i class="fas {{ week.1.icon }} me-1"></i>{{ tomorrow.Date|date:"l d/m" }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-primary border-5">
+                    <div class="card-body p-3 p-md-4">
+                        <div class="text-muted fw-bold text-uppercase small">Prossimi 7 giorni</div>
+                        <div class="fs-2 fw-bold text-dark">{{ week_total|floatformat:"0g" }} <span class="fs-6 text-muted">kWh</span></div>
+                        {% with week_end=week|last %}<div class="small text-muted">Fino a {{ week_end.Date|date:"l"|lower }} {{ week_end.Date|date:"d/m" }}</div>{% endwith %}
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-lg-3">
+                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-primary border-5">
+                    <div class="card-body p-3 p-md-4">
+                        <div class="text-muted fw-bold text-uppercase small">Prossimi 30 giorni</div>
+                        <div class="fs-2 fw-bold text-dark">{{ month_total|floatformat:"0g" }} <span class="fs-6 text-muted">kWh</span></div>
+                        <div class="small text-muted">
+                            {% if history_start %}di cui {{ history_total|floatformat:"0g" }} kWh stimati dallo storico{% else %}Fino al {{ last_day|date:"d/m" }}{% endif %}
                         </div>
                     </div>
-                    {% endif %}
+                </div>
+            </div>
+        </div>
 
-                    <div style="height: 20px"></div>
-
-                    <form method="POST" class="mb-4">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-primary btn-lg shadow-sm px-5 py-2">Calcola Previsione</button>
-                    </form>
-
-                    {% if error %}
-                        {% include "partials/error_alert.html" with extra_class="mt-4" %}
+        <!-- Produzione prevista giorno per giorno -->
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4 d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                <h4 class="fw-bold text-dark mb-0">Produzione prevista giorno per giorno</h4>
+                <div class="btn-group shadow-sm" role="group" aria-label="Giorni mostrati">
+                    <input type="radio" class="btn-check" name="forecast-days" id="days7" autocomplete="off" data-days="7">
+                    <label class="btn btn-outline-primary btn-sm" for="days7">7 giorni</label>
+                    <input type="radio" class="btn-check" name="forecast-days" id="days30" autocomplete="off" data-days="30" checked>
+                    <label class="btn btn-outline-primary btn-sm" for="days30">30 giorni</label>
+                </div>
+            </div>
+            <div class="card-body p-4">
+                <div style="height: 320px; width: 100%;">
+                    <canvas id="forecastChart" aria-label="Produzione prevista per giorno" role="img"></canvas>
+                </div>
+                <div class="d-flex flex-wrap gap-3 small text-muted mt-3">
+                    <span><span class="forecast-swatch me-1"></span>Previsioni meteo</span>
+                    {% if history_start %}
+                        <span><span class="forecast-swatch history me-1"></span>Dal {{ history_start|date:"d/m" }}: stima storica</span>
                     {% endif %}
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- Dettaglio della settimana -->
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-3 p-md-4">
+                <h5 class="fw-bold text-dark mb-3">Prossimi 7 giorni</h5>
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr class="small text-muted">
+                                <th>Giorno</th>
+                                <th class="text-center">Meteo</th>
+                                <th class="text-end d-none d-md-table-cell">Irraggiamento</th>
+                                <th class="text-end d-none d-md-table-cell">Nuvolosità</th>
+                                <th class="text-end d-none d-sm-table-cell">Temperatura</th>
+                                <th class="text-end d-none d-md-table-cell">Pioggia</th>
+                                <th class="text-end d-none d-lg-table-cell">Resa</th>
+                                <th class="text-end">Produzione</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for day in week %}
+                                <tr>
+                                    <td class="fw-bold text-nowrap">
+                                        {% if forloop.first %}Oggi{% elif forloop.counter == 2 %}Domani{% else %}{{ day.Date|date:"l"|capfirst }}{% endif %}
+                                        <div class="small text-muted fw-normal">{{ day.Date|date:"d/m/Y" }}</div>
+                                    </td>
+                                    <td class="text-center fs-5"><i class="fas {{ day.icon }}"></i></td>
+                                    <td class="text-end text-nowrap d-none d-md-table-cell">{{ day.solar_radiation|floatformat:1 }} MJ/m²</td>
+                                    <td class="text-end d-none d-md-table-cell">{{ day.cloud_cover|floatformat:0 }}%</td>
+                                    <td class="text-end text-nowrap d-none d-sm-table-cell">{{ day.temp_min|floatformat:0 }}–{{ day.temp_max|floatformat:0 }} °C</td>
+                                    <td class="text-end text-nowrap d-none d-md-table-cell">{{ day.precipitation|floatformat:1 }} mm</td>
+                                    <td class="text-end text-nowrap d-none d-lg-table-cell">{{ day.specific_yield|floatformat:2 }} kWh/kWp</td>
+                                    <td class="text-end text-nowrap fw-bold">{{ day.production|floatformat:"1g" }} kWh</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <p class="small text-muted mb-0">
+            <i class="fas fa-info-circle me-1"></i>
+            Il modello stima la produzione di ogni giorno dal meteo previsto per {{ community.city.name }} e dalla potenza installata.
+            Le previsioni meteo arrivano a 16 giorni: per i giorni successivi la stima è la media degli ultimi {{ typical_years }} anni
+            negli stessi giorni dell'anno (nel grafico, il minimo e il massimo).
+        </p>
+    {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if chart_data %}
+    {{ chart_data|json_script:"forecast-data" }}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="{% static 'forecast/forecast_chart.js' %}"></script>
+{% endif %}
 {% endblock %}
