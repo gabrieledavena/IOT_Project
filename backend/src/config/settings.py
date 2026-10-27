@@ -66,6 +66,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'SP.context_processors.roles',
                 'SP.context_processors.pending_interventions',
             ],
         },

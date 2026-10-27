@@ -3,10 +3,11 @@ from datetime import date, datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 
 from forecast.predictor import FEATURE_COLUMNS
 from SP.models import City, Community, Customer, Device, PanelData, PhotovoltaicSystem
+from SP.roles import CONSULTANTS, TECHNICIANS
 from SP.weather import WEATHER_COLUMNS
 
 DEFAULT_WEATHER = {
@@ -37,6 +38,21 @@ def create_customer(community, username="mario"):
     user = User.objects.create_user(username=username, password="test-password")
     Customer.objects.create(user=user, name="Mario", surname="Rossi", community=community)
     return user
+
+
+def create_staff(username, role, **fields):
+    """Utente del personale con il ruolo (gruppo) indicato, come lo crea un amministratore: solo i tecnici sono staff."""
+    user = User.objects.create_user(username=username, password="test-password", is_staff=role == TECHNICIANS, **fields)
+    user.groups.add(Group.objects.get(name=role))
+    return user
+
+
+def create_technician(username="tecnico", **fields):
+    return create_staff(username, TECHNICIANS, **fields)
+
+
+def create_consultant(username="consulente", **fields):
+    return create_staff(username, CONSULTANTS, **fields)
 
 
 def create_system(community, name="System A", max_power=4.0):

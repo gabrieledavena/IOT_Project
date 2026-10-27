@@ -49,14 +49,14 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | Component / feature | Status |
 |---|---|
 | Sensor node (temperature, light, estimated power), water pump for cleaning the panels and Python bridge | Implemented, over MQTT (see [MQTT](#mqtt)) |
-| Installation of the devices on the systems, for the staff (and to test the bridge as any system) | Implemented (see [Devices and installations](#devices-and-installations)) |
+| Installation of the devices on the systems, for the technicians (and to test the bridge as any system) | Implemented (see [Devices and installations](#devices-and-installations)) |
 | REST API to read the measurements (per-community read access) | Implemented |
 | Home page: for visitors a showcase of the services (with the link to the city comparison); after login a dashboard with today's production of the community and the status of each system | Implemented |
 | Web dashboards for communities and single systems, with weather and map | Implemented |
 | 3. Production forecasting: today, tomorrow, next 7 and 30 days, in one page | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
 | 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented, with the automatic check of each system (see [System monitoring](#system-monitoring)) |
-| ROI calculator with printable quote, for staff consultants | Implemented |
-| Maintenance interventions: requests of the customers, staff dashboard and printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
+| ROI calculator with printable quote, for the consultants | Implemented |
+| Maintenance interventions: requests of the customers, dashboard of the technicians and printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
 | Smart relays of the appliances, 1. self-consumption optimization, 2. CO₂ savings, 5. energy community simulation | Not implemented yet |
 
 ## Project structure
@@ -76,11 +76,12 @@ backend/src/
     production.py         Minute-by-minute production series and energy (kWh)
     benchmark.py          Measured yield per installed kW of every city, expected yield of the reference locations
     monitoring.py         Check of each system: production compared with the forecast and with nearby systems
-    interventions.py      Maintenance interventions: request, staff dashboard, acceptance, execution, report
+    interventions.py      Maintenance interventions: request, technicians' dashboard, acceptance, execution, report
     mqtt.py               MQTT topics and messages: readings received, status and configuration published
     mqtt_auth.py          Who can connect to the broker and to which topics (asked by the broker)
-    installations.py      Installation of the devices on the systems (staff)
-    access.py             Who can see which systems, staff-only pages
+    installations.py      Installation of the devices on the systems (technicians)
+    roles.py              Roles of the staff: technicians and consultants
+    access.py             Who can see which systems, pages of technicians and consultants
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
     api.py                REST API to read the measurements
     views.py              Home (showcase or dashboard), registration, city benchmark and production dashboards
@@ -94,7 +95,7 @@ backend/src/
     management/commands/  train_forecast_model
     data/                 Reference dataset (.csv.gz)
     ml_models/            Trained models (.joblib)
-  roi/                    ROI calculator and printable quote (staff only)
+  roi/                    ROI calculator and printable quote (consultants only)
     calculator.py         Yearly cash flows, payback and ROI
   templates/              Base layout (menu) and shared partials
 ```
@@ -119,8 +120,8 @@ admin; the owner can only be deleted together with the community.
 `populate_db` replaces communities, users, systems and readings with demo data: by default a company in 2–3 cities
 of every region (about 50), named after its owner (like "Rossi Trasporti"), with 2–4 users and 3–8 systems (the
 headquarters, warehouses, offices, shops, ...), and one reading per minute for the last 7 days: about 250 systems
-and 2.5 million readings, generated in about 20 seconds. The users log in as `user0`, `user1`, ...; the staff
-accounts `consulente` (for the ROI calculator) and the technicians `tecnico1` and `tecnico2` have the same password,
+and 2.5 million readings, generated in about 20 seconds. The users log in as `user0`, `user1`, ...; the
+consultant `consulente` and the technicians `tecnico1` and `tecnico2` (see [Users and roles](#users-and-roles)) have the same password,
 `password123`. After checking the systems it turns about 70% of the probable faults into faults, as if the
 washing had not helped (the demo systems have no device to wash them), creates intervention requests for most of the
 faults (some already accepted) and 25 interventions executed in the last months.
@@ -140,7 +141,7 @@ docker exec iot_django_server python manage.py train_forecast_model             
 docker exec iot_django_server python manage.py train_forecast_model --refresh-data   # downloads the dataset again (a few minutes)
 ```
 
-To connect a bridge, install a device on a system (page **Installazioni** of the staff, or the command below,
+To connect a bridge, install a device on a system (page **Installazioni** of the technicians, or the command below,
 which works for any system, also those of the demo data) and start the bridge with its credentials:
 
 ```bash
@@ -155,6 +156,21 @@ With the Arduino the bridge finds the serial port by itself (see [Serial ports](
 or `--serial /dev/cu.usbmodem1101` chooses it explicitly.
 
 The token can also be passed with the environment variable `SOLAR_DEVICE_TOKEN`. See [MQTT](#mqtt).
+
+## Users and roles
+
+| Role | Who | What they can do |
+|---|---|---|
+| Customer | registers on the site, choosing their community | the systems of their community: production, forecasts, intervention requests |
+| Technician | group `Tecnici` | every system: installation of the devices, status, maintenance interventions; in the admin, systems, devices and interventions (communities, customers and cities only to read them) |
+| Consultant | group `Consulenti` | only the ROI calculator and the quotes: after login the home is the calculator; no access to the admin |
+| Administrator | superuser (`createsuperuser`) | everything, including the users |
+
+Only the administrators create technicians and consultants: in the admin, **Utenti → Aggiungi**, choosing the
+**Ruolo**. The role is the group of the user, which can be changed later in the same page; the access to the admin
+(`is_staff`) follows it by itself: technicians and administrators yes, consultants no. The groups and the permissions
+of the technicians are created by the migration `SP/0012_staff_roles`; the staff users existing before it get no
+role until an administrator gives them one.
 
 ## System monitoring
 
@@ -205,7 +221,7 @@ All the messages use QoS 1: they are repeated until the broker confirms them, so
 the second one is discarded (a system has one reading per minute). Status and configuration are retained: the
 broker keeps the last ones and sends them to the bridge as soon as it subscribes, so the bridge knows the maximum
 power of its system and its current status even after a restart. The worker publishes them again for every
-installed system when it connects; `check_systems` publishes the status when it changes, the staff pages and the
+installed system when it connects; `check_systems` publishes the status when it changes, the technicians' pages and the
 admin when a device is installed or a system is modified.
 
 **Access.** Nobody can connect anonymously. The broker uses the plugin
@@ -350,8 +366,8 @@ as `/dev/cu.usbserial-…` (the same ports also appear as `/dev/tty.*`: the brid
 
 ## Devices and installations
 
-The page **Installazioni** of the staff (`/sp/installations/`) lists the systems with the state of their device
-(not installed, connected, disconnected, last message, last cleaning). From there the staff can:
+The page **Installazioni** of the technicians (`/sp/installations/`) lists the systems with the state of their device
+(not installed, connected, disconnected, last message, last cleaning). From there the technicians can:
 
 - **create a new system** of a community with its device, as a technician installing it would do;
 - **install a device** on an existing system (for example to test the bridge as a system of the demo data),
@@ -377,14 +393,14 @@ When the check finds a probable fault or a fault (confirmed after the washing), 
 system can have one open request at a time; after an intervention a new one can be requested only if a later check
 finds the fault again. The users see the status of the requests on the page of the system:
 
-1. **Richiesta inoltrata**: the request waits for the staff;
-2. **Richiesta accettata**: a staff member chose the kind of intervention and accepted the request, taking charge of
-   it. Only that staff member can record the execution;
+1. **Richiesta inoltrata**: the request waits for the technicians;
+2. **Richiesta accettata**: a technician chose the kind of intervention and accepted the request, taking charge of
+   it. Only that technician can record the execution;
 3. **Intervento eseguito**: the date of execution, the work done and the cost are recorded.
 
-The staff dashboard (`/sp/interventions/`, menu **Interventi**, with the number of requests to accept) shows the
+The dashboard of the technicians (`/sp/interventions/`, menu **Interventi**, with the number of requests to accept) shows the
 requests to accept, the interventions in progress and the executed ones, with the requests whose day has passed.
-Every intervention has a printable report (or saved as PDF from the browser), available to the staff and to the
+Every intervention has a printable report (or saved as PDF from the browser), available to the technicians and to the
 users of the community.
 
 ## Tests

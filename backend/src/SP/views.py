@@ -11,11 +11,12 @@ from django.views import View
 
 from forecast.reference_data import REFERENCE_YEARS
 
-from .access import NOT_A_CUSTOMER, AccessError, is_staff, visible_system
+from .access import NOT_A_CUSTOMER, AccessError, visible_system
 from .benchmark import measured_city_yields, reference_yields
 from .forms import CustomerRegistrationForm
 from .models import City, Community, Customer, PanelData, PhotovoltaicSystem
 from .production import energy_kwh, get_community_series, get_system_series
+from .roles import is_consultant, is_technician
 from .weather import get_day_weather
 
 # Come mostrare l'esito del controllo automatico (SP/monitoring.py) nella pagina dell'impianto
@@ -55,9 +56,14 @@ def register_view(request):
 
 
 def home(request):
-    """Home del sito: la dashboard degli impianti per chi ha fatto il login, la vetrina dei servizi per i visitatori."""
-    view = UserDashboardView if request.user.is_authenticated else LandingView
-    return view.as_view()(request)
+    """Home del sito: la vetrina dei servizi per i visitatori, il calcolo del ROI per i consulenti, per gli altri
+    utenti la dashboard degli impianti."""
+    user = request.user
+    if not user.is_authenticated:
+        return LandingView.as_view()(request)
+    if is_consultant(user) and not is_technician(user):
+        return redirect("roi:calculator")
+    return UserDashboardView.as_view()(request)
 
 
 class LandingView(View):
@@ -79,7 +85,7 @@ class LandingView(View):
 class UserDashboardView(LoginRequiredMixin, View):
     """Home, la pagina dopo il login: gli impianti con il loro stato e il link alla pagina di dettaglio.
 
-    I clienti vedono quelli della propria community, lo staff quelli di tutte; prima quelli con un problema.
+    I clienti vedono quelli della propria community, i tecnici quelli di tutte; prima quelli con un problema.
     """
 
     template_name = "SP/user_dashboard.html"
@@ -96,7 +102,7 @@ class UserDashboardView(LoginRequiredMixin, View):
     }
 
     def get(self, request):
-        staff = is_staff(request.user)
+        staff = is_technician(request.user)
         community = None if staff else Customer.community_of(request.user)
         if not staff and community is None:
             return render(request, self.template_name, {"error": NOT_A_CUSTOMER}, status=403)

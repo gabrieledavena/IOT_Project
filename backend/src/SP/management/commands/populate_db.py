@@ -11,7 +11,7 @@ from itertools import repeat
 import numpy as np
 import pandas as pd
 from django.contrib.auth.hashers import make_password
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
@@ -20,13 +20,14 @@ from scipy.signal import lfilter
 from scipy.stats import norm
 
 from forecast.predictor import ForecastError, load_model, predict_specific_yield
+from SP import roles
 from SP.models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem
 from SP.weather import WeatherUnavailable, get_daily_weather
 
 CUSTOMER_PASSWORD = "password123"
 # Staff accounts (same password): a consultant for the ROI calculator and the technicians who handle the
 # maintenance interventions
-STAFF_USERNAME = "consulente"
+CONSULTANT_USERNAME = "consulente"
 TECHNICIANS = [("tecnico1", "Paolo", "Neri"), ("tecnico2", "Sara", "Gialli")]
 
 # Demo interventions: notes of the customers, and work done and cost range (€) for each kind of intervention
@@ -235,15 +236,17 @@ class Command(BaseCommand):
 
             communities = self.create_communities(self.pick_cities(options['cities_per_region']), options['users_per_community'])
             systems = self.create_systems(communities, options['systems_per_community'])
-            User.objects.create_user(
-                username=STAFF_USERNAME, password=CUSTOMER_PASSWORD, first_name='Consulente', last_name='Demo',
-                is_staff=True,
+            # The consultant only prepares quotes; the technicians manage the systems, also in the admin
+            consultant = User.objects.create(
+                username=CONSULTANT_USERNAME, password=self.password, first_name='Consulente', last_name='Demo',
             )
+            consultant.groups.add(Group.objects.get(name=roles.CONSULTANTS))
             technicians = [
                 User.objects.create(username=username, password=self.password, first_name=first_name, last_name=last_name,
                                     is_staff=True)
                 for username, first_name, last_name in TECHNICIANS
             ]
+            Group.objects.get(name=roles.TECHNICIANS).user_set.add(*technicians)
             self.stdout.write(f'Generating the readings of {len(systems)} systems...')
             readings = self.create_panel_data(systems, options['days'])
 

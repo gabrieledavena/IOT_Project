@@ -1,7 +1,8 @@
-"""Regole di accesso comuni alle pagine: chi vede quali impianti e quali pagine sono solo per lo staff."""
+"""Regole di accesso comuni alle pagine: chi vede quali impianti e quali pagine sono solo per tecnici o consulenti."""
 from django.contrib.auth.mixins import UserPassesTestMixin
 
 from .models import Customer, PhotovoltaicSystem
+from .roles import is_consultant, is_technician
 
 NOT_A_CUSTOMER = "Utente non associato a un cliente."
 
@@ -15,26 +16,29 @@ class AccessError(Exception):
         self.status = status
 
 
-class StaffRequiredMixin(UserPassesTestMixin):
-    """Solo staff e amministratori: gli altri utenti ricevono 403, i visitatori vanno al login."""
+class TechnicianRequiredMixin(UserPassesTestMixin):
+    """Solo tecnici e amministratori: gli altri utenti ricevono 403, i visitatori vanno al login."""
 
     def test_func(self):
-        return is_staff(self.request.user)
+        return is_technician(self.request.user)
 
 
-def is_staff(user):
-    return user.is_staff or user.is_superuser
+class ConsultantRequiredMixin(UserPassesTestMixin):
+    """Solo consulenti e amministratori: gli altri utenti ricevono 403, i visitatori vanno al login."""
+
+    def test_func(self):
+        return is_consultant(self.request.user)
 
 
 def visible_system(user, system_id):
-    """Impianto che l'utente può vedere: staff e superuser tutti, i clienti quelli della propria community.
+    """Impianto che l'utente può vedere: tecnici e amministratori tutti, i clienti quelli della propria community.
 
     Solleva AccessError se l'impianto non esiste o l'utente non può vederlo.
     """
     system = PhotovoltaicSystem.objects.select_related("community__city", "community__owner").filter(pk=system_id).first()
     if system is None:
         raise AccessError("Impianto non trovato.", status=404)
-    if not is_staff(user):
+    if not is_technician(user):
         community = Customer.community_of(user)
         if community is None:
             raise AccessError(NOT_A_CUSTOMER, status=403)

@@ -12,8 +12,8 @@ from django.utils import timezone
 from SP.models import PanelData, PhotovoltaicSystem
 from SP.monitoring import CleaningVerifier, SystemChecker, systems_to_verify
 from SP.tests.helpers import (
-    FakeModel, add_readings, create_city, create_community, create_customer, create_system, fake_weather,
-    install_device, utc,
+    FakeModel, add_readings, create_city, create_community, create_customer, create_system, create_technician,
+    fake_weather, install_device, utc,
 )
 from SP.weather import WeatherUnavailable
 
@@ -213,7 +213,7 @@ class CheckSystemsCommandTests(MonitoringTestCase):
 class SystemPageStatusTests(MonitoringTestCase):
     def test_detail_page_shows_status_and_last_check(self):
         system = create_system(self.community)
-        self.client.force_login(User.objects.create_user("staff", is_staff=True))
+        self.client.force_login(create_technician("staff"))
         url = f"/sp/system/{system.id}/"
 
         self.assertContains(self.client.get(url, follow=True), "In attesa del primo controllo")

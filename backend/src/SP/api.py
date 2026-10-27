@@ -3,6 +3,7 @@ from rest_framework import generics
 from rest_framework.permissions import DjangoModelPermissions
 
 from .models import PanelData
+from .roles import is_technician
 from .serializers import PanelDataSerializer
 
 
@@ -14,7 +15,7 @@ class PanelDataAccessMixin:
     def get_queryset(self):
         queryset = PanelData.objects.order_by("-time_stamp", "-id")
         user = self.request.user
-        if user.is_staff or user.is_superuser:
+        if is_technician(user):
             return queryset
         # Gli altri utenti vedono solo le misure degli impianti della propria community
         return queryset.filter(system__community__customers__user=user)
