@@ -126,9 +126,9 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 LOGIN_URL = 'SP:login'
-# Dopo il login: la dashboard con gli impianti dell'utente e il loro stato
-LOGIN_REDIRECT_URL = 'SP:dashboard'
-LOGOUT_REDIRECT_URL = 'SP:login'
+# La home: dopo il login la dashboard con gli impianti dell'utente e il loro stato, dopo il logout la vetrina dei servizi
+LOGIN_REDIRECT_URL = 'home'
+LOGOUT_REDIRECT_URL = 'home'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

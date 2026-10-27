@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Monitoraggio fotovoltaico per aziende{% endblock %}
+
+{% block main %}
+<!-- Apertura: cosa offriamo, con il collegamento al confronto tra città -->
+<section class="landing-hero text-white">
+    <div class="container py-5">
+        <div class="row align-items-center g-5 py-lg-4">
+            <div class="col-lg-6" data-aos="fade-up">
+                <span class="badge rounded-pill landing-eyebrow mb-3"><i class="fas fa-solar-panel me-1"></i>Monitoraggio fotovoltaico per aziende</span>
+                <h1 class="display-5 fw-bold mb-3">I tuoi impianti fotovoltaici, sempre sotto controllo</h1>
+                <p class="lead mb-4 landing-lead">
+                    Misuriamo ogni minuto la produzione dei tuoi impianti, la confrontiamo con il meteo e con gli impianti
+                    vicini e interveniamo quando qualcosa non va: pannelli sporchi, guasti, cali di rendimento.
+                </p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{% url 'SP:city_benchmark' %}" class="btn btn-light btn-lg rounded-pill fw-bold px-4 text-success">
+                        <i class="fas fa-map-marked-alt me-2"></i>Confronta le città
+                    </a>
+                    <a href="{% url 'SP:login' %}" class="btn btn-outline-light btn-lg rounded-pill px-4">Area clienti</a>
+                </div>
+            </div>
+
+            <div class="col-lg-6" data-aos="fade-left">
+                <!-- Anteprima illustrativa della dashboard di un cliente -->
+                <div class="card border-0 shadow-lg rounded-4" aria-hidden="true">
+                    <div class="card-body p-4">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                            <div>
+                                <div class="small text-muted fw-bold text-uppercase">Prodotti oggi</div>
+                                <div class="fs-2 fw-bold text-dark">136,5 <span class="fs-6 text-muted">kWh</span></div>
+                            </div>
+                            <span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success">
+                                <i class="fas fa-cloud-sun me-1"></i>Domani: 89 kWh previsti
+                            </span>
+                        </div>
+                        <div class="landing-bars mb-3">
+                            <span style="height: 8%"></span><span style="height: 18%"></span><span style="height: 32%"></span>
+                            <span style="height: 48%"></span><span style="height: 63%"></span><span style="height: 76%"></span>
+                            <span style="height: 88%"></span><span style="height: 95%"></span><span style="height: 92%"></span>
+                            <span style="height: 81%"></span><span style="height: 66%"></span><span style="height: 49%"></span>
+                            <span style="height: 31%"></span><span style="height: 16%"></span><span style="height: 6%"></span>
+                        </div>
+                        <ul class="list-unstyled mb-0 small">
+                            <li class="d-flex justify-content-between align-items-center py-2 border-top">
+                                <span class="fw-bold text-dark">Sede</span>
+                                <span class="badge rounded-pill bg-success"><i class="fas fa-check-circle me-1"></i>OK</span>
+                            </li>
+                            <li class="d-flex justify-content-between align-items-center py-2 border-top">
+                                <span class="fw-bold text-dark">Magazzino</span>
+                                <span class="badge rounded-pill bg-warning text-dark"><i class="fas fa-broom me-1"></i>Pannelli sporchi · pulizia avviata</span>
+                            </li>
+                            <li class="d-flex justify-content-between align-items-center py-2 border-top">
+                                <span class="fw-bold text-dark">Capannone</span>
+                                <span class="badge rounded-pill bg-danger"><i class="fas fa-tools me-1"></i>Guasto · tecnico prenotato</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if systems %}
+    <!-- I numeri del servizio, dal database -->
+    <section class="bg-white border-bottom">
+        <div class="container py-4">
+            <div class="row text-center g-3">
+                <div class="col-6 col-md-3">
+                    <div class="fs-2 fw-bold text-success">{{ systems }}</div>
+                    <div class="small text-muted text-uppercase fw-bold">Impianti monitorati</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="fs-2 fw-bold text-success">{{ installed_power|floatformat:"0g" }}</div>
+                    <div class="small text-muted text-uppercase fw-bold">kWp installati</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="fs-2 fw-bold text-success">{{ communities }}</div>
+                    <div class="small text-muted text-uppercase fw-bold">Aziende clienti</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="fs-2 fw-bold text-success">{{ cities }}</div>
+                    <div class="small text-muted text-uppercase fw-bold">Città</div>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endif %}
+
+<!-- Servizi -->
+<section class="container py-5">
+    <div class="text-center mb-5" data-aos="fade-up">
+        <h2 class="fw-bold text-dark">Cosa facciamo per te</h2>
+        <p class="lead text-muted mb-0">Dalla misura alla manutenzione, un solo servizio per tutti i tuoi impianti.</p>
+    </div>
+    <div class="row g-4">
+        <div class="col-md-6 col-lg-4" data-aos="fade-up">
+            <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift">
+                <div class="card-body p-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-chart-area"></i></div>
+                    <h5 class="fw-bold text-dark">Monitoraggio minuto per minuto</h5>
+                    <p class="text-muted mb-0">Un sensore su ogni impianto invia potenza, luce e temperatura ogni minuto: produzione, grafici e meteo della giornata in un'unica dashboard.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4" data-aos="fade-up">
+            <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift">
+                <div class="card-body p-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-cloud-sun"></i></div>
+                    <h5 class="fw-bold text-dark">Previsioni di produzione</h5>
+                    <p class="text-muted mb-0">Quanto produrrai oggi, domani, nei prossimi 7 e 30 giorni: un modello di machine learning lo calcola dalle previsioni meteo della tua città.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4" data-aos="fade-up">
+            <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift">
+                <div class="card-body p-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-stethoscope"></i></div>
+                    <h5 class="fw-bold text-dark">Controllo automatico</h5>
+                    <p class="text-muted mb-0">Ogni due giorni confrontiamo la produzione di ogni impianto con quella attesa e con gli impianti vicini, per distinguere i pannelli sporchi da un guasto.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4" data-aos="fade-up">
+            <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift">
+                <div class="card-body p-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-shower"></i></div>
+                    <h5 class="fw-bold text-dark">Pulizia automatica dei pannelli</h5>
+                    <p class="text-muted mb-0">Quando i pannelli risultano sporchi, l'impianto avvia da solo la pompa di lavaggio: nessuna chiamata, nessuna attesa.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4" data-aos="fade-up">
+            <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift">
+                <div class="card-body p-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-tools"></i></div>
+                    <h5 class="fw-bold text-dark">Interventi di manutenzione</h5>
+                    <p class="text-muted mb-0">In caso di guasto scegli il giorno dal calendario: un nostro tecnico prende in carico la richiesta e ricevi il rapporto dell'intervento.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4" data-aos="fade-up">
+            <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift">
+                <div class="card-body p-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-calculator"></i></div>
+                    <h5 class="fw-bold text-dark">Consulenza sul nuovo impianto</h5>
+                    <p class="text-muted mb-0">I nostri consulenti stimano produzione annua, tempi di rientro e ritorno dell'investimento con il meteo reale della tua città, e ti preparano il preventivo.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Come funziona -->
+<section class="bg-white border-top border-bottom">
+    <div class="container py-5">
+        <h2 class="fw-bold text-dark text-center mb-5" data-aos="fade-up">Come funziona</h2>
+        <div class="row g-4 text-center">
+            <div class="col-md-4" data-aos="fade-up">
+                <div class="landing-step mb-3">1</div>
+                <h5 class="fw-bold text-dark">Installiamo il sensore</h5>
+                <p class="text-muted mb-0">Un piccolo dispositivo sull'impianto, collegato in modo sicuro ai nostri server.</p>
+            </div>
+            <div class="col-md-4" data-aos="fade-up">
+                <div class="landing-step mb-3">2</div>
+                <h5 class="fw-bold text-dark">Analizziamo i dati</h5>
+                <p class="text-muted mb-0">Ogni misura è confrontata con il meteo e con gli impianti della tua zona.</p>
+            </div>
+            <div class="col-md-4" data-aos="fade-up">
+                <div class="landing-step mb-3">3</div>
+                <h5 class="fw-bold text-dark">Ti avvisiamo e interveniamo</h5>
+                <p class="text-muted mb-0">Pulizia automatica o tecnico in arrivo: tu segui tutto dalla dashboard.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Confronto tra città -->
+<section class="container py-5">
+    <div class="landing-cta rounded-4 p-4 p-md-5 d-md-flex align-items-center justify-content-between gap-4" data-aos="fade-up">
+        <div>
+            <h3 class="fw-bold text-dark">Quanto rende il fotovoltaico nella tua città?</h3>
+            <p class="text-muted mb-md-0">
+                Confronta la resa misurata dai nostri impianti per ogni kW installato nei comuni italiani,
+                e la mappa della resa attesa in tutta Italia.
+            </p>
+        </div>
+        <a href="{% url 'SP:city_benchmark' %}" class="btn btn-success btn-lg rounded-pill px-4 text-nowrap">
+            Confronta le città<i class="fas fa-arrow-right ms-2"></i>
+        </a>
+    </div>
+    <p class="text-center text-muted mt-4 mb-0">
+        Sei già cliente? <a href="{% url 'SP:login' %}" class="fw-bold text-success">Accedi</a>
+        o <a href="{% url 'SP:register' %}" class="fw-bold text-success">registrati</a> con la tua azienda per vedere i tuoi impianti.
+    </p>
+</section>
+{% endblock %}

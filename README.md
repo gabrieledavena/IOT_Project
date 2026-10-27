@@ -32,7 +32,8 @@ The system optimizes self-consumption, monitors performance, and use collective 
    The system converts the community's total energy production into $CO_2$ savings, showing how much pollution has been avoided thanks to renewable energy
 
 3. **Short-Term Production Forecasting**
-   Using historical data and weather forecasting APIs, the system can estimate next-day energy production in $KWh$
+   Using weather forecasting APIs and the historical weather, the system estimates the energy production in $KWh$ of
+   today, tomorrow and the next 7 and 30 days
 
 4. **Dynamic Community Benchmark (Collective Intelligence)**
    Each home periodically reports its normalized yield (current power / peak installed power) via MQTT.
@@ -50,8 +51,9 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | Sensor node (temperature, light, estimated power), water pump for cleaning the panels and Python bridge | Implemented, over MQTT (see [MQTT](#mqtt)) |
 | Installation of the devices on the systems, for the staff (and to test the bridge as any system) | Implemented (see [Devices and installations](#devices-and-installations)) |
 | REST API to read the measurements (per-community read access) | Implemented |
-| Web dashboards for communities and single systems, with weather and map; after login, a dashboard with the status of each system | Implemented |
-| 3. Short-term production forecasting | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
+| Home page: for visitors a showcase of the services (with the link to the city comparison); after login a dashboard with today's production of the community and the status of each system | Implemented |
+| Web dashboards for communities and single systems, with weather and map | Implemented |
+| 3. Production forecasting: today, tomorrow, next 7 and 30 days, in one page | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
 | 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented, with the automatic check of each system (see [System monitoring](#system-monitoring)) |
 | ROI calculator with printable quote, for staff consultants | Implemented |
 | Maintenance interventions: requests of the customers, staff dashboard and printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
@@ -81,20 +83,20 @@ backend/src/
     access.py             Who can see which systems, staff-only pages
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
     api.py                REST API to read the measurements
-    views.py              Registration, city benchmark and production dashboards
+    views.py              Home (showcase or dashboard), registration, city benchmark and production dashboards
     management/commands/  import_cities, populate_db, check_systems, mqtt_worker, device_credentials
     tests/                Tests of the SP app
   forecast/               Production forecast
     predictor.py          Features, model loading, community forecast and past-year yield of a city
     reference_data.py     Reference dataset (Open-Meteo weather + PVGIS production)
     training.py           Model, validation on unseen locations and training
-    views.py              Forecast page (today / tomorrow)
+    views.py              Forecast page: today, tomorrow, next 7 and 30 days
     management/commands/  train_forecast_model
     data/                 Reference dataset (.csv.gz)
     ml_models/            Trained models (.joblib)
   roi/                    ROI calculator and printable quote (staff only)
     calculator.py         Yearly cash flows, payback and ROI
-  templates/              Base layout and home page
+  templates/              Base layout (menu) and shared partials
 ```
 
 ## Getting started
@@ -392,6 +394,17 @@ used by the ROI calculator.
   (European Commission, JRC) from satellite irradiance, for an optimally oriented system with 14% system losses.
 - **Validation** on locations excluded from training: mean daily error 0.48 kWh/kWp, annual production error 2.1%
   on average (7.8% at most).
+
+**Forecast page** (`/forecast/`, menu **Previsioni** of the customers): the production of the community today,
+tomorrow and in the next 7 and 30 days, with a chart day by day and the weather of the next 7 days.
+
+- Open-Meteo forecasts the weather up to 15 days after today: the first 16 days use the weather forecast, with one
+  request for all of them (kept in cache for an hour, as Open-Meteo updates its forecasts every hour).
+- The following days (from the 17th to the 30th) are estimated from the history: the average of the yield that the
+  model predicts with the real weather of the last 5 years, in the days at most 3 days away from the same day of
+  the year (35 days). One day per year would give an average that changes at random from one day to the next. The
+  chart shows them with lighter bars, with the minimum and maximum of those days. The 5 years of weather are one
+  request to the Open-Meteo archive (about 1 s), kept in cache for a day.
 
 The previous model was trained on the fictitious data of `populate_db`, whose production does not depend on the
 weather: it predicted 5.76 kWh/kWp every day of the year in every city (about 2,100 kWh/kWp per year, 33–55% more
