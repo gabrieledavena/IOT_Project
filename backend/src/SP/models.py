@@ -103,7 +103,10 @@ class PhotovoltaicSystem(models.Model):
     class Status(models.TextChoices):
         OK = "OK", "OK"
         DIRTY = "DRT", "Pannelli sporchi"
+        # Produce meno dei vicini: il dispositivo lava i pannelli e dopo un'ora di produzione si verifica se è servito
         FAULT = "FLT", "Probabile guasto"
+        # Anche dopo il lavaggio produce meno dei vicini
+        BROKEN = "BRK", "Guasto"
 
     name = models.CharField(max_length=100)
     max_power = models.FloatField()  # Potenza di picco installata, in kW
@@ -134,13 +137,18 @@ class PhotovoltaicSystem(models.Model):
         return changed
 
     @property
+    def has_fault(self):
+        """True se ha un guasto, probabile (in attesa dell'esito del lavaggio) o confermato dopo il lavaggio."""
+        return self.status in (self.Status.FAULT, self.Status.BROKEN)
+
+    @property
     def can_request_intervention(self):
-        """True se ha un probabile guasto non ancora affidato a un intervento.
+        """True se ha un guasto, probabile o confermato, non ancora affidato a un intervento.
 
         Il guasto è già affidato se c'è una richiesta aperta o un intervento eseguito dopo il controllo
         che lo ha rilevato: in quel caso si aspetta il prossimo controllo della produzione.
         """
-        if self.status != self.Status.FAULT:
+        if not self.has_fault:
             return False
         handled = ~Q(status=Intervention.Status.DONE)
         if self.last_check:

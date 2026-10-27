@@ -1,6 +1,7 @@
 // Nodo di un impianto fotovoltaico: legge i sensori e invia le misure al bridge sulla seriale (UART),
-// riceve dal bridge la potenza massima dell'impianto e il suo stato, e con DRT (pannelli sporchi)
-// aziona la pompa dell'acqua per il lavaggio. Il protocollo è descritto in ArduinoBridge/protocol.py.
+// riceve dal bridge la potenza massima dell'impianto e il suo stato, e con DRT (pannelli sporchi) o FLT
+// (probabile guasto: il lavaggio può bastare a rimetterlo in funzione) aziona la pompa dell'acqua per il
+// lavaggio. Il protocollo è descritto in ArduinoBridge/protocol.py.
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +11,7 @@
 // Il bridge usa la porta seriale su cui arriva ID|SolarNode|<versione del protocollo>: lo sketch lo invia
 // appena acceso e in risposta al comando ID
 const char TIPO_DISPOSITIVO[] = "SolarNode";
-const int VERSIONE_PROTOCOLLO = 1;
+const int VERSIONE_PROTOCOLLO = 2;  // 2: FLT avvia il lavaggio, nuovo stato BRK
 
 // --- PIN DI INPUT ---
 #define DHTPIN 4           // Pin digitale collegato a 'out' del DHT11 (es. D4 o A4)
@@ -21,7 +22,7 @@ const int pinSensoreLuce = A5;
 const int pinPompa = 7;        // Relè della pompa dell'acqua per il lavaggio dei pannelli
 const int pinLedOk = 8;        // Verde: impianto OK
 const int pinLedSporco = 9;    // Giallo: pannelli sporchi (DRT)
-const int pinLedGuasto = 10;   // Rosso: probabile guasto (FLT)
+const int pinLedGuasto = 10;   // Rosso: lampeggia con un probabile guasto (FLT), acceso con un guasto (BRK)
 
 // Inizializzazione sensore DHT
 DHT dht(DHTPIN, DHTTYPE);
@@ -43,11 +44,12 @@ const float LUX_MASSIMI = 130000.0;
 const unsigned long INTERVALLO_LETTURA = 1500;  // Il DHT11 richiede almeno 1 secondo tra due letture
 const unsigned long INTERVALLO_READY = 2000;
 const unsigned long DURATA_LAVAGGIO = 10000;
+const unsigned long LAMPEGGIO = 500;
 
 // Potenza massima dell'impianto (W): la invia il bridge con CFG, secondo l'impianto con cui è collegato.
 // Finché non arriva, Arduino non invia misure e chiede la configurazione con READY.
 float maxPanelPower = 0;
-char stato[4] = "";           // OK, DRT o FLT, inviato dal bridge con STATUS
+char stato[4] = "";           // OK, DRT, FLT o BRK, inviato dal bridge con STATUS
 bool pompaAccesa = false;
 unsigned long inizioLavaggio = 0;
 unsigned long ultimaLettura = 0;
@@ -82,6 +84,7 @@ void loop() {
   if (pompaAccesa && adesso - inizioLavaggio >= DURATA_LAVAGGIO) {
     fermaPompa();
   }
+  aggiornaUscite();  // il LED rosso lampeggia con FLT
   if (maxPanelPower <= 0) {
     if (adesso - ultimoReady >= INTERVALLO_READY) {
       ultimoReady = adesso;
@@ -140,7 +143,7 @@ void leggiComandi() {
 
 // ID            chi sei? Risposta: ID|SolarNode|1
 // CFG|6000      potenza massima dell'impianto in W
-// STATUS|DRT|1  stato dell'impianto; 1 se è un nuovo cambiamento (con DRT si avvia il lavaggio)
+// STATUS|DRT|1  stato dell'impianto; 1 se è un nuovo cambiamento (con DRT e FLT si avvia il lavaggio)
 void eseguiComando(char *riga) {
   char *tipo = strtok(riga, "|");
   if (tipo == NULL) {
@@ -162,11 +165,12 @@ void eseguiComando(char *riga) {
     if (nuovoStato == NULL || cambiamento == NULL) {
       return;
     }
-    if (strcmp(nuovoStato, "OK") != 0 && strcmp(nuovoStato, "DRT") != 0 && strcmp(nuovoStato, "FLT") != 0) {
+    if (strcmp(nuovoStato, "OK") != 0 && strcmp(nuovoStato, "DRT") != 0 && strcmp(nuovoStato, "FLT") != 0
+        && strcmp(nuovoStato, "BRK") != 0) {
       return;
     }
     strncpy(stato, nuovoStato, sizeof(stato) - 1);
-    if (strcmp(stato, "DRT") == 0) {
+    if (strcmp(stato, "DRT") == 0 || strcmp(stato, "FLT") == 0) {
       // Solo per un nuovo cambiamento: se il bridge si riavvia non si lava di nuovo
       if (strcmp(cambiamento, "1") == 0) {
         avviaPompa();
@@ -207,5 +211,7 @@ void aggiornaUscite() {
   digitalWrite(pinPompa, pompaAccesa ? HIGH : LOW);
   digitalWrite(pinLedOk, strcmp(stato, "OK") == 0 ? HIGH : LOW);
   digitalWrite(pinLedSporco, strcmp(stato, "DRT") == 0 ? HIGH : LOW);
-  digitalWrite(pinLedGuasto, strcmp(stato, "FLT") == 0 ? HIGH : LOW);
+  bool lampeggio = (millis() / LAMPEGGIO) % 2 == 0;
+  bool guasto = strcmp(stato, "BRK") == 0 || (strcmp(stato, "FLT") == 0 && lampeggio);
+  digitalWrite(pinLedGuasto, guasto ? HIGH : LOW);
 }

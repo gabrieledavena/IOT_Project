@@ -1,6 +1,6 @@
 """Interventi di manutenzione: richiesta del cliente, gestione da parte dello staff e report stampabile.
 
-Ciclo di vita: il cliente chiede un intervento per un impianto con un probabile guasto (richiesta inoltrata);
+Ciclo di vita: il cliente chiede un intervento per un impianto con un guasto, probabile o confermato (richiesta inoltrata);
 un membro dello staff ne stabilisce il tipo e la accetta, prendendola in carico (richiesta accettata); solo lui
 può poi registrarne l'esecuzione (intervento eseguito).
 """
@@ -18,7 +18,7 @@ from django.views import View
 
 from .access import AccessError, StaffRequiredMixin, visible_system
 from .forms import InterventionAcceptForm, InterventionCompletionForm, InterventionRequestForm, intervention_date_range
-from .models import Customer, Intervention, PhotovoltaicSystem
+from .models import Customer, Intervention
 
 Status = Intervention.Status
 
@@ -28,7 +28,7 @@ def interventions_with_details():
 
 
 class InterventionRequestView(LoginRequiredMixin, View):
-    """Il cliente chiede un intervento per un impianto della sua community con un probabile guasto."""
+    """Il cliente chiede un intervento per un impianto della sua community con un guasto, probabile o confermato."""
 
     template_name = "SP/intervention_request.html"
 
@@ -47,10 +47,10 @@ class InterventionRequestView(LoginRequiredMixin, View):
             return render(request, self.template_name, {"error": error.message}, status=error.status)
 
         if not system.can_request_intervention:
-            if system.status == PhotovoltaicSystem.Status.FAULT:
+            if system.has_fault:
                 messages.info(request, "C'è già un intervento per il guasto di questo impianto.")
             else:
-                messages.info(request, "L'impianto non ha un probabile guasto: non serve richiedere un intervento.")
+                messages.info(request, "L'impianto non ha un guasto: non serve richiedere un intervento.")
             return redirect("SP:photovoltaic_system", system_id=system.id)
 
         if form.is_bound and form.is_valid():

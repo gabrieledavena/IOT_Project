@@ -79,8 +79,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(protocol.parse_line("D|23.40|812.0|3420.5\r\n"),
                          (protocol.DATA, protocol.Reading(23.4, 812.0, 3420.5)))
         self.assertEqual(protocol.parse_line("READY"), (protocol.READY, None))
-        self.assertEqual(protocol.parse_line("ID|SolarNode|1\r\n"),
-                         (protocol.IDENTIFY, protocol.Identity("SolarNode", 1)))
+        self.assertEqual(protocol.parse_line("ID|SolarNode|2\r\n"),
+                         (protocol.IDENTIFY, protocol.Identity("SolarNode", 2)))
         self.assertEqual(protocol.parse_line("PUMP|ON"), (protocol.PUMP, True))
         self.assertEqual(protocol.parse_line("PUMP|OFF"), (protocol.PUMP, False))
         self.assertEqual(protocol.parse_line("ACK|CFG|6500"), (protocol.ACK, ["CFG", "6500"]))
@@ -93,10 +93,12 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(protocol.config_command(6.5), "CFG|6500")
         self.assertEqual(protocol.status_command("DRT", True), "STATUS|DRT|1")
         self.assertEqual(protocol.parse_command("ID"), (protocol.IDENTIFY, ()))
-        self.assertEqual(protocol.identity_line(), "ID|SolarNode|1")
-        self.assertTrue(protocol.is_compatible(protocol.Identity("SolarNode", 1)))
+        self.assertEqual(protocol.identity_line(), "ID|SolarNode|2")
+        self.assertTrue(protocol.is_compatible(protocol.Identity("SolarNode", 2)))
+        self.assertFalse(protocol.is_compatible(protocol.Identity("SolarNode", 1)))
         self.assertEqual(protocol.parse_command("CFG|6500"), (protocol.CONFIG, (6500,)))
         self.assertEqual(protocol.parse_command("STATUS|FLT|0"), (protocol.STATUS, ("FLT", False)))
+        self.assertEqual(protocol.parse_command("STATUS|BRK|1"), (protocol.STATUS, ("BRK", True)))
         self.assertIsNone(protocol.parse_command("STATUS|XYZ|1"))
         self.assertIsNone(protocol.parse_command("CFG|-5"))
 
@@ -263,9 +265,9 @@ class SimulatedNodeTests(unittest.TestCase):
 
     def test_asks_for_the_configuration_then_sends_readings(self):
         # Appena acceso si presenta, come lo sketch
-        self.assertEqual(self.lines(), ["ID|SolarNode|1", "READY"])
+        self.assertEqual(self.lines(), ["ID|SolarNode|2", "READY"])
         self.node.write_line("ID")
-        self.assertEqual(self.lines(), ["ID|SolarNode|1"])
+        self.assertEqual(self.lines(), ["ID|SolarNode|2"])
 
         self.node.write_line("CFG|6500")
         lines = self.lines()
@@ -285,6 +287,15 @@ class SimulatedNodeTests(unittest.TestCase):
         self.assertNotIn("PUMP|OFF", self.lines())
         self.now += 1
         self.assertIn("PUMP|OFF", self.lines())
+
+    def test_a_probable_fault_also_starts_a_cleaning_but_a_confirmed_fault_does_not(self):
+        self.node.write_line("STATUS|FLT|1")
+        self.assertIn("PUMP|ON", self.lines())
+        self.now += CLEANING_SECONDS
+        self.assertIn("PUMP|OFF", self.lines())
+
+        self.node.write_line("STATUS|BRK|1")
+        self.assertNotIn("PUMP|ON", self.lines())
 
     def test_no_cleaning_when_the_status_is_only_aligned_and_ok_stops_the_pump(self):
         self.node.write_line("STATUS|DRT|0")

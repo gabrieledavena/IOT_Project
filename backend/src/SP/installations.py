@@ -41,7 +41,7 @@ def uninstall_device(system):
 def force_status(system, status):
     """Imposta lo stato come un controllo automatico e lo pubblica, anche se è uguale a quello attuale.
 
-    Vale come un nuovo cambiamento, così si può riprovare la reazione del dispositivo (la pompa con DRT);
+    Vale come un nuovo cambiamento, così si può riprovare la reazione del dispositivo (la pompa con DRT e FLT);
     vale anche come controllo: il prossimo automatico arriva dopo due giorni.
     """
     now = timezone.now()
