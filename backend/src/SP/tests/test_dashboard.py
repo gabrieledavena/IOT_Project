@@ -7,7 +7,8 @@ from django.utils import timezone
 
 from SP.models import Customer, PhotovoltaicSystem
 from SP.tests.helpers import (
-    DEFAULT_WEATHER, add_readings, create_city, create_community, create_customer, create_system, utc,
+    DEFAULT_WEATHER, add_readings, create_city, create_community, create_customer, create_system, create_technician,
+    utc,
 )
 
 Status = PhotovoltaicSystem.Status
@@ -69,7 +70,7 @@ class UserDashboardTests(TestCase):
         self.assertEqual([system.name for system, _ in self.client.get("/?status=broken").context["rows"]], ["Tettoia"])
 
     def test_staff_sees_every_system_with_its_community(self):
-        self.client.force_login(User.objects.create_user("tecnico", is_staff=True))
+        self.client.force_login(create_technician())
 
         response = self.client.get("/")
 
@@ -83,7 +84,7 @@ class UserDashboardTests(TestCase):
         self.assertContains(response, 'href="/sp/community/"')
         self.assertContains(response, 'href="/forecast/"')
 
-        self.client.force_login(User.objects.create_user("tecnico", is_staff=True))
+        self.client.force_login(create_technician())
         response = self.client.get("/")
         self.assertNotContains(response, 'href="/sp/community/"')
         self.assertNotContains(response, 'href="/forecast/"')
@@ -116,7 +117,7 @@ class UserDashboardTests(TestCase):
         self.assertNotContains(response, 'id="productionChart"')
 
     def test_staff_home_has_no_community_production(self):
-        self.client.force_login(User.objects.create_user("tecnico", is_staff=True))
+        self.client.force_login(create_technician())
 
         self.assertNotIn("today", self.client.get("/").context)
 

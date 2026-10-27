@@ -7,7 +7,8 @@ from django.test import TestCase
 
 from SP.models import Customer
 from SP.tests.helpers import (
-    DEFAULT_WEATHER, add_readings, create_city, create_community, create_customer, create_system, utc,
+    DEFAULT_WEATHER, add_readings, create_city, create_community, create_customer, create_system, create_technician,
+    utc,
 )
 
 WEATHER = mock.patch("SP.views.get_day_weather", return_value=DEFAULT_WEATHER)
@@ -99,7 +100,7 @@ class SystemDashboardTests(TestCase):
 
     @WEATHER
     def test_staff_sees_every_system(self, _):
-        self.client.force_login(User.objects.create_user("staff", is_staff=True))
+        self.client.force_login(create_technician("staff"))
 
         self.assertEqual(self.client.get(self.other_url).status_code, 200)
 

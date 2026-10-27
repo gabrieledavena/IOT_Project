@@ -14,6 +14,7 @@ from SP.management.commands.import_cities import NAME_COLUMN, PROVINCE_COLUMN, R
 from SP.management.commands.populate_db import FALLBACK_CITIES, PERFORMANCE_RATIO
 from SP.models import City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem
 from SP.production import daily_energy_kwh, get_system_series
+from SP.roles import CONSULTANTS, TECHNICIANS
 from SP.tests.helpers import DEFAULT_WEATHER, FakeModel, create_community, create_system, fake_weather
 from SP.weather import WeatherUnavailable
 
@@ -91,12 +92,17 @@ class PopulateDbCommandTests(TestCase):
         self.assertEqual({c.customers.count() for c in Community.objects.all()}, {2})
         self.assertEqual(PhotovoltaicSystem.objects.count(), 6)
         self.assertTrue(User.objects.get(username="user5").check_password("password123"))
-        self.assertTrue(User.objects.get(username="consulente").is_staff)
+        # Il consulente prepara solo i preventivi e non accede all'admin; i tecnici gestiscono gli impianti
+        consultant = User.objects.get(username="consulente")
+        self.assertEqual(list(consultant.groups.values_list("name", flat=True)), [CONSULTANTS])
+        self.assertFalse(consultant.is_staff)
+        self.assertTrue(consultant.check_password("password123"))
         # Tecnici dello staff con lo storico degli interventi già eseguiti (uno per impianto, qui sono 6)
         self.assertTrue(User.objects.get(username="tecnico1").is_staff)
+        self.assertTrue(User.objects.get(username="tecnico1").groups.filter(name=TECHNICIANS).exists())
         done = Intervention.objects.filter(status=Intervention.Status.DONE)
         self.assertEqual(done.count(), 6)
-        self.assertFalse(done.filter(staff__is_staff=False).exists())
+        self.assertFalse(done.exclude(staff__groups__name=TECHNICIANS).exists())
 
     def test_cities_per_region(self):
         self.populate(FakeModel(3.0), "--cities_per_region", "2")

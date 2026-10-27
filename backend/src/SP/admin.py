@@ -1,9 +1,70 @@
+from django import forms
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.forms import AdminUserCreationForm
+from django.contrib.auth.models import Group, User
 from django.db import transaction
 from django.utils import timezone
 
 from . import mqtt
 from .models import City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem
+from .roles import ROLES, TECHNICIANS
+
+
+class StaffUserCreationForm(AdminUserCreationForm):
+    role = forms.ChoiceField(
+        label="Ruolo", required=False, choices=[("", "Nessuno"), *ROLES.items()],
+        help_text="I tecnici installano e gestiscono gli impianti, anche nell'admin; i consulenti preparano i "
+                  "preventivi. I clienti si registrano da soli dal sito.",
+    )
+
+
+admin.site.unregister(User)
+
+
+@admin.register(User)
+class StaffUserAdmin(UserAdmin):
+    """Utenti: solo gli amministratori (superuser) li creano e assegnano i ruoli, cioè i gruppi Tecnici e Consulenti.
+
+    L'accesso all'admin (is_staff) segue il ruolo: ce l'hanno gli amministratori e i tecnici, non i consulenti.
+    """
+
+    add_form = StaffUserCreationForm
+    add_fieldsets = ((None, {"classes": ("wide",), "fields": (*UserAdmin.add_fieldsets[0][1]["fields"], "role")}),)
+    fieldsets = (
+        *UserAdmin.fieldsets[:2],
+        ("Ruolo e permessi", {
+            "description": "Il ruolo è il gruppo: Tecnici o Consulenti. L'accesso all'admin (staff) lo hanno gli "
+                           "amministratori e i tecnici: si aggiorna da solo al salvataggio.",
+            "fields": ("is_active", "is_superuser", "groups", "is_staff"),
+        }),
+        *UserAdmin.fieldsets[3:],
+    )
+    readonly_fields = ("is_staff",)
+    list_display = ("username", "first_name", "last_name", "email", "role")
+    list_filter = ("groups", "is_superuser", "is_active")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("customer").prefetch_related("groups")
+
+    @admin.display(description="Ruolo")
+    def role(self, user):
+        if user.is_superuser:
+            return "Amministratore"
+        roles = [ROLES[group.name] for group in user.groups.all() if group.name in ROLES]
+        if roles:
+            return ", ".join(roles)
+        return "Cliente" if hasattr(user, "customer") else "-"
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        user = form.instance
+        if form.cleaned_data.get("role"):
+            user.groups.add(Group.objects.get(name=form.cleaned_data["role"]))
+        is_staff = user.is_superuser or user.groups.filter(name=TECHNICIANS).exists()
+        if user.is_staff != is_staff:
+            user.is_staff = is_staff
+            user.save(update_fields=["is_staff"])
 
 
 @admin.register(City)

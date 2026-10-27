@@ -30,7 +30,7 @@
 <body>
 <div class="no-print d-flex justify-content-center gap-2 mt-3">
     <button type="button" class="btn btn-success" onclick="window.print()">Stampa / salva in PDF</button>
-    {% if user.is_staff %}
+    {% if is_technician %}
         <a href="{% url 'SP:intervention_detail' intervention.pk %}" class="btn btn-outline-secondary">Torna all'intervento</a>
     {% else %}
         <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-secondary">Torna all'impianto</a>

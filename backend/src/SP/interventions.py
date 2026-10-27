@@ -16,7 +16,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
 
-from .access import AccessError, StaffRequiredMixin, visible_system
+from .access import AccessError, TechnicianRequiredMixin, visible_system
 from .forms import InterventionAcceptForm, InterventionCompletionForm, InterventionRequestForm, intervention_date_range
 from .models import Customer, Intervention
 
@@ -69,7 +69,7 @@ class InterventionRequestView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
-class InterventionDashboardView(StaffRequiredMixin, View):
+class InterventionDashboardView(TechnicianRequiredMixin, View):
     """Dashboard dello staff: richieste da accettare, interventi in corso ed eseguiti."""
 
     template_name = "SP/intervention_dashboard.html"
@@ -108,7 +108,7 @@ class InterventionDashboardView(StaffRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
-class InterventionDetailView(StaffRequiredMixin, View):
+class InterventionDetailView(TechnicianRequiredMixin, View):
     """Dettaglio per lo staff: si accetta la richiesta e, se la si ha in carico, si registra l'intervento eseguito."""
 
     template_name = "SP/intervention_detail.html"

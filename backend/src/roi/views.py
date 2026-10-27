@@ -7,7 +7,7 @@ from django.shortcuts import redirect, render
 from django.views import View
 
 from forecast.predictor import ForecastError, estimate_past_year_yield
-from SP.access import StaffRequiredMixin
+from SP.access import ConsultantRequiredMixin
 
 from .calculator import calculate_roi
 from .forms import RoiForm
@@ -56,7 +56,7 @@ def simulate(form):
     }
 
 
-class RoiView(StaffRequiredMixin, View):
+class RoiView(ConsultantRequiredMixin, View):
     template_name = "roi/roi.html"
 
     def get(self, request):
@@ -78,7 +78,7 @@ def calculator_page(request, form):
     return render(request, RoiView.template_name, context)
 
 
-class QuoteView(StaffRequiredMixin, View):
+class QuoteView(ConsultantRequiredMixin, View):
     """Preventivo pronto da stampare (o da salvare in PDF dal browser) con gli stessi dati del calcolo.
 
     Riceve i dati in POST dal pulsante "Stampa preventivo" della pagina del calcolo.

@@ -8,6 +8,8 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
+from .roles import TECHNICIANS, is_technician
+
 
 class City(models.Model):
     name = models.CharField(max_length=255)
@@ -189,9 +191,10 @@ class Intervention(models.Model):
     preferred_date = models.DateField(verbose_name="Giorno richiesto dal cliente")
     customer_notes = models.TextField(blank=True, default="", verbose_name="Note del cliente")
 
-    # Gestione: il membro dello staff che accetta la richiesta la prende in carico e ne registra l'esecuzione
+    # Gestione: il tecnico che accetta la richiesta la prende in carico e ne registra l'esecuzione
     staff = models.ForeignKey(
-        User, on_delete=models.PROTECT, null=True, blank=True, limit_choices_to={"is_staff": True},
+        User, on_delete=models.PROTECT, null=True, blank=True,
+        limit_choices_to=Q(groups__name=TECHNICIANS) | Q(is_superuser=True),
         related_name="managed_interventions", verbose_name="Gestito da",
     )
     code = models.CharField(max_length=3, choices=InterventionType.choices, blank=True, verbose_name="Tipo di Intervento")
@@ -204,8 +207,8 @@ class Intervention(models.Model):
 
     def clean(self):
         errors = {}
-        if self.staff and not self.staff.is_staff:
-            errors["staff"] = "Gli interventi sono gestiti dai membri dello staff."
+        if self.staff and not is_technician(self.staff):
+            errors["staff"] = "Gli interventi sono gestiti dai tecnici."
         if self.status != self.Status.REQUESTED:
             if not self.staff_id:
                 errors["staff"] = "Una richiesta accettata deve essere gestita da un membro dello staff."

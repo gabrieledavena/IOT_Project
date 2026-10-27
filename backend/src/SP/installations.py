@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.views import View
 
 from . import mqtt
-from .access import StaffRequiredMixin
+from .access import TechnicianRequiredMixin
 from .forms import ForceStatusForm, InstallationForm
 from .models import Device, PhotovoltaicSystem
 
@@ -63,7 +63,7 @@ def systems_with_devices():
     return PhotovoltaicSystem.objects.select_related("community__city", "device", "device__installed_by")
 
 
-class InstallationListView(StaffRequiredMixin, View):
+class InstallationListView(TechnicianRequiredMixin, View):
     """Tutti gli impianti con lo stato del loro dispositivo: installato, collegato o no."""
 
     template_name = "SP/installation_list.html"
@@ -96,7 +96,7 @@ class InstallationListView(StaffRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
-class NewInstallationView(StaffRequiredMixin, View):
+class NewInstallationView(TechnicianRequiredMixin, View):
     """Nuovo impianto di una community, installato insieme al suo dispositivo."""
 
     template_name = "SP/installation_new.html"
@@ -116,7 +116,7 @@ class NewInstallationView(StaffRequiredMixin, View):
         return redirect("SP:installation_detail", system_id=system.id)
 
 
-class InstallationDetailView(StaffRequiredMixin, View):
+class InstallationDetailView(TechnicianRequiredMixin, View):
     """Dispositivo di un impianto: installazione, nuove credenziali, disinstallazione e stato simulato."""
 
     template_name = "SP/installation_detail.html"

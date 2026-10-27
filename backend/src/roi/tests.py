@@ -1,12 +1,11 @@
 from unittest import mock
 from urllib.parse import urlencode
 
-from django.contrib.auth.models import User
 from django.test import TestCase
 
 from forecast.predictor import ForecastError
 from SP.models import City
-from SP.tests.helpers import create_city, create_community, create_customer, past_year_yield
+from SP.tests.helpers import create_city, create_community, create_consultant, create_customer, past_year_yield
 
 from .calculator import Assumptions, calculate_roi
 from .forms import RoiForm
@@ -107,7 +106,7 @@ def roi_data(**overrides):
 class RoiViewTests(TestCase):
     def setUp(self):
         create_city("Modena", province="Modena")
-        self.staff = User.objects.create_user("consulente", first_name="Luca", last_name="Verdi", is_staff=True)
+        self.staff = create_consultant("consulente", first_name="Luca", last_name="Verdi")
 
     def post(self, url, data=None, yields=None, error=None):
         with mock.patch("roi.views.estimate_past_year_yield", return_value=yields, side_effect=error):

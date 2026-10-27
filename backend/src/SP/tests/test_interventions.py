@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from SP.models import Customer, Intervention, PhotovoltaicSystem
-from SP.tests.helpers import create_community, create_customer, create_system
+from SP.tests.helpers import create_community, create_consultant, create_customer, create_system, create_technician
 
 Status = Intervention.Status
 FAULT = PhotovoltaicSystem.Status.FAULT
@@ -24,8 +24,8 @@ class InterventionTestCase(TestCase):
         self.community = create_community("Rossi Trasporti")
         self.customer = create_customer(self.community)
         self.system = faulty_system(self.community)
-        self.technician = User.objects.create_user("tecnico", first_name="Paolo", last_name="Neri", is_staff=True)
-        self.other_technician = User.objects.create_user("tecnico2", first_name="Sara", last_name="Gialli", is_staff=True)
+        self.technician = create_technician("tecnico", first_name="Paolo", last_name="Neri")
+        self.other_technician = create_technician("tecnico2", first_name="Sara", last_name="Gialli")
         self.tomorrow = timezone.localdate() + timedelta(days=1)
 
     def request_intervention(self, **fields):
@@ -191,9 +191,13 @@ class InterventionModelTests(InterventionTestCase):
             intervention.full_clean()
         self.assertEqual(set(error.exception.message_dict), {"staff", "code"})
 
-        intervention.staff = Customer.objects.get().user  # un cliente non è staff
         intervention.code = "INV"
-        with self.assertRaisesMessage(ValidationError, "membri dello staff"):
+        # Né un cliente né un consulente: solo i tecnici
+        intervention.staff = create_consultant()
+        with self.assertRaisesMessage(ValidationError, "Gli interventi sono gestiti dai tecnici"):
+            intervention.full_clean()
+        intervention.staff = Customer.objects.get().user
+        with self.assertRaisesMessage(ValidationError, "Gli interventi sono gestiti dai tecnici"):
             intervention.full_clean()
 
     def test_executed_interventions_need_the_execution_date(self):

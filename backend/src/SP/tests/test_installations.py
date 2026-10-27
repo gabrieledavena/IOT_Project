@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from SP.models import Device, PhotovoltaicSystem
-from SP.tests.helpers import create_community, create_customer, create_system, install_device
+from SP.tests.helpers import create_community, create_customer, create_system, create_technician, install_device
 
 LIST_URL = "/sp/installations/"
 NEW_URL = "/sp/installations/new/"
@@ -24,7 +24,7 @@ class InstallationTestCase(TestCase):
         self.community = create_community("Rossi Trasporti")
         self.customer = create_customer(self.community)
         self.system = create_system(self.community, "Magazzino")
-        self.staff = User.objects.create_user("tecnico", is_staff=True)
+        self.staff = create_technician()
         self.client.force_login(self.staff)
 
     def detail_url(self, system=None):
