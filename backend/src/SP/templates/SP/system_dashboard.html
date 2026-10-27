@@ -72,6 +72,8 @@
 {% endblock %}
 
 {% block page_end %}
+{% include "partials/energy_summary.html" with extra_class="mb-4 mt-2" %}
+
 {% if interventions %}
 <div class="card border-0 shadow-sm rounded-4 mb-4 mt-2">
     <div class="card-body p-4">

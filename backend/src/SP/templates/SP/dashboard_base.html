@@ -155,12 +155,18 @@ Blocchi: heading, subheading, status, production_row_margin, extra_charts, page_
 {% endblock %}
 
 {% block extra_js %}
+{% if chart_data or energy_summary_url %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+{% endif %}
 {% if chart_data %}
     {{ chart_data|json_script:"chart-data" }}
-    <!-- Chart.js and Moment.js for date handling in the chart -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <!-- Moment.js for date handling in the chart -->
     <script src="https://cdn.jsdelivr.net/npm/moment@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1"></script>
     <script src="{% static 'SP/dashboard.js' %}"></script>
+{% endif %}
+{% if energy_summary_url %}
+    <!-- Sommario dell'energia per mese e per anno (pagina dell'impianto) -->
+    <script src="{% static 'SP/energy_summary.js' %}"></script>
 {% endif %}
 {% endblock %}

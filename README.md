@@ -53,11 +53,12 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | REST API to read the measurements (per-community read access) | Implemented |
 | Home page: for visitors a showcase of the services (with the link to the city comparison); after login a dashboard with today's production of the community and the status of each system | Implemented |
 | Web dashboards for communities and single systems, with weather and map | Implemented |
+| Community totalizer on the home and energy summaries by month and year (communities and systems), with 2. CO₂ savings | Implemented (see [Energy totals and summaries](#energy-totals-and-summaries)) |
 | 3. Production forecasting: today, tomorrow, next 7 and 30 days, in one page | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
 | 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented, with the automatic check of each system (see [System monitoring](#system-monitoring)) |
 | ROI calculator with printable quote, for the consultants | Implemented |
 | Maintenance interventions: requests of the customers, dashboard of the technicians and printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
-| Smart relays of the appliances, 1. self-consumption optimization, 2. CO₂ savings, 5. energy community simulation | Not implemented yet |
+| Smart relays of the appliances, 1. self-consumption optimization, 5. energy community simulation | Not implemented yet |
 
 ## Project structure
 
@@ -74,6 +75,7 @@ backend/src/
   SP/                     Core app
     models.py             City, Community, Customer, PhotovoltaicSystem, PanelData, Intervention
     production.py         Minute-by-minute production series and energy (kWh)
+    energy.py             Energy totals, summaries by month and year and environmental impact
     benchmark.py          Measured yield per installed kW of every city, expected yield of the reference locations
     monitoring.py         Check of each system: production compared with the forecast and with nearby systems
     interventions.py      Maintenance interventions: request, technicians' dashboard, acceptance, execution, report
@@ -171,6 +173,28 @@ Only the administrators create technicians and consultants: in the admin, **Uten
 (`is_staff`) follows it by itself: technicians and administrators yes, consultants no. The groups and the permissions
 of the technicians are created by the migration `SP/0012_staff_roles`; the staff users existing before it get no
 role until an administrator gives them one.
+
+## Energy totals and summaries
+
+The home of the customers has the **totalizer** of their community: the energy generated since the first
+reading, in the current year and month, the mean per day with readings, and the environmental impact of the
+total. Below the list of the systems, the **energy summary** shows the energy generated day by day in a month, or
+month by month in a year, with the navigation between periods; the page of each system has the same summary for
+that system. Under the chart: minimum and maximum day, daily mean and total, the yield per installed kW and the
+environmental impact of the period. Minimum, maximum and mean leave out the current day, which is incomplete.
+
+The summary is loaded as JSON (`/sp/community/energy/` and `/sp/system/<id>/energy/`, parameters `period=month` or
+`year` and `date=2026-10` or `2026`). The sums are made by the database (`SP/energy.py`): each reading is the mean
+power of a minute, so the energy is the sum of the powers divided by 60, without interpolating the missing minutes
+(the daily chart of the dashboards interpolates them). A community takes a few tens of milliseconds, all the 2.4
+million demo readings about half a second.
+
+The environmental impact uses indicative factors (constants in `SP/energy.py`): 0.25 kg of CO₂ per kWh, the order
+of magnitude of the emission factor of the Italian electricity production published by ISPRA, decreasing with
+the renewables; 22 kg of CO₂ absorbed in a year by a tree; 0.12 kg of CO₂ per km for an average car.
+
+The nodes measure only the production: consumption, batteries and the energy imported from and exported to the
+grid are not measured, so they are not in the totalizer and in the summaries.
 
 ## System monitoring
 

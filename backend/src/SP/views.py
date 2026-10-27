@@ -6,13 +6,16 @@ from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.db.models import Case, Count, IntegerField, Q, Sum, Value, When
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views import View
 
 from forecast.reference_data import REFERENCE_YEARS
 
 from .access import NOT_A_CUSTOMER, AccessError, visible_system
 from .benchmark import measured_city_yields, reference_yields
+from .energy import period_summary, totalizer
 from .forms import CustomerRegistrationForm
 from .models import City, Community, Customer, PanelData, PhotovoltaicSystem
 from .production import energy_kwh, get_community_series, get_system_series
@@ -133,18 +136,27 @@ class UserDashboardView(LoginRequiredMixin, View):
             "rows": [(system, SYSTEM_STATUSES[system.status] if system.last_check else None) for system in page],
         }
         if community:
-            context.update(self.today_production(community))
+            context.update(self.community_energy(community))
         return render(request, self.template_name, context)
 
-    @staticmethod
-    def today_production(community):
-        """Produzione di oggi della community: energia, picco di potenza, resa per kW installato, meteo e grafico."""
+    def community_energy(self, community):
+        """Energia della community: produzione di oggi, totalizzatore e indirizzo del sommario per mese e anno."""
         today = date.today()
+        installed_power = community.photovoltaic_systems.aggregate(total=Sum("max_power"))["total"]
+        return {
+            **self.today_production(community, installed_power, today),
+            "totals": totalizer(PanelData.objects.filter(system__community=community), installed_power, today),
+            "installed_power": installed_power,
+            "energy_summary_url": reverse("SP:community_energy"),
+        }
+
+    @staticmethod
+    def today_production(community, installed_power, today):
+        """Produzione di oggi della community: energia, picco di potenza, resa per kW installato, meteo e grafico."""
         series = get_community_series(community, today)
         if not series:
             return {"today": {"day": today}}
         energy = energy_kwh(series)
-        installed_power = community.photovoltaic_systems.aggregate(total=Sum("max_power"))["total"]
         return {
             "today": {
                 "day": today,
@@ -321,4 +333,29 @@ class PhotovoltaicSystemView(ProductionDashboardView):
             # Lo stato delle richieste di intervento, visibile anche al cliente
             "interventions": self.system.interventions.select_related("staff")[:5],
             "can_request_intervention": is_member and self.system.can_request_intervention,
+            "energy_summary_url": reverse("SP:system_energy", args=[self.system.id]),
         }
+
+
+class EnergySummaryView(LoginRequiredMixin, View):
+    """Sommario dell'energia prodotta in un mese o in un anno, in JSON per il grafico della pagina.
+
+    Della community dell'utente, o di un impianto che l'utente può vedere. Parametri: period (month o year)
+    e date (2026-10 o 2026).
+    """
+
+    def get(self, request, system_id=None):
+        try:
+            if system_id is None:
+                community = Customer.community_of(request.user)
+                if community is None:
+                    raise AccessError(NOT_A_CUSTOMER, status=403)
+                readings = PanelData.objects.filter(system__community=community)
+                installed_power = community.photovoltaic_systems.aggregate(total=Sum("max_power"))["total"]
+            else:
+                system = visible_system(request.user, system_id)
+                readings, installed_power = PanelData.objects.filter(system=system), system.max_power
+        except AccessError as error:
+            return JsonResponse({"error": error.message}, status=error.status)
+        summary = period_summary(readings, installed_power, request.GET.get("period"), request.GET.get("date"), date.today())
+        return JsonResponse(summary)
