@@ -5,7 +5,7 @@ device_credentials del server) e da quelle sa quale impianto è:
 
 - riceve dal topic config i dati dell'impianto e invia ad Arduino la potenza massima;
 - fa la media delle misure di Arduino su ogni minuto e la pubblica sul topic telemetry;
-- riceve dal topic status lo stato dell'impianto e lo inoltra ad Arduino, che con DRT aziona la pompa;
+- riceve dal topic status lo stato dell'impianto e lo inoltra ad Arduino, che con DRT e FLT aziona la pompa;
 - pubblica sul topic events l'accensione e lo spegnimento della pompa.
 
 Avvio (il token si può passare anche con la variabile d'ambiente SOLAR_DEVICE_TOKEN):
@@ -191,7 +191,7 @@ class Bridge:
         self.node.write_line(line)
 
     def send_status(self):
-        """Inoltra lo stato ad Arduino; segnala il cambiamento una volta sola (con DRT parte il lavaggio)."""
+        """Inoltra lo stato ad Arduino; segnala il cambiamento una volta sola (con DRT e FLT parte il lavaggio)."""
         new = self.pending_change is not None
         self.send(protocol.status_command(self.status["status"], new))
         if new:

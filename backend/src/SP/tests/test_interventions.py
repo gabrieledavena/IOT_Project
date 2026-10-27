@@ -44,6 +44,11 @@ class InterventionRequestTests(InterventionTestCase):
         self.system.save()
         self.assertNotContains(self.client.get(url, follow=True), "Richiedi intervento")
 
+        # Anche quando il guasto è confermato dopo il lavaggio
+        self.system.status = PhotovoltaicSystem.Status.BROKEN
+        self.system.save()
+        self.assertContains(self.client.get(url, follow=True), "Richiedi intervento")
+
         self.system.status = FAULT
         self.system.save()
         self.client.force_login(self.technician)

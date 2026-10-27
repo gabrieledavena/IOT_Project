@@ -10,9 +10,10 @@ from django.test import TestCase
 from django.utils import timezone
 
 from SP.models import PanelData, PhotovoltaicSystem
-from SP.monitoring import SystemChecker
+from SP.monitoring import CleaningVerifier, SystemChecker, systems_to_verify
 from SP.tests.helpers import (
-    FakeModel, create_city, create_community, create_customer, create_system, fake_weather, install_device,
+    FakeModel, add_readings, create_city, create_community, create_customer, create_system, fake_weather,
+    install_device, utc,
 )
 from SP.weather import WeatherUnavailable
 
@@ -151,7 +152,7 @@ class CheckSystemsCommandTests(MonitoringTestCase):
         self.assertEqual(faulty.status, Status.FAULT)
         self.assertLess(timezone.now() - faulty.last_check, timedelta(minutes=1))
         self.assertIn("Rossi Trasporti:", output)
-        self.assertIn("Checked 2 systems (1 OK, 0 Pannelli sporchi, 1 Probabile guasto)", output)
+        self.assertIn("Checked 2 systems (1 OK, 0 Pannelli sporchi, 1 Probabile guasto, 0 Guasto)", output)
 
         self.assertIn("No system to check", self.run_command())
         self.assertIn("Checked 2 systems", self.run_command("--all"))
@@ -228,3 +229,134 @@ class SystemPageStatusTests(MonitoringTestCase):
         self.client.force_login(create_customer(self.community))
 
         self.assertContains(self.client.get(f"/sp/system/{system.id}/", follow=True), "Stato dell'impianto")
+
+
+def washed(system, cleaned_at):
+    """Probabile guasto rilevato poco prima di cleaned_at, quando il dispositivo ha lavato i pannelli."""
+    detected = cleaned_at - timedelta(minutes=5)
+    system.status, system.status_changed_at, system.last_check = Status.FAULT, detected, detected
+    system.save()
+    device, _ = install_device(system)
+    device.last_cleaning = cleaned_at
+    device.save()
+    return systems_to_verify().get(pk=system.pk)
+
+
+class CleaningVerificationTests(MonitoringTestCase):
+    """Con un probabile guasto il dispositivo lava i pannelli: dopo un'ora di produzione si confronta con i vicini."""
+
+    CLEANED_AT = utc(2026, 9, 29, 9, 0)
+
+    def faulty(self, power, start=None, minutes=60):
+        system = create_system(self.community, "Capannone", max_power=1.0)
+        add_readings(system, start or self.CLEANED_AT, [power] * minutes)
+        return washed(system, self.CLEANED_AT)
+
+    def neighbour(self, power, start=None, minutes=60, name="Sede", max_power=2.0):
+        system = create_system(self.community, name, max_power=max_power)
+        add_readings(system, start or self.CLEANED_AT, [power] * minutes)
+        return system
+
+    def verify(self, system, now=None):
+        return CleaningVerifier(now or self.CLEANED_AT + timedelta(hours=1)).verify(system)
+
+    def test_producing_like_the_neighbours_after_the_washing_is_ok(self):
+        self.neighbour(1.0)  # 0,5 kW per kW installato
+        system = self.faulty(0.47)
+
+        result = self.verify(system)
+
+        self.assertEqual(result.status, Status.OK)
+        self.assertAlmostEqual(result.ratio, 0.94)
+        self.assertEqual((result.start, result.neighbours), (self.CLEANED_AT, 1))
+
+    def test_still_low_after_the_washing_is_a_fault(self):
+        self.neighbour(1.0)
+        self.neighbour(1.2, name="Uffici")
+        system = self.faulty(0.3)
+
+        result = self.verify(system)
+
+        self.assertEqual(result.status, Status.BROKEN)
+        self.assertAlmostEqual(result.ratio, 0.3 / 0.55)  # mediana dei vicini: (0,5 + 0,6) / 2
+        self.assertEqual(result.neighbours, 2)
+
+    def test_waits_an_hour_of_production(self):
+        self.neighbour(1.0)
+        system = self.faulty(0.3)
+
+        self.assertIsNone(self.verify(system, now=self.CLEANED_AT + timedelta(minutes=50)))
+
+    def test_washed_at_night_it_waits_for_the_first_hour_of_daylight(self):
+        cleaned_at = utc(2026, 9, 28, 20, 0)
+        night, day = [0.0] * 10 * 60, [1.0] * 2 * 60
+        sede = create_system(self.community, "Sede", max_power=2.0)
+        add_readings(sede, cleaned_at, night + day)
+        system = create_system(self.community, "Capannone", max_power=1.0)
+        add_readings(system, cleaned_at, night + [0.2] * 2 * 60)
+        system = washed(system, cleaned_at)
+
+        result = CleaningVerifier(utc(2026, 9, 29, 8, 0)).verify(system)
+
+        self.assertEqual(result.status, Status.BROKEN)
+        self.assertEqual(result.start, utc(2026, 9, 29, 6, 0))
+
+    def test_neighbours_with_a_fault_are_not_a_reference(self):
+        broken = self.neighbour(1.0)
+        broken.status = Status.BROKEN
+        broken.save()
+        system = self.faulty(0.3)
+
+        self.assertIsNone(self.verify(system))
+
+    def test_only_probable_faults_washed_after_they_were_found(self):
+        washed_fault = washed(create_system(self.community, "Lavato"), self.CLEANED_AT)
+        # Lavato prima, quando aveva i pannelli sporchi
+        earlier = washed(create_system(self.community, "Lavato prima"), self.CLEANED_AT)
+        earlier.status_changed_at = self.CLEANED_AT + timedelta(hours=1)
+        earlier.save()
+        not_installed = create_system(self.community, "Senza dispositivo")
+        not_installed.status, not_installed.status_changed_at = Status.FAULT, self.CLEANED_AT
+        not_installed.save()
+
+        self.assertEqual(list(systems_to_verify()), [washed_fault])
+
+
+class ConfirmedFaultTests(MonitoringTestCase):
+    def test_a_fault_stays_until_the_production_is_normal_again(self):
+        self.system(1.0, name="Vicino")
+        broken = self.system(0.6, name="Guasto")
+        broken.status = Status.BROKEN
+        broken.save()
+
+        # Non torna probabile guasto, che farebbe lavare di nuovo i pannelli
+        self.assertEqual(self.check(broken).status, Status.BROKEN)
+
+        repaired = self.system(0.95, name="Riparato")
+        repaired.status = Status.BROKEN
+        repaired.save()
+        self.assertEqual(self.check(repaired).status, Status.OK)
+
+
+class CheckSystemsCleaningTests(MonitoringTestCase):
+    def test_the_command_verifies_the_washed_probable_faults_and_sends_the_new_status(self):
+        cleaned_at = timezone.now().replace(second=0, microsecond=0) - timedelta(hours=3)
+        sede = create_system(self.community, "Sede", max_power=1.0)
+        add_readings(sede, cleaned_at, [0.5] * 120)
+        sede.last_check = timezone.now()  # già controllato: il comando verifica solo il lavaggio
+        sede.save()
+        system = create_system(self.community, "Capannone", max_power=1.0)
+        add_readings(system, cleaned_at, [0.2] * 120)
+        system = washed(system, cleaned_at)
+
+        out = StringIO()
+        with mock.patch("SP.mqtt.publish", return_value=True) as publish:
+            call_command("check_systems", stdout=out)
+
+        system.refresh_from_db()
+        self.assertEqual((system.status, system.previous_status), (Status.BROKEN, Status.FAULT))
+        self.assertIn("Rossi Trasporti - Capannone: Guasto, 40% of 1 nearby systems", out.getvalue())
+        self.assertIn("No system to check.", out.getvalue())
+        [message] = publish.call_args.args[0]
+        self.assertEqual(json.loads(message["payload"])["status"], "BRK")
+

@@ -43,8 +43,11 @@ COMPLETED_WORK = {
     "RPL": ("Sostituiti i fusibili di stringa e due connettori MC4 ossidati.", (80, 200)),
     "SBT": ("Sostituiti due moduli con celle danneggiate, individuate con la termocamera.", (400, 900)),
 }
-# Share of the systems with a probable fault whose customers have not requested an intervention yet, and of
-# the requests already accepted; executed interventions of the last months on random systems
+# Share of the probable faults that the washing did not solve: they are faults now (the others wait for the
+# result of the washing)
+BROKEN_SHARE = 0.7
+# Share of the faults whose customers have not requested an intervention yet, and of the requests already
+# accepted; executed interventions of the last months on random systems
 NOT_REQUESTED_SHARE = 0.3
 ACCEPTED_SHARE = 0.5
 PAST_INTERVENTIONS = 25
@@ -257,21 +260,35 @@ class Command(BaseCommand):
         except CommandError as error:
             self.stdout.write(self.style.WARNING(f'Systems not checked: {error}'))
 
+        broken = self.confirm_faults()
         requested, done = self.create_interventions(technicians)
         self.stdout.write(self.style.SUCCESS(
-            f'Created {requested} intervention requests for the probable faults and {done} past interventions, '
-            f'handled by {", ".join(username for username, _, _ in TECHNICIANS)}.'
+            f'{broken} probable faults are faults after the washing. Created {requested} intervention requests for '
+            f'the faults and {done} past interventions, handled by {", ".join(username for username, _, _ in TECHNICIANS)}.'
         ))
 
+    def confirm_faults(self):
+        """As if the devices had already washed the panels of the probable faults: most of them are still low.
+
+        Returns how many became faults.
+        """
+        now = timezone.now()
+        broken = 0
+        for system in PhotovoltaicSystem.objects.filter(status=PhotovoltaicSystem.Status.FAULT).order_by('id'):
+            if self.random.random() < BROKEN_SHARE:
+                system.set_status(PhotovoltaicSystem.Status.BROKEN, now)
+                broken += 1
+        return broken
+
     def create_interventions(self, technicians):
-        """Requests for the systems with a probable fault and interventions executed in the last months.
+        """Requests for the systems with a fault and interventions executed in the last months.
 
         Returns how many requests and executed interventions it created.
         """
         today, now = timezone.localdate(), timezone.now()
         requested = 0
-        # The owner of the company asks for the intervention; some requests are already accepted
-        for system in PhotovoltaicSystem.objects.filter(status=PhotovoltaicSystem.Status.FAULT).select_related('community__owner'):
+        # Once the fault is confirmed the owner of the company asks for an intervention; some requests are accepted
+        for system in PhotovoltaicSystem.objects.filter(status=PhotovoltaicSystem.Status.BROKEN).select_related('community__owner'):
             if self.random.random() < NOT_REQUESTED_SHARE:
                 continue
             intervention = Intervention(

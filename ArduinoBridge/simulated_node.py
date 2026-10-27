@@ -55,9 +55,10 @@ class SimulatedNode:
             self.outbox.append(f"{protocol.ACK}|{protocol.CONFIG}|{self.max_power_w}")
         elif kind == protocol.STATUS:
             self.status, new = values
-            if self.status == "DRT" and new:
-                self.start_pump()
-            elif self.status != "DRT":
+            if self.status in protocol.CLEANING_STATUSES:
+                if new:
+                    self.start_pump()
+            else:
                 self.stop_pump()
 
     def readline(self):

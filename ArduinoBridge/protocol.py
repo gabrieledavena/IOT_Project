@@ -10,8 +10,8 @@ Arduino -> bridge
 Bridge -> Arduino
     ID                    chi sei? Il bridge lo invia alle porte seriali per trovare quella con Arduino
     CFG|6000              potenza massima dell'impianto in W
-    STATUS|DRT|1          stato dell'impianto (OK, DRT, FLT); 1 se è un nuovo cambiamento a cui reagire
-                          (con DRT si accende la pompa), 0 se serve solo ad allineare Arduino (i LED)
+    STATUS|DRT|1          stato dell'impianto (OK, DRT, FLT, BRK); 1 se è un nuovo cambiamento a cui reagire
+                          (con DRT e FLT si accende la pompa), 0 se serve solo ad allineare Arduino (i LED)
 """
 import math
 from collections import namedtuple
@@ -27,11 +27,15 @@ CONFIG = "CFG"
 STATUS = "STATUS"
 UNKNOWN = "UNKNOWN"
 
-STATUSES = ("OK", "DRT", "FLT")
+STATUSES = ("OK", "DRT", "FLT", "BRK")
+# Stati in cui un nuovo cambiamento avvia il lavaggio: pannelli sporchi e probabile guasto, che il lavaggio
+# può risolvere (il server verifica la produzione dopo un'ora)
+CLEANING_STATUSES = ("DRT", "FLT")
 
 # Identità del nodo: il bridge parla solo con questo tipo di dispositivo e con questa versione del protocollo
 DEVICE_TYPE = "SolarNode"
-PROTOCOL_VERSION = 1
+# 2: FLT avvia il lavaggio, nuovo stato BRK
+PROTOCOL_VERSION = 2
 
 Reading = namedtuple("Reading", "temperature lux power_w")
 Identity = namedtuple("Identity", "device_type version")

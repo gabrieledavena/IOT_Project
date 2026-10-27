@@ -32,7 +32,13 @@ SYSTEM_STATUSES = {
     PhotovoltaicSystem.Status.FAULT: {
         "color": "danger", "icon": "fa-exclamation-triangle",
         "description": "Ha prodotto oltre il 10% in meno del previsto, mentre gli impianti vicini producono regolarmente: "
-                       "probabile guasto di pannelli o inverter. Si consiglia un intervento tecnico.",
+                       "probabile guasto. Il dispositivo lava comunque i pannelli: se dopo un'ora di produzione l'impianto "
+                       "non produce come i vicini, viene segnalato come guasto.",
+    },
+    PhotovoltaicSystem.Status.BROKEN: {
+        "color": "dark", "icon": "fa-times-circle",
+        "description": "Anche dopo il lavaggio dei pannelli produce meno degli impianti vicini: guasto di pannelli o "
+                       "inverter. Si consiglia un intervento tecnico.",
     },
 }
 
@@ -82,6 +88,7 @@ class UserDashboardView(LoginRequiredMixin, View):
     checked = Q(last_check__isnull=False)
     # Filtri per stato: mai controllati a parte, perché il loro stato è solo quello iniziale
     FILTERS = {
+        "broken": checked & Q(status=Status.BROKEN),
         "fault": checked & Q(status=Status.FAULT),
         "dirty": checked & Q(status=Status.DIRTY),
         "ok": checked & Q(status=Status.OK),

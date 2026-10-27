@@ -46,7 +46,7 @@ class PhotovoltaicSystemAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         if change and "status" in form.changed_data:
             # Un cambiamento di stato come quelli del controllo automatico: il dispositivo lo riconosce
-            # dalla data e reagisce (con DRT aziona la pompa)
+            # dalla data e reagisce (con DRT e FLT aziona la pompa)
             obj.previous_status, obj.status_changed_at = form.initial["status"], timezone.now()
         super().save_model(request, obj, form, change)
         # Il dispositivo dell'impianto riceve subito i dati aggiornati, come la potenza massima

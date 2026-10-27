@@ -121,8 +121,9 @@ of every region (about 50), named after its owner (like "Rossi Trasporti"), with
 headquarters, warehouses, offices, shops, ...), and one reading per minute for the last 7 days: about 250 systems
 and 2.5 million readings, generated in about 20 seconds. The users log in as `user0`, `user1`, ...; the staff
 accounts `consulente` (for the ROI calculator) and the technicians `tecnico1` and `tecnico2` have the same password,
-`password123`. After checking the systems it creates intervention requests for most of the probable faults (some
-already accepted) and 25 interventions executed in the last months.
+`password123`. After checking the systems it turns about 70% of the probable faults into faults, as if the
+washing had not helped (the demo systems have no device to wash them), creates intervention requests for most of the
+faults (some already accepted) and 25 interventions executed in the last months.
 
 The readings are realistic: every day each system produces what the forecast model predicts with the real weather
 of its city (Open-Meteo), scaled by the orientation of the system (up to 7% less). About 5% of the systems have a
@@ -165,13 +166,21 @@ Every 2 days each system is checked on the last 2 complete days (`SP/monitoring.
    of its own community) or, if there are none with readings, those of the nearest city that has some. If at least
    half of them also have an anomaly the cause is shared by the area and the panels are just **dirty**; otherwise
    the system has a **probable fault**.
+3. With dirty panels the device of the system washes them. With a probable fault it washes them too, since the
+   washing may be enough: after an hour of production the system is compared with the nearby systems without a
+   fault in that same hour (power per installed kW, median of up to 10 systems as above). If it produces at least
+   90% of them it is **OK** again; otherwise it has a **fault**. The hour must have at least 45 readings of the
+   system and of the nearby systems, and these must produce at least 5% of their power: after a washing in the
+   evening the comparison waits for the morning (and gives up after 2 days).
 
-The result (`OK`, `Pannelli sporchi`, `Probabile guasto`) and the date of the check are saved in the system and shown
-on its page. Days with less than 90% of the readings are not compared: the system is checked again at the next run.
+The result (`OK`, `Pannelli sporchi`, `Probabile guasto`, `Guasto`) and the date of the check are saved in the system
+and shown on its page. Days with less than 90% of the readings are not compared: the system is checked again at the
+next run. A fault stays a fault at the following checks until the production is normal again (for example after the
+repair): it never goes back to a probable fault, which would wash the panels again.
 
-The `scheduler` service of docker compose runs `check_systems` every hour, and the command checks only the systems
-not checked in the last 2 days, so each system is checked every 2 days even after a restart. `populate_db` runs it
-at the end. To run it by hand:
+The `scheduler` service of docker compose runs `check_systems` every hour: at each run it verifies the probable
+faults washed by their device, then it checks only the systems not checked in the last 2 days, so each system is
+checked every 2 days even after a restart. `populate_db` runs it at the end. To run it by hand:
 
 ```bash
 docker exec iot_django_server python manage.py check_systems                   # systems due for a check
@@ -211,9 +220,10 @@ connection, publication and subscription:
 
 **Bridge and Arduino.** The bridge averages the readings of the Arduino over each minute and publishes them; it
 sends to the Arduino the maximum power of the system (`CFG|14620`, in W) and its status (`STATUS|DRT|1`). The
-Arduino sends no reading until it has the maximum power. When the status becomes **DRT** (dirty panels) it runs
-the water pump for 10 seconds, only once per change: the bridge remembers in `ArduinoBridge/.state/` the last change
-it forwarded. The serial protocol is described in `ArduinoBridge/protocol.py`; the pins of pump and LEDs in
+Arduino sends no reading until it has the maximum power. When the status becomes **DRT** (dirty panels) or **FLT**
+(probable fault) it runs the water pump for 10 seconds, only once per change: the bridge remembers in
+`ArduinoBridge/.state/` the last change it forwarded. The end of the washing (`pump_off`) starts the hour after which
+the server verifies a probable fault (see [System monitoring](#system-monitoring)). The serial protocol is described in `ArduinoBridge/protocol.py`; the pins of pump and LEDs in
 `ArduinoBridge/SolarNode/SolarNode.ino`.
 
 ### Serial ports
@@ -233,7 +243,9 @@ bridge locks the port, so that two programs do not steal each other's data.
 
 **Identity check.** With `--serial auto` (the default) the bridge opens only the ports that can be an Arduino:
 USB boards (original Arduino first) and virtual pairs. Bluetooth and system ports are never opened. It waits for
-`ID|SolarNode|1` (device type and protocol version), which the sketch sends when it starts and as answer to `ID`.
+`ID|SolarNode|2` (device type and protocol version), which the sketch sends when it starts and as answer to `ID`.
+Version 2 washes the panels also with a probable fault and knows the status `BRK`: a sketch with version 1 is
+refused, and must be compiled and loaded again.
 A USB board restarts when its port is opened, and some bootloaders (like the one of Arduino Mega) stay waiting to
 be programmed if they receive data in the meantime: so the bridge first only listens, and sends `ID` (every half
 second, for 3 seconds) only after a line of the sketch or after 2.5 seconds. It keeps the first port where a
@@ -259,7 +271,8 @@ The Arduino of the project runs in SimulIDE; a real board on USB works the same 
    `build` folder is ignored by git. A real board is programmed directly with *Upload*.
 3. In SimulIDE open `ArduinoBridge/SensorsArchitecture.sim1`, right-click the Arduino → *Load firmware* → the
    `.hex` above, and save the circuit. Optionally add the pump and the status LEDs, each with a 220 Ω resistor to
-   GND: pump (a LED) on D7, green on D8, yellow on D9, red on D10. The circuit has a thermistor on A4 while the
+   GND: pump (a LED) on D7, green on D8 (OK), yellow on D9 (dirty panels), red on D10 (blinking with a probable
+   fault, on with a fault). The circuit has a thermistor on A4 while the
    sketch reads a DHT11 on D4: until they match, the temperature is always 25 °C.
 4. Get the credentials of the device: page **Installazioni** → system → *Installa dispositivo* (or *Nuove
    credenziali*), or `docker exec iot_django_server python manage.py device_credentials <id>`.
@@ -284,7 +297,7 @@ The Arduino of the project runs in SimulIDE; a real board on USB works the same 
    ```
 
    `--list-ports` should show `COM1: occupata da un altro programma` (SimulIDE keeps it) and
-   `COM2: SolarNode, protocollo 1`. The bridge then logs `Arduino SolarNode sulla porta COM2` and
+   `COM2: SolarNode, protocollo 2`. The bridge then logs `Arduino SolarNode sulla porta COM2` and
    `Arduino configurato: CFG|…`, and the page **Installazioni** shows the device as connected.
 
 With a real board: original boards install their driver by themselves, clones with the CH340 chip need the
@@ -315,7 +328,7 @@ the Serial Monitor** (it keeps the port busy) and start the bridge without `--se
    ArduinoBridge/.venv/bin/python ArduinoBridge/bridge.py --device pv-42 --token <token>
    ```
 
-   `--list-ports` should show `/tmp/solarnode-bridge (porta virtuale…): SolarNode, protocollo 1`; the Bluetooth
+   `--list-ports` should show `/tmp/solarnode-bridge (porta virtuale…): SolarNode, protocollo 2`; the Bluetooth
    ports are not queried.
 5. Start them in this order: socat, SimulIDE, bridge. Restarting socat changes the virtual ports, so the port must
    be opened again in SimulIDE. The bridge can be closed and started again; if socat closes together with it,
@@ -332,6 +345,7 @@ as `/dev/cu.usbserial-…` (the same ports also appear as `/dev/tty.*`: the brid
 | no port that can be an Arduino | Windows: com0com is not installed or not recognized, try `--serial COM2`; macOS: socat is not running |
 | nessuna risposta | the simulation is not running, the port is not open in SimulIDE or SimulIDE uses another port; with a USB board, upload the sketch again and close the Serial Monitor |
 | non è un SolarNode aggiornato | SimulIDE still has the old `.hex`: load `SolarNode.ino.hex` |
+| protocollo 1, mentre il bridge usa il 2 | the sketch is older than the bridge: compile it again and load the new `.hex` (or upload it to the board) |
 | occupata da un altro programma | another bridge or the Serial Monitor is open (on Windows it is normal for COM1, kept by SimulIDE) |
 
 ## Devices and installations
@@ -343,8 +357,9 @@ The page **Installazioni** of the staff (`/sp/installations/`) lists the systems
 - **install a device** on an existing system (for example to test the bridge as a system of the demo data),
   **generate new credentials** (the old token stops working) or **uninstall** it;
 - **set the status** of the system, saved as if the automatic check had found it and sent to the device: with
-  *Pannelli sporchi* the Arduino runs the pump. Every status set is a new change, so the cleaning can be tested
-  again.
+  *Pannelli sporchi* or *Probabile guasto* the Arduino runs the pump (with *Probabile guasto*, an hour of production
+  later the server verifies whether the washing helped). Every status set is a new change, so the cleaning can be
+  tested again.
 
 The token is shown once, with the command to start the bridge; only its hash is saved. `populate_db` deletes the
 systems and so their devices.
@@ -357,8 +372,8 @@ cd ArduinoBridge && python -m unittest discover -s tests -t .
 
 ## Maintenance interventions
 
-When the check finds a probable fault, the page of the system shows the **Richiedi intervento** button to the users
-of its community: it opens a calendar to choose the day of the intervention (from tomorrow to two months ahead). A
+When the check finds a probable fault or a fault (confirmed after the washing), the page of the system shows the
+**Richiedi intervento** button to the users of its community: it opens a calendar to choose the day of the intervention (from tomorrow to two months ahead). A
 system can have one open request at a time; after an intervention a new one can be requested only if a later check
 finds the fault again. The users see the status of the requests on the page of the system:
 

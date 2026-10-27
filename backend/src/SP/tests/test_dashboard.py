@@ -42,7 +42,7 @@ class UserDashboardTests(TestCase):
         rows = response.context["rows"]
         # Prima i guasti, poi i pannelli sporchi, gli impianti a posto e quelli mai controllati
         self.assertEqual([system.name for system, _ in rows], ["Capannone", "Magazzino", "Sede", "Uffici"])
-        self.assertEqual(response.context["counts"], {"total": 4, "fault": 1, "dirty": 1, "ok": 1, "new": 1})
+        self.assertEqual(response.context["counts"], {"total": 4, "broken": 0, "fault": 1, "dirty": 1, "ok": 1, "new": 1})
         self.assertContains(response, "Probabile guasto")
         self.assertContains(response, "In attesa del primo controllo")
         self.assertContains(response, "Titolare")  # il primo utente è il titolare
@@ -56,6 +56,17 @@ class UserDashboardTests(TestCase):
         response = self.client.get("/?status=fault")
 
         self.assertEqual([system.name for system, _ in response.context["rows"]], ["Capannone"])
+
+    def test_faults_confirmed_after_the_washing_come_first(self):
+        checked(create_system(self.community, "Tettoia"), Status.BROKEN)
+        self.client.force_login(self.user)
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.context["rows"][0][0].name, "Tettoia")
+        self.assertEqual(response.context["counts"]["broken"], 1)
+        self.assertContains(response, "fa-times-circle me-1\"></i>Guasto")
+        self.assertEqual([system.name for system, _ in self.client.get("/?status=broken").context["rows"]], ["Tettoia"])
 
     def test_staff_sees_every_system_with_its_community(self):
         self.client.force_login(User.objects.create_user("tecnico", is_staff=True))

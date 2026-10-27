@@ -126,7 +126,7 @@ class IdentifyTests(unittest.TestCase):
 
         identity, _ = serial_ports.identify(node, timeout=3, clock=self.clock)
 
-        self.assertEqual(identity, protocol.Identity("SolarNode", 1))
+        self.assertEqual(identity, protocol.Identity("SolarNode", protocol.PROTOCOL_VERSION))
         self.assertGreaterEqual(node.queries, 3)
 
     def test_nothing_is_written_while_the_board_restarts(self):
@@ -134,7 +134,7 @@ class IdentifyTests(unittest.TestCase):
 
         identity, _ = serial_ports.identify(node, timeout=3, clock=self.clock)
 
-        self.assertEqual(identity, protocol.Identity("SolarNode", 1))
+        self.assertEqual(identity, protocol.Identity("SolarNode", protocol.PROTOCOL_VERSION))
         self.assertEqual(node.queries, 0)
 
     def test_board_that_does_not_introduce_itself_is_asked_once_started(self):
@@ -142,7 +142,7 @@ class IdentifyTests(unittest.TestCase):
 
         identity, _ = serial_ports.identify(node, timeout=3, clock=self.clock)
 
-        self.assertEqual(identity, protocol.Identity("SolarNode", 1))
+        self.assertEqual(identity, protocol.Identity("SolarNode", protocol.PROTOCOL_VERSION))
         self.assertFalse(node.stuck)
         # Ha chiesto appena lo sketch ha inviato READY, senza aspettare la fine di BOOT_WAIT
         self.assertLess(self.clock.now, serial_ports.BOOT_WAIT)
@@ -170,14 +170,15 @@ class IdentifyTests(unittest.TestCase):
         node, outcome = self.probe(compatible)
         self.assertIs(node, compatible)
         self.assertFalse(compatible.closed)
-        self.assertEqual(outcome, "SolarNode, protocollo 1")
+        self.assertEqual(outcome, "SolarNode, protocollo 2")
 
         cases = [
             (FakeNode(self.clock), "nessuna risposta"),
             # Sketch vecchio, senza ID: invia solo le misure
             (FakeNode(self.clock, noise=["23.40|812.0|3420.5"]), "non è un SolarNode aggiornato"),
             (FakeNode(self.clock, "ID|Termostato|3"), "altro dispositivo (Termostato)"),
-            (FakeNode(self.clock, "ID|SolarNode|2"), "protocollo 2, mentre il bridge usa il 1"),
+            # Sketch precedente: con FLT non laverebbe i pannelli
+            (FakeNode(self.clock, "ID|SolarNode|1"), "protocollo 1, mentre il bridge usa il 2"),
         ]
         for fake, expected in cases:
             with self.subTest(expected=expected):
