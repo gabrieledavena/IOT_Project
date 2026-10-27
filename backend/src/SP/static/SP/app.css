@@ -225,3 +225,90 @@ main > .container {
     background-color: #e8f5ee;
     border: 1px solid rgba(25, 135, 84, 0.2);
 }
+
+/* --- Totalizzatore e sommario dell'energia (home della community e pagina dell'impianto) --- */
+
+.totalizer-tile {
+    height: 100%;
+    padding: 0.9rem 1rem;
+    border-radius: 0.75rem;
+    text-align: center;
+}
+
+.eco-tile {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid #b2dfbf;
+    border-radius: 0.75rem;
+}
+
+.eco-icon {
+    width: 2.5rem;
+    font-size: 2rem;
+    color: #2f9e44;
+    text-align: center;
+}
+
+.summary-navigation {
+    width: auto;
+}
+
+.summary-navigation .form-control {
+    width: 9.5rem;
+    text-align: center;
+}
+
+.energy-summary-chart {
+    position: relative;
+    height: 320px;
+    background-color: #f8f9fa;
+}
+
+.energy-summary-empty {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    text-align: center;
+}
+
+.summary-box {
+    height: 100%;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+}
+
+.summary-box-title {
+    margin-bottom: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background-color: #ffffff;
+    font-weight: 600;
+    text-align: center;
+}
+
+.summary-rows > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 0.4rem;
+}
+
+.summary-rows > div:nth-child(odd) {
+    background-color: rgba(255, 255, 255, 0.7);
+}
+
+.summary-rows dt {
+    font-weight: normal;
+    color: #6c757d;
+}
+
+.summary-rows dd {
+    margin: 0;
+    font-weight: 600;
+    text-align: right;
+}
