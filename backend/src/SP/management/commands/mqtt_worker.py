@@ -11,8 +11,9 @@ CLIENT_ID = "solarfamily-server"
 
 class Command(BaseCommand):
     help = (
-        "Receives the messages of the devices from the MQTT broker (readings, connection, pump events) and "
-        "publishes the configuration and status of every installed system when it connects. Runs forever: "
+        "Receives the messages of the devices from the MQTT broker (readings, connection, pump events) and of "
+        "the community masters (connection, LoRa nodes joined or left), and publishes the configuration and "
+        "status of every installed system and the nodes of every master when it connects. Runs forever: "
         "the mqtt-worker service of docker compose starts it."
     )
 
@@ -42,12 +43,17 @@ class Command(BaseCommand):
         # Da ogni impianto: + vale per un livello qualsiasi del topic, cioè l'id dell'impianto
         client.subscribe([
             (mqtt.topic("+", name), mqtt.QOS) for name in (mqtt.TELEMETRY, mqtt.CONNECTION, mqtt.EVENTS)
+        ] + [
+            # Dai master delle community: collegamento e nodi entrati o usciti
+            (mqtt.gateway_topic("+", name), mqtt.QOS) for name in (mqtt.CONNECTION, mqtt.EVENTS)
         ])
-        # Allinea il broker al database: stato e configurazione di ogni impianto installato, retained
+        # Allinea il broker al database: stato e configurazione di ogni impianto installato, e i nodi di ogni
+        # master, retained
         messages = mqtt.state_messages(mqtt.installed_systems())
-        for message in messages:
+        gateways = mqtt.gateway_config_messages(mqtt.installed_gateways())
+        for message in messages + gateways:
             client.publish(**message)
-        self.stdout.write(f"Published the state of {len(messages) // 2} installed systems.")
+        self.stdout.write(f"Published the state of {len(messages) // 2} installed systems and {len(gateways)} masters.")
 
     def on_disconnect(self, client, userdata, flags, reason_code, properties):
         self.stderr.write(f"Disconnected from the MQTT broker ({reason_code}): reconnecting...")

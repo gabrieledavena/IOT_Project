@@ -33,6 +33,23 @@
         </div>
     {% endif %}
 
+    {% if pairing_step %}
+        <div class="card border-0 shadow-sm rounded-4 mb-4 border-start border-info border-5" data-pairing-step="{{ pairing_step }}">
+            <div class="card-body p-4 d-flex align-items-center gap-3">
+                <div class="spinner-border text-info flex-shrink-0" role="status"><span class="visually-hidden">In attesa</span></div>
+                <div>
+                    {% if pairing_step == "pickup" %}
+                        <h6 class="fw-bold mb-1">In attesa del dispositivo {{ pairing.display_code }}</h6>
+                        <div class="small text-muted">Il dispositivo chiede ogni pochi secondi se è stato abbinato e appena lo fa riceve le credenziali: deve essere acceso e collegato al Wi-Fi.</div>
+                    {% else %}
+                        <h6 class="fw-bold mb-1">Credenziali consegnate al dispositivo {{ pairing.display_code }}</h6>
+                        <div class="small text-muted">In attesa che si colleghi al broker MQTT con le sue credenziali.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
     <div class="row g-4">
         <div class="col-lg-7 d-flex flex-column gap-4">
             <div class="card border-0 shadow-sm rounded-4">
@@ -40,8 +57,13 @@
                     <h6 class="text-muted fw-bold text-uppercase mb-3">Dispositivo</h6>
                     {% if device %}
                         <dl class="row mb-3">
-                            <dt class="col-sm-5 text-muted fw-normal">Username MQTT</dt>
-                            <dd class="col-sm-7"><code>{{ device.username }}</code></dd>
+                            {% if system.lora_node %}
+                                <dt class="col-sm-5 text-muted fw-normal">Sensore</dt>
+                                <dd class="col-sm-7">nodo LoRa <code>{{ system.lora_node.node_id }}</code>, tramite il <a href="{% url 'SP:community_installation' system.community_id %}">master della community</a></dd>
+                            {% else %}
+                                <dt class="col-sm-5 text-muted fw-normal">Username MQTT</dt>
+                                <dd class="col-sm-7"><code>{{ device.username }}</code></dd>
+                            {% endif %}
                             <dt class="col-sm-5 text-muted fw-normal">Collegamento</dt>
                             <dd class="col-sm-7">
                                 {% if device.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>
@@ -56,6 +78,7 @@
                             <dt class="col-sm-5 text-muted fw-normal">Installato</dt>
                             <dd class="col-sm-7 mb-0">il {{ device.installed_at|date:"d/m/Y H:i" }}{% if device.installed_by %} da {{ device.installed_by|person }}{% endif %}</dd>
                         </dl>
+                        {% if system.lora_node %}<p class="small text-muted">Il nodo non ha credenziali: le sue misure le pubblica il master. Con <strong>Nuove credenziali</strong> l'impianto passa a un bridge e il nodo torna da assegnare.</p>{% endif %}
                         <div class="d-flex flex-wrap gap-2">
                             <form method="post" class="m-0" onsubmit="return confirm('Le credenziali attuali smetteranno di funzionare. Continuare?');">
                                 {% csrf_token %}
@@ -67,7 +90,7 @@
                             </form>
                         </div>
                     {% else %}
-                        <p class="text-muted">Nessun dispositivo installato: installalo per collegare un bridge (vero o simulato) come questo impianto.</p>
+                        <p class="text-muted">Nessun dispositivo installato: installalo per collegare un bridge (vero o simulato) come questo impianto, con le credenziali che compaiono qui. Un dispositivo con il display si installa invece con il suo QR.</p>
                         <form method="post" class="m-0">
                             {% csrf_token %}
                             <button type="submit" name="action" value="install" class="btn btn-success rounded-pill fw-bold"><i class="fas fa-microchip me-2"></i>Installa dispositivo</button>
@@ -75,6 +98,20 @@
                     {% endif %}
                 </div>
             </div>
+
+            {% if not pairing_step %}
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-body p-4">
+                        <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-qrcode me-1"></i>Installa con il QR del display</h6>
+                        <p class="small text-muted">Accendi il dispositivo: collegato al Wi-Fi, mostra un QR sul display. Scansionalo con il telefono e scegli questo impianto, oppure scrivi qui il codice accanto al QR.{% if device %} Le credenziali del dispositivo attuale smetteranno di funzionare.{% endif %}</p>
+                        <form method="post" action="{% url 'SP:installation_pair' system.id %}" class="d-flex gap-2 m-0">
+                            {% csrf_token %}
+                            <input type="text" name="code" class="form-control font-monospace text-uppercase" style="max-width: 220px;" placeholder="ABCD-EFGH" aria-label="Codice del display" autocomplete="off" autocapitalize="characters" required>
+                            <button type="submit" class="btn btn-outline-primary rounded-pill text-nowrap"><i class="fas fa-link me-2"></i>Abbina</button>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
 
             <div class="card border-0 shadow-sm rounded-4">
                 <div class="card-body p-4">
@@ -111,4 +148,19 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+    {% if pairing_step %}
+        {# Finché il dispositivo non ha ritirato le credenziali e non si è collegato al broker, ogni 3 secondi
+           controlla la pagina e la ricarica quando la fase cambia (ricaricarla sempre ripeterebbe l'animazione) #}
+        <script>
+            setInterval(async () => {
+                const page = await fetch(window.location.href, {cache: "no-store"}).then(response => response.text()).catch(() => null);
+                if (page !== null && !page.includes('data-pairing-step="{{ pairing_step }}"')) {
+                    window.location.reload();
+                }
+            }, 3000);
+        </script>
+    {% endif %}
 {% endblock %}

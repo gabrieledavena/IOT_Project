@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% load interventions %}
+
+{% block title %}{% if pairing.is_gateway %}Installa il master{% else %}Installa il dispositivo{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container mb-5" style="max-width: 760px;">
+    {% if not pairing %}
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4 text-center">
+                <i class="fas fa-qrcode fa-3x text-muted mb-3"></i>
+                <h4 class="fw-bold">Codice non valido o scaduto</h4>
+                <p class="text-muted mb-3">Ogni codice dura 10 minuti e installa un solo dispositivo: se il dispositivo non è installato, sul suo display compare un nuovo QR da scansionare.</p>
+                <a href="{% url 'SP:installation_list' %}" class="btn btn-outline-primary rounded-pill">Tutte le installazioni</a>
+            </div>
+        </div>
+    {% elif pairing.target %}
+        <div class="card border-0 shadow-sm rounded-4 border-start border-info border-5">
+            <div class="card-body p-4">
+                <h4 class="fw-bold">{% if pairing.is_gateway %}Master{% else %}Dispositivo{% endif %} {{ pairing.display_code }} già abbinato</h4>
+                <p class="text-muted">Abbinato a <strong>{{ pairing.target.name }}</strong>{% if pairing.claimed_by %} da {{ pairing.claimed_by|person }}{% endif %}: riceverà le credenziali entro pochi secondi.</p>
+                {% if pairing.is_gateway %}
+                    <a href="{% url 'SP:community_installation' pairing.community.id %}" class="btn btn-primary rounded-pill">Apri la community <i class="fas fa-arrow-right ms-1"></i></a>
+                {% else %}
+                    <a href="{% url 'SP:installation_detail' pairing.system.id %}" class="btn btn-primary rounded-pill">Apri l'impianto <i class="fas fa-arrow-right ms-1"></i></a>
+                {% endif %}
+            </div>
+        </div>
+    {% elif pairing.is_gateway %}
+        <div class="mb-4">
+            <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Master delle community</a>
+            <h2 class="fw-bold text-dark mb-1 mt-2">Installa il master</h2>
+            <div class="d-flex flex-wrap align-items-center gap-2 text-muted">
+                <span class="badge rounded-pill bg-dark font-monospace fs-6"><i class="fas fa-qrcode me-1"></i>{{ pairing.display_code }}</span>
+                <span>Il codice del display, valido fino alle {{ pairing.expires_at|date:"H:i" }}. Scegli la community: il master riceverà le sue credenziali e poi potrai aggiungere i nodi sui tetti.</span>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4">
+                <h6 class="text-muted fw-bold text-uppercase mb-3">Community</h6>
+                <form method="get" class="d-flex gap-2 mb-3">
+                    <input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Cerca community o città" aria-label="Cerca community o città">
+                    <button type="submit" class="btn btn-outline-primary" aria-label="Cerca"><i class="fas fa-search"></i></button>
+                </form>
+                {% if not query %}<div class="small text-muted mb-2">Community senza master:</div>{% endif %}
+                <div class="list-group list-group-flush">
+                    {% for community in choices %}
+                        <form method="post" class="list-group-item px-0 d-flex justify-content-between align-items-center gap-3"
+                              {% if community.gateway %}onsubmit="return confirm('{{ community.name|escapejs }} ha già un master: le sue credenziali smetteranno di funzionare (i nodi restano). Continuare?');"{% endif %}>
+                            {% csrf_token %}
+                            <div>
+                                <div class="fw-bold">{{ community.name }}</div>
+                                <div class="small text-muted">{{ community.city }}</div>
+                                {% if community.gateway %}<div class="small text-warning-emphasis"><i class="fas fa-exchange-alt me-1"></i>Sostituisce il master {{ community.gateway.username }}</div>{% endif %}
+                            </div>
+                            <button type="submit" name="community" value="{{ community.id }}" class="btn btn-sm btn-success rounded-pill text-nowrap">Installa qui</button>
+                        </form>
+                    {% empty %}
+                        <div class="text-muted small py-2">Nessuna community trovata.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="mb-4">
+            <a href="{% url 'SP:installation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le installazioni</a>
+            <h2 class="fw-bold text-dark mb-1 mt-2">Installa il dispositivo</h2>
+            <div class="d-flex flex-wrap align-items-center gap-2 text-muted">
+                <span class="badge rounded-pill bg-dark font-monospace fs-6"><i class="fas fa-qrcode me-1"></i>{{ pairing.display_code }}</span>
+                <span>Il codice del display, valido fino alle {{ pairing.expires_at|date:"H:i" }}. Scegli l'impianto: il dispositivo riceverà le sue credenziali e si collegherà da solo.</span>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+                <h6 class="text-muted fw-bold text-uppercase mb-3">Impianto esistente</h6>
+                <form method="get" class="d-flex gap-2 mb-3">
+                    <input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Cerca impianto o community" aria-label="Cerca impianto o community">
+                    <button type="submit" class="btn btn-outline-primary" aria-label="Cerca"><i class="fas fa-search"></i></button>
+                </form>
+                {% if not query %}<div class="small text-muted mb-2">Impianti senza dispositivo, dal più recente:</div>{% endif %}
+                <div class="list-group list-group-flush">
+                    {% for system in choices %}
+                        <form method="post" class="list-group-item px-0 d-flex justify-content-between align-items-center gap-3"
+                              {% if system.device %}onsubmit="return confirm('{{ system.name|escapejs }} ha già un dispositivo: le sue credenziali smetteranno di funzionare. Continuare?');"{% endif %}>
+                            {% csrf_token %}
+                            <div>
+                                <div class="fw-bold">{{ system.name }}</div>
+                                <div class="small text-muted">{{ system.community.name }} · {{ system.community.city }} · {{ system.max_power|floatformat:2 }} kW</div>
+                                {% if system.device %}<div class="small text-warning-emphasis"><i class="fas fa-exchange-alt me-1"></i>Sostituisce il dispositivo {{ system.device.username }}</div>{% endif %}
+                            </div>
+                            <button type="submit" name="system" value="{{ system.id }}" class="btn btn-sm btn-success rounded-pill text-nowrap">Installa qui</button>
+                        </form>
+                    {% empty %}
+                        <div class="text-muted small py-2">Nessun impianto trovato.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                <div>
+                    <h6 class="text-muted fw-bold text-uppercase mb-1">Nuovo impianto</h6>
+                    <div class="small text-muted">Crea l'impianto in una community: il dispositivo viene installato appena lo salvi.</div>
+                </div>
+                <a href="{% url 'SP:pair_new' pairing.code %}" class="btn btn-outline-success rounded-pill fw-bold"><i class="fas fa-plus me-2"></i>Nuovo impianto</a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

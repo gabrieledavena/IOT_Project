@@ -65,6 +65,10 @@ The system optimizes self-consumption, monitors performance, and use collective 
 ```
 ArduinoBridge/            Arduino sketch, SimulIDE circuit and the Python bridge (serial <-> MQTT)
   SolarNode/              Sketch: sensors, water pump and status LEDs
+  TestHeltec/             Sketch: test of a Heltec WiFi LoRa 32 V3 board after soldering its pins
+  MasterNode/             Sketch: master of a community (Heltec with display): Wi-Fi and installation from the phone,
+                          MQTT for the LoRa nodes; ProtocolloLora.h is the LoRa protocol, copied in RoofNode/
+  RoofNode/               Sketch: node on a roof (Heltec without display), the sensor of one system, LoRa only
   bridge.py               Bridge of one system: serial port (or simulated Arduino) <-> MQTT broker
   protocol.py             Serial protocol between Arduino and bridge
   serial_ports.py         Serial ports of Windows, macOS and Linux: finds the one where the Arduino answers
@@ -82,6 +86,8 @@ backend/src/
     mqtt.py               MQTT topics and messages: readings received, status and configuration published
     mqtt_auth.py          Who can connect to the broker and to which topics (asked by the broker)
     installations.py      Installation of the devices on the systems (technicians)
+    pairing.py            Installation with the QR of the device's display: code, technician's choice, credentials
+    gateways.py           Masters of the communities and their LoRa nodes: add nodes, identify, assign, remove
     roles.py              Roles of the staff: technicians and consultants
     access.py             Who can see which systems, pages of technicians and consultants
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
@@ -241,6 +247,15 @@ has its topics under `solarfamily/systems/<id>/`:
 | `status` | server → bridge | yes | `{"status": "DRT", "label": "Pannelli sporchi", "previous": "OK", "changed_at": "...", "checked_at": "..."}` |
 | `config` | server → bridge | yes | `{"system_id": 42, "name": "Sede", "max_power_kw": 14.62, "community": "...", "city": "...", "owner": "..."}` |
 
+The master of a community has its topics under `solarfamily/gateways/<id of the community>/`:
+
+| Topic | From → to | Retained | Content |
+|---|---|---|---|
+| `connection` | master → server | yes | `online` / `offline` (Last Will); when it goes offline its nodes are shown disconnected |
+| `events` | master → server | no | `{"event": "node_joined", "node": "A3F2C1D0", "key": "...", "kind": "roof", "rssi": -52, "snr": 9.2}` (accepted only while **Aggiungi nodi** is open), `{"event": "node_left", "node": "A3F2C1D0"}` |
+| `config` | server → master | yes | the nodes of the community: `{"community_id": 7, "community": "...", "nodes": [{"id": "A3F2C1D0", "key": "...", "system_id": 42, "system": "Sede"}]}` |
+| `commands` | server → master | no | `{"command": "permit_join", "seconds": 180}`, `{"command": "identify", "node": "A3F2C1D0", "seconds": 10}`, `{"command": "remove", "node": "A3F2C1D0"}` |
+
 All the messages use QoS 1: they are repeated until the broker confirms them, so a reading can arrive twice and
 the second one is discarded (a system has one reading per minute). Status and configuration are retained: the
 broker keeps the last ones and sends them to the bridge as soon as it subscribes, so the bridge knows the maximum
@@ -257,6 +272,9 @@ connection, publication and subscription:
 - a device connects as `pv-<id of the system>` with its token and its username as client id. It can publish only
   `telemetry`, `connection` and `events` of its system and receive only its `status` and `config`. New
   credentials or uninstalling the device stop the old token at once.
+- a master connects as `gw-<id of the community>` with its token. It can access its own topics as in the table
+  above and, as a device, the topics of the systems of its nodes. The device of a system whose sensor is a LoRa node
+  has no token and cannot connect.
 
 **Bridge and Arduino.** The bridge averages the readings of the Arduino over each minute and publishes them; it
 sends to the Arduino the maximum power of the system (`CFG|14620`, in W) and its status (`STATUS|DRT|1`). The
@@ -388,6 +406,21 @@ as `/dev/cu.usbserial-…` (the same ports also appear as `/dev/tty.*`: the brid
 | protocollo 1, mentre il bridge usa il 2 | the sketch is older than the bridge: compile it again and load the new `.hex` (or upload it to the board) |
 | occupata da un altro programma | another bridge or the Serial Monitor is open (on Windows it is normal for COM1, kept by SimulIDE) |
 
+### Testing a Heltec board
+
+The LoRa nodes are two Heltec WiFi LoRa 32 V3 boards. `ArduinoBridge/TestHeltec/TestHeltec.ino` tests a board
+after soldering its pins: microcontroller, flash, display, LED, battery, Wi-Fi, LoRa radio and the soldered free
+pins (GPIO 2–7, 19, 38–42, 45, 46).
+
+1. In Arduino IDE 2 install the *esp32* boards by Espressif and the libraries *RadioLib* (8.0 or later) and *U8g2*,
+   choose the board *Heltec WiFi LoRa 32(V3)* and upload the sketch to both boards. Screw the LoRa antenna on before
+   powering a board: transmitting without it can damage the radio.
+2. Open the Serial Monitor at 115200 baud and press RST: every check prints `[OK]`, `[ERRORE]`, `[ATTENZIONE]` or
+   `[VEDI]` (to check by eye), and any short between two pins or towards GND or 3V3 is named.
+3. Touch each free pin with a jumper wire from GND or 3V3 (never 5V): the page *Saldature* of the display (button
+   PRG) marks it `G` or `3` as soon as the microcontroller feels the contact, so the joint conducts.
+4. With both boards on, the page *LoRa* shows the pings of the other board (one every 10–12 s) with RSSI and SNR.
+
 ## Devices and installations
 
 The page **Installazioni** of the technicians (`/sp/installations/`) lists the systems with the state of their device
@@ -403,6 +436,91 @@ The page **Installazioni** of the technicians (`/sp/installations/`) lists the s
 
 The token is shown once, with the command to start the bridge; only its hash is saved. `populate_db` deletes the
 systems and so their devices.
+
+### Installing a device with the QR of its display
+
+A device with a display (the Heltec boards) is installed without copying username and token:
+
+1. connected to the Wi-Fi, the device asks the server for a code (`POST /sp/devices/pairing/`) and shows on its
+   display the QR of the pairing page (`/sp/pair/<code>/`) with the code, as `ET2J-UZDR`;
+2. the technician scans the QR with the phone (logging in if needed) and chooses the system: one without a device
+   (the most recent are listed first), one found by name or community, or a new one. Without a camera, the code can
+   be written in the box **Installa con il QR del display** of the page of the system;
+3. the device asks every 5 seconds whether it was paired (`POST /sp/devices/pairing/credentials/` with the code and
+   a secret received with it) and, once the technician has chosen, receives username, token and the address of the
+   broker. It saves them in its flash and connects as the bridge does.
+
+The master of a community asks for its code with `role=gateway`: the pairing page then lists the communities
+instead of the systems, and the master receives the credentials `gw-<id of the community>` (see below).
+
+The page of the system follows the installation and refreshes by itself: *in attesa del dispositivo* until the
+device takes its credentials, then *credenziali consegnate* until it connects to the broker.
+
+- A code lasts 10 minutes, installs one device and gives the credentials once; after the choice the device has 2
+  minutes to take them, otherwise the code expires and the display shows a new QR.
+- The code is visible to anyone who looks at the display, but only the device knows the secret needed to take the
+  credentials (the server saves its hash). The token is generated when the device takes it, so it is never saved.
+- Choosing a system that already has a device gives new credentials, as **Nuove credenziali**: the old device
+  stops working. Only the last device chosen for a system receives the credentials.
+- The broker address sent to the device is the host the device used to reach the server (with docker compose,
+  broker and server are on the same PC), port 1883. Set `MQTT_PUBLIC_HOST` and `MQTT_PUBLIC_PORT` to change it.
+
+### Community master and LoRa nodes
+
+In a community only one device is connected to the internet: the **master** (`ArduinoBridge/MasterNode`, a Heltec
+board with display), installed on the community with its QR. Every other board is a **node on a roof**
+(`ArduinoBridge/RoofNode`, without display), the sensor of exactly one system: it talks only to the master, over
+LoRa, and the master publishes for it on the broker.
+
+The nodes join the network of the master as Zigbee devices join the one of their hub:
+
+1. in the page of the community (**Installazioni → Master delle community**) the technician presses **Aggiungi
+   nodi**: for 3 minutes the master accepts the new nodes it hears (*permit join*); its display shows the countdown;
+2. a node that never joined asks to enter every 15 seconds (LED: one flash per second). The master and the node agree
+   on an AES-128 key with X25519 (ECDH): only the public keys go over the radio, so whoever listens cannot compute
+   it. The master tells the server, and the node appears under **Da assegnare** (LED: two flashes every 3 seconds);
+3. **Identifica** makes the LED of the node blink fast for 10 seconds, to know which roof it is on; then the
+   technician chooses its system among those of the community of the master. The system gets a device without a
+   token (it never connects to the broker itself): the master publishes `online` on its `connection` topic at
+   every beat of the node and forwards it the status of the system (LED: one flash at every answer of the master).
+
+After joining every packet is encrypted and authenticated with AES-128-CCM and carries a counter, so a recorded
+packet sent again is discarded. The server keeps the keys of the nodes and sends them to the master (retained
+`config`): a new master installed on the community talks to the nodes without pairing them again. The protocol is
+described at the top of `ProtocolloLora.h`, the same file in both sketches (a test checks the two copies).
+
+- **Rimuovi** (trash icon) makes the node leave the network: it goes back to new. The same happens holding PRG on
+  the node for 10 seconds (the LED stays on when it is enough).
+- A node that joins again, even after a reset, is a new node and must be assigned again.
+- A system has one sensor: assigning another node, or installing a bridge with **Nuove credenziali**, replaces it.
+- If the master goes offline, its nodes are shown disconnected too.
+
+**Trying it with the two Heltec boards.** Screw the LoRa antennas on before powering the boards. In Arduino IDE 2
+install the libraries *U8g2*, *RadioLib* (8 or later), *PubSubClient* (Nick O'Leary) and *ArduinoJson* (Benoit
+Blanchon, 7 or later); Wi-Fi, web page, DNS, QR and cryptography come with the *esp32* package (3.x). Choose the
+board *Heltec WiFi LoRa 32(V3)*. Nothing is written in the sketches.
+
+1. **Master: Wi-Fi.** Upload `MasterNode` to the first board. It creates its own network, `Solar-XXXX` with a random
+   password, and the display shows its QR (name and password are written next to it). Frame it with the phone's
+   camera: the phone joins the network and opens the board's page by itself, as the Wi-Fi of a hotel (otherwise open
+   `http://192.168.4.1`). Choose the network (2.4 GHz only) and write its password. Under *Avanzate* write the
+   address of the PC that runs docker compose in the local network, for example `http://192.168.1.10:8000`
+   (`ipconfig getifaddr en0` on macOS, `ipconfig` on Windows); not `localhost` or `0.0.0.0`. The board tries the
+   network while keeping its own on, says on the page whether it works and only then saves it.
+2. **Master: installation.** The display shows the pairing QR: connect the phone to the same network as the PC,
+   scan it, log in as a technician and choose the community. The page of the community shows the master *Collegato*.
+3. **Node.** Upload `RoofNode` to the second board (its display stays off): the LED flashes once per second. In the
+   page of the community press **Aggiungi nodi**: within 15 seconds the node appears under *Da assegnare*. Press
+   **Identifica** to see its LED blink, then assign it to a system: within a minute the page shows it *Sentito dal
+   master*, and the page of the system shows *Collegato*.
+4. **Starting again.** On the master hold PRG: from 3 seconds its display says what happens when it is released
+   (after 3 seconds a new installation, after 10 seconds the Wi-Fi too; the server address is kept). On the node
+   hold PRG for 10 seconds, or remove it from the site. RST only restarts a board, which keeps everything.
+
+The serial monitor (115200 baud) of both boards shows every step. If the saved network of the master does not
+answer for 2 minutes, its Wi-Fi configuration opens by itself without forgetting the network. If the master cannot
+reach the server, check that the address answers from the phone's browser too and that the firewall of the PC lets
+in connections on ports 8000 and 1883.
 
 To test the bridge without a broker or serial port:
 

@@ -158,6 +158,10 @@ MQTT_USERNAME = os.environ.get('MQTT_USERNAME', 'solarfamily-server')
 MQTT_PASSWORD = os.environ.get('MQTT_PASSWORD', '')
 # Disattivato durante i test (config.test_runner): non si pubblica sul broker vero
 MQTT_ENABLED = os.environ.get('MQTT_ENABLED', '1') == '1'
+# Broker come lo raggiungono i dispositivi installati con il QR (SP/pairing.py). Senza MQTT_PUBLIC_HOST è lo
+# stesso host a cui il dispositivo ha chiesto il codice: con docker compose server e broker sono sullo stesso PC
+MQTT_PUBLIC_HOST = os.environ.get('MQTT_PUBLIC_HOST', '')
+MQTT_PUBLIC_PORT = int(os.environ.get('MQTT_PUBLIC_PORT', '1883'))
 
 TEST_RUNNER = 'config.test_runner.TestRunner'
 
