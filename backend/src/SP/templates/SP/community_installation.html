@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% load interventions %}
+
+{% block title %}Master di {{ community.name }}{% endblock %}
+
+{% block content %}
+<div class="container mb-5" data-refresh="{{ signature }}">
+    <div class="row mb-4">
+        <div class="col-12 d-flex flex-wrap justify-content-between align-items-end gap-3">
+            <div>
+                <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Master delle community</a>
+                <h2 class="fw-bold text-dark mb-1 mt-2">{{ community.name }}</h2>
+                <span class="text-muted">{{ community.city }} · {{ systems|length }} impiant{{ systems|length|pluralize:"o,i" }}</span>
+            </div>
+            <a href="{% url 'SP:installation_list' %}?q={{ community.name|urlencode }}" class="btn btn-outline-secondary rounded-pill"><i class="fas fa-solar-panel me-2"></i>Impianti</a>
+        </div>
+    </div>
+
+    {% if pairing_step %}
+        <div class="card border-0 shadow-sm rounded-4 mb-4 border-start border-info border-5">
+            <div class="card-body p-4 d-flex align-items-center gap-3">
+                <div class="spinner-border text-info flex-shrink-0" role="status"><span class="visually-hidden">In attesa</span></div>
+                <div>
+                    {% if pairing_step == "pickup" %}
+                        <h6 class="fw-bold mb-1">In attesa del master {{ pairing.display_code }}</h6>
+                        <div class="small text-muted">Il master chiede ogni pochi secondi se è stato abbinato e appena lo fa riceve le credenziali: deve essere acceso e collegato al Wi-Fi.</div>
+                    {% else %}
+                        <h6 class="fw-bold mb-1">Credenziali consegnate al master {{ pairing.display_code }}</h6>
+                        <div class="small text-muted">In attesa che si colleghi al broker MQTT con le sue credenziali.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="row g-4">
+        <div class="col-lg-5 d-flex flex-column gap-4">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-broadcast-tower me-1"></i>Master</h6>
+                    {% if gateway %}
+                        <dl class="row mb-3">
+                            <dt class="col-sm-5 text-muted fw-normal">Username MQTT</dt>
+                            <dd class="col-sm-7"><code>{{ gateway.username }}</code></dd>
+                            <dt class="col-sm-5 text-muted fw-normal">Collegamento</dt>
+                            <dd class="col-sm-7">
+                                {% if gateway.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>
+                                {% else %}<span class="badge rounded-pill bg-secondary">Scollegato</span>{% endif %}
+                            </dd>
+                            <dt class="col-sm-5 text-muted fw-normal">Ultimo messaggio</dt>
+                            <dd class="col-sm-7">{{ gateway.last_seen|date:"d/m/Y H:i:s"|default:"-" }}</dd>
+                            <dt class="col-sm-5 text-muted fw-normal">Installato</dt>
+                            <dd class="col-sm-7 mb-0">il {{ gateway.installed_at|date:"d/m/Y H:i" }}{% if gateway.installed_by %} da {{ gateway.installed_by|person }}{% endif %}</dd>
+                        </dl>
+                        <form method="post" class="m-0" onsubmit="return confirm('Disinstallare il master? Anche i suoi nodi verranno rimossi e i loro impianti resteranno senza sensore.');">
+                            {% csrf_token %}
+                            <button type="submit" name="action" value="uninstall" class="btn btn-outline-danger rounded-pill"><i class="fas fa-unlink me-2"></i>Disinstalla</button>
+                        </form>
+                    {% else %}
+                        <p class="text-muted mb-0">Nessun master: è l'unico dispositivo della community collegato a internet, e i nodi sui tetti gli inviano le misure via LoRa. Installalo con il QR del suo display.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if not pairing_step %}
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-body p-4">
+                        <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-qrcode me-1"></i>Installa il master con il QR</h6>
+                        <p class="small text-muted">Accendi il master: dopo il Wi-Fi mostra un QR sul display. Scansionalo con il telefono e scegli questa community, oppure scrivi qui il codice accanto al QR.{% if gateway %} Le credenziali del master attuale smetteranno di funzionare; i nodi restano.{% endif %}</p>
+                        <form method="post" action="{% url 'SP:community_pair' community.id %}" class="d-flex gap-2 m-0">
+                            {% csrf_token %}
+                            <input type="text" name="code" class="form-control font-monospace text-uppercase" style="max-width: 220px;" placeholder="ABCD-EFGH" aria-label="Codice del display del master" autocomplete="off" autocapitalize="characters" required>
+                            <button type="submit" class="btn btn-outline-primary rounded-pill text-nowrap"><i class="fas fa-link me-2"></i>Abbina</button>
+                        </form>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="col-lg-7 d-flex flex-column gap-4">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h6 class="text-muted fw-bold text-uppercase mb-0"><i class="fas fa-satellite-dish me-1"></i>Nodi sui tetti</h6>
+                        {% if gateway and gateway.join_seconds_left %}
+                            <span class="badge rounded-pill bg-success fs-6"><i class="fas fa-plus-circle me-1"></i>Accetta nodi nuovi: <span data-countdown="{{ gateway.join_seconds_left }}">{{ gateway.join_seconds_left }} s</span></span>
+                        {% else %}
+                            <form method="post" class="m-0">
+                                {% csrf_token %}
+                                <button type="submit" name="action" value="permit_join" class="btn btn-success rounded-pill fw-bold" {% if not gateway.online %}disabled{% endif %}><i class="fas fa-plus me-2"></i>Aggiungi nodi</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                    {% if not gateway %}
+                        <p class="small text-muted mb-0">Prima installa il master: i nodi entrano nella sua rete.</p>
+                    {% elif gateway.join_seconds_left %}
+                        <p class="small text-muted">Accendi i nodi da aggiungere: finché cercano il master il loro LED fa un lampo al secondo, e appena entrano compaiono qui sotto.</p>
+                    {% elif not gateway.online %}
+                        <p class="small text-muted">Il master è scollegato: i nodi si aggiungono solo con il master collegato.</p>
+                    {% else %}
+                        <p class="small text-muted">Come in una rete Zigbee: con <strong>Aggiungi nodi</strong> il master accetta per 3 minuti i nodi nuovi che sente, poi assegni ognuno al suo impianto. Un nodo che lascia la rete (PRG tenuto 10 secondi) torna come nuovo.</p>
+                    {% endif %}
+
+                    {% if pending %}
+                        <div class="small fw-bold text-uppercase text-muted mt-3 mb-2">Da assegnare</div>
+                        <div class="list-group list-group-flush mb-2">
+                            {% for node in pending %}
+                                <div class="list-group-item px-0">
+                                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                        <div>
+                                            <span class="fw-bold font-monospace">{{ node.node_id }}</span>
+                                            <span class="small text-muted">· {% if node.kind == "roof" %}nodo sul tetto{% else %}{{ node.kind }}{% endif %} · entrato alle {{ node.joined_at|date:"H:i" }}{% if node.rssi is not None %} · segnale {{ node.rssi|floatformat:0 }} dBm{% endif %}</span>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <form method="post" class="m-0">{% csrf_token %}<input type="hidden" name="node" value="{{ node.node_id }}">
+                                                <button type="submit" name="action" value="identify" class="btn btn-sm btn-outline-info rounded-pill"><i class="fas fa-lightbulb me-1"></i>Identifica</button></form>
+                                            <form method="post" class="m-0" onsubmit="return confirm('Rimuovere il nodo {{ node.node_id }}? Esce dalla rete e torna come nuovo.');">{% csrf_token %}<input type="hidden" name="node" value="{{ node.node_id }}">
+                                                <button type="submit" name="action" value="remove" class="btn btn-sm btn-outline-danger rounded-pill" aria-label="Rimuovi"><i class="fas fa-trash"></i></button></form>
+                                        </div>
+                                    </div>
+                                    <form method="post" class="d-flex gap-2 mt-2">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="node" value="{{ node.node_id }}">
+                                        <select name="system" class="form-select form-select-sm" aria-label="Impianto del nodo {{ node.node_id }}" required>
+                                            <option value="">Scegli l'impianto…</option>
+                                            {% for system in systems %}
+                                                <option value="{{ system.id }}">{{ system.name }}{% if system.lora_node %} (sostituisce il nodo {{ system.lora_node.node_id }}){% elif system.device %} (sostituisce {{ system.device.username }}){% endif %}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <button type="submit" name="action" value="assign" class="btn btn-sm btn-primary rounded-pill text-nowrap">Assegna</button>
+                                    </form>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {% if assigned %}
+                        <div class="small fw-bold text-uppercase text-muted mt-3 mb-2">Sensori degli impianti</div>
+                        <div class="table-responsive">
+                            <table class="table align-middle mb-0">
+                                <tbody>
+                                    {% for node in assigned %}
+                                        <tr>
+                                            <td><span class="fw-bold font-monospace">{{ node.node_id }}</span>{% if node.rssi is not None %}<div class="small text-muted">{{ node.rssi|floatformat:0 }} dBm all'ingresso</div>{% endif %}</td>
+                                            <td><a href="{% url 'SP:installation_detail' node.system.id %}" class="fw-bold text-decoration-none">{{ node.system.name }}</a>
+                                                <div class="small text-muted">{% if node.system.device.online %}<span class="text-success"><i class="fas fa-circle me-1"></i>Sentito dal master</span>{% else %}Non sentito{% endif %}{% if node.system.device.last_seen %} · {{ node.system.device.last_seen|date:"H:i" }}{% endif %}</div></td>
+                                            <td class="text-end text-nowrap">
+                                                <form method="post" class="d-inline m-0">{% csrf_token %}<input type="hidden" name="node" value="{{ node.node_id }}">
+                                                    <button type="submit" name="action" value="identify" class="btn btn-sm btn-outline-info rounded-pill"><i class="fas fa-lightbulb me-1"></i>Identifica</button></form>
+                                                <form method="post" class="d-inline m-0" onsubmit="return confirm('Rimuovere il nodo {{ node.node_id }}? {{ node.system.name|escapejs }} resterà senza sensore.');">{% csrf_token %}<input type="hidden" name="node" value="{{ node.node_id }}">
+                                                    <button type="submit" name="action" value="remove" class="btn btn-sm btn-outline-danger rounded-pill" aria-label="Rimuovi"><i class="fas fa-trash"></i></button></form>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endif %}
+
+                    {% if gateway and not pending and not assigned %}
+                        <p class="small text-muted mb-0 mt-2">Nessun nodo nella rete del master.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+    {% if gateway or pairing_step %}
+        {# Ogni 4 secondi controlla la pagina e la ricarica se è cambiato qualcosa (master, finestra, nodi) #}
+        <script>
+            const signature = document.querySelector("[data-refresh]").dataset.refresh;
+            setInterval(async () => {
+                const page = await fetch(window.location.href, {cache: "no-store"}).then(response => response.text()).catch(() => null);
+                const found = page && new DOMParser().parseFromString(page, "text/html").querySelector("[data-refresh]");
+                if (found && found.dataset.refresh !== signature) {
+                    window.location.reload();
+                }
+            }, 4000);
+            for (const element of document.querySelectorAll("[data-countdown]")) {
+                let seconds = Number(element.dataset.countdown);
+                const show = () => { element.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; };
+                show();
+                setInterval(() => { seconds = Math.max(0, seconds - 1); show(); }, 1000);
+            }
+        </script>
+    {% endif %}
+{% endblock %}

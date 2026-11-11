@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import secrets
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
@@ -262,7 +263,8 @@ class Device(models.Model):
     """Dispositivo (Arduino e bridge) installato su un impianto: invia le misure e riceve lo stato via MQTT.
 
     Si collega al broker con username pv-<id dell'impianto> e un token casuale; del token si salva solo
-    l'hash, quindi lo si vede una volta sola, quando viene generato.
+    l'hash, quindi lo si vede una volta sola, quando viene generato. Se il sensore dell'impianto è un nodo LoRa
+    (LoRaNode) il dispositivo non ha token: le misure le pubblica il master della community.
     """
 
     USERNAME_PREFIX = "pv-"
@@ -312,3 +314,165 @@ class Device(models.Model):
     class Meta:
         verbose_name = "Dispositivo"
         verbose_name_plural = "Dispositivi"
+
+
+class Gateway(models.Model):
+    """Master di una community: l'unico dispositivo collegato a internet, a cui i nodi sui tetti parlano via LoRa.
+
+    Si collega al broker con username gw-<id della community> e un token, come un dispositivo; pubblica per gli
+    impianti dei suoi nodi (SP/mqtt.py). Si installa con il QR del suo display (SP/pairing.py).
+    """
+
+    USERNAME_PREFIX = "gw-"
+    JOIN_TIME = timedelta(minutes=3)   # finestra "Aggiungi nodi"
+
+    community = models.OneToOneField(Community, on_delete=models.CASCADE, related_name="gateway")
+    token_hash = models.CharField(max_length=64)
+    installed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="installed_gateways",
+        verbose_name="Installato da",
+    )
+    installed_at = models.DateTimeField(default=timezone.now, verbose_name="Data di installazione")
+    online = models.BooleanField(default=False)
+    last_seen = models.DateTimeField(null=True, blank=True, verbose_name="Ultimo messaggio")
+    join_until = models.DateTimeField(null=True, blank=True, verbose_name="Aggiunta di nodi fino a")
+
+    def __str__(self):
+        return self.username
+
+    @property
+    def username(self):
+        return f"{self.USERNAME_PREFIX}{self.community_id}"
+
+    @classmethod
+    def community_id_from_username(cls, username):
+        """Id della community di uno username come gw-7, o None se non è lo username di un master."""
+        number = username.removeprefix(cls.USERNAME_PREFIX) if username.startswith(cls.USERNAME_PREFIX) else ""
+        return int(number) if number.isdigit() else None
+
+    def new_token(self):
+        token = secrets.token_hex(20)
+        self.token_hash = Device.hash_token(token)
+        return token
+
+    def check_token(self, token):
+        return hmac.compare_digest(self.token_hash, Device.hash_token(token))
+
+    @property
+    def join_seconds_left(self):
+        """Secondi che restano per aggiungere nodi, 0 se la finestra è chiusa."""
+        if self.join_until is None:
+            return 0
+        return max(0, int((self.join_until - timezone.now()).total_seconds()))
+
+    class Meta:
+        verbose_name = "Master di una community"
+        verbose_name_plural = "Master delle community"
+
+
+class LoRaNode(models.Model):
+    """Nodo sul tetto: il sensore di un impianto, senza display e senza internet, che parla solo con il master.
+
+    Entra nella rete del master durante la finestra "Aggiungi nodi" (come un dispositivo Zigbee) e poi il
+    tecnico lo assegna a un impianto della community del master. La chiave AES la concordano master e nodo via
+    LoRa (ECDH): il server la conserva perché un master nuovo possa parlare con i nodi senza riabbinarli.
+    """
+
+    ID_LENGTH = 8   # cifre esadecimali, dal MAC del nodo
+
+    gateway = models.ForeignKey(Gateway, on_delete=models.CASCADE, related_name="nodes", verbose_name="Master")
+    node_id = models.CharField(max_length=ID_LENGTH, unique=True, verbose_name="Nodo")
+    key = models.CharField(max_length=32)
+    kind = models.CharField(max_length=20, default="roof", verbose_name="Tipo")
+    system = models.OneToOneField(
+        PhotovoltaicSystem, on_delete=models.SET_NULL, null=True, blank=True, related_name="lora_node",
+        verbose_name="Impianto Fotovoltaico",
+    )
+    joined_at = models.DateTimeField(default=timezone.now, verbose_name="Entrato nella rete")
+    rssi = models.FloatField(null=True, blank=True)
+    snr = models.FloatField(null=True, blank=True)
+
+    def __str__(self):
+        return self.node_id
+
+    class Meta:
+        verbose_name = "Nodo LoRa"
+        verbose_name_plural = "Nodi LoRa"
+
+
+class DevicePairing(models.Model):
+    """Installazione di un dispositivo con il QR del suo display, senza copiare username e token.
+
+    Il dispositivo chiede un codice e lo mostra nel QR, che apre sul telefono del tecnico la pagina per scegliere
+    l'impianto; intanto il dispositivo chiede a intervalli se è stato abbinato e, appena il tecnico ha scelto,
+    riceve le credenziali (SP/pairing.py). Il codice lo vede chiunque guardi il display: per ritirare le
+    credenziali serve anche il segreto, che conosce solo il dispositivo (se ne salva l'hash). Il token viene
+    generato quando il dispositivo lo ritira, quindi non viene mai salvato.
+
+    Un dispositivo si installa su un impianto; il master di una community (ROLE_GATEWAY) sulla community.
+    """
+
+    ROLE_DEVICE = "device"
+    ROLE_GATEWAY = "gateway"
+    ROLES = ((ROLE_DEVICE, "Dispositivo di un impianto"), (ROLE_GATEWAY, "Master di una community"))
+
+    # Senza 0/O e 1/I/L, che si confondono: il codice si può anche scrivere a mano nella pagina dell'impianto
+    CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+    CODE_LENGTH = 8
+    # Per scansionare il QR e scegliere l'impianto; poi il dispositivo ha WAIT_TIME per ritirare le credenziali,
+    # e dopo averle ritirate altrettanto per collegarsi al broker (la pagina dell'impianto lo aspetta)
+    LIFETIME = timedelta(minutes=10)
+    WAIT_TIME = timedelta(minutes=2)
+
+    code = models.CharField(max_length=CODE_LENGTH, unique=True)
+    secret_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    scanned_at = models.DateTimeField(null=True, blank=True)
+    role = models.CharField(max_length=10, choices=ROLES, default=ROLE_DEVICE)
+    system = models.ForeignKey(
+        PhotovoltaicSystem, on_delete=models.CASCADE, null=True, blank=True, related_name="pairings",
+        verbose_name="Impianto Fotovoltaico",
+    )
+    community = models.ForeignKey(
+        Community, on_delete=models.CASCADE, null=True, blank=True, related_name="pairings", verbose_name="Community",
+    )
+    claimed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return self.display_code
+
+    @classmethod
+    def normalize_code(cls, value):
+        """Il codice come lo salva il server: maiuscolo, senza trattino e spazi (come lo mostra il display)."""
+        return "".join(str(value).upper().split()).replace("-", "")
+
+    @property
+    def is_gateway(self):
+        return self.role == self.ROLE_GATEWAY
+
+    @property
+    def target(self):
+        """Impianto o community scelti dal tecnico, o None."""
+        return self.community if self.is_gateway else self.system
+
+    @property
+    def display_code(self):
+        half = self.CODE_LENGTH // 2
+        return f"{self.code[:half]}-{self.code[half:]}"
+
+    def new_secret(self):
+        """Genera codice e segreto e restituisce il segreto; va poi salvata la richiesta."""
+        self.code = "".join(secrets.choice(self.CODE_ALPHABET) for _ in range(self.CODE_LENGTH))
+        secret = secrets.token_hex(20)
+        self.secret_hash = Device.hash_token(secret)
+        return secret
+
+    def check_secret(self, secret):
+        return hmac.compare_digest(self.secret_hash, Device.hash_token(secret))
+
+    class Meta:
+        verbose_name = "Abbinamento di un dispositivo"
+        verbose_name_plural = "Abbinamenti dei dispositivi"

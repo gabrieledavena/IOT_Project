@@ -3,6 +3,8 @@
 Installare un dispositivo genera le credenziali con cui il bridge si collega al broker MQTT come quell'impianto
 (username pv-<id> e un token mostrato una volta sola). Le stesse pagine servono per i test: si può installare un
 dispositivo su un impianto qualsiasi, anche dei dati demo, e impostarne lo stato per provare la pompa di lavaggio.
+Un dispositivo con il display si installa invece con il suo QR, senza copiare il token (SP/pairing.py); i nodi
+LoRa sui tetti, tramite il master della community (SP/gateways.py).
 """
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -15,14 +17,28 @@ from django.views import View
 from . import mqtt
 from .access import TechnicianRequiredMixin
 from .forms import ForceStatusForm, InstallationForm
-from .models import Device, PhotovoltaicSystem
+from .models import Device, LoRaNode, PhotovoltaicSystem
 
 # Il token appena generato resta nella sessione fino alla pagina successiva, che lo mostra una volta sola
 NEW_TOKEN_SESSION_KEY = "new_device_token"
 
 
+def detach_node(system):
+    """L'impianto non ha più come sensore il suo nodo LoRa, che torna da assegnare nella pagina del master."""
+    node = LoRaNode.objects.select_related("gateway__community").filter(system=system).first()
+    if node is None:
+        return
+    node.system = None
+    node.save(update_fields=["system"])
+    transaction.on_commit(lambda: mqtt.publish_gateway_config(node.gateway))
+
+
 def install_device(system, staff=None):
-    """Installa il dispositivo sull'impianto, o gli dà nuove credenziali se c'è già; restituisce il token."""
+    """Installa il dispositivo sull'impianto, o gli dà nuove credenziali se c'è già; restituisce il token.
+
+    Se il sensore dell'impianto era un nodo LoRa, ora è il dispositivo con le credenziali: il nodo si stacca.
+    """
+    detach_node(system)
     device = Device.objects.filter(system=system).first() or Device(system=system)
     token = device.new_token()
     if device.pk is None:
@@ -34,6 +50,7 @@ def install_device(system, staff=None):
 
 
 def uninstall_device(system):
+    detach_node(system)
     Device.objects.filter(system=system).delete()
     transaction.on_commit(lambda: mqtt.clear_retained(system.id))
 
@@ -60,7 +77,32 @@ def bridge_commands(device, token):
 
 
 def systems_with_devices():
-    return PhotovoltaicSystem.objects.select_related("community__city", "device", "device__installed_by")
+    return PhotovoltaicSystem.objects.select_related(
+        "community__city", "device", "device__installed_by", "lora_node__gateway",
+    )
+
+
+def search(systems, query):
+    """Impianti il cui nome o quello della community contiene il testo cercato."""
+    return systems.filter(Q(name__icontains=query) | Q(community__name__icontains=query)) if query else systems
+
+
+def awaited_pairing(pairings, device):
+    """Installazione con il QR di cui la pagina aspetta l'esito, e la fase, o (None, None).
+
+    pairings sono gli abbinamenti dell'impianto (o della community, per il master); device il suo dispositivo
+    (o il master). Fasi: "pickup" il dispositivo deve ritirare le credenziali, "broker" le ha ritirate e deve
+    collegarsi al broker.
+    """
+    pairing = pairings.filter(expires_at__gt=timezone.now()).order_by("-claimed_at").first()
+    if pairing is None:
+        return None, None
+    if pairing.delivered_at is None:
+        return pairing, "pickup"
+    # Collegato dopo aver ricevuto le credenziali: "online" da prima è del dispositivo che è stato sostituito
+    if device and device.online and device.last_seen and device.last_seen >= pairing.delivered_at:
+        return None, None
+    return pairing, "broker"
 
 
 class InstallationListView(TechnicianRequiredMixin, View):
@@ -75,10 +117,8 @@ class InstallationListView(TechnicianRequiredMixin, View):
     }
 
     def get(self, request):
-        systems = systems_with_devices()
         query = request.GET.get("q", "").strip()
-        if query:
-            systems = systems.filter(Q(name__icontains=query) | Q(community__name__icontains=query))
+        systems = search(systems_with_devices(), query)
         selected = request.GET.get("device") if request.GET.get("device") in self.FILTERS else ""
         if selected:
             systems = systems.filter(self.FILTERS[selected])
@@ -101,19 +141,26 @@ class NewInstallationView(TechnicianRequiredMixin, View):
 
     template_name = "SP/installation_new.html"
 
-    def get(self, request):
-        return render(request, self.template_name, {"form": InstallationForm()})
+    def get(self, request, **kwargs):
+        return render(request, self.template_name, self.context(InstallationForm()))
 
-    def post(self, request):
+    def post(self, request, **kwargs):
         form = InstallationForm(request.POST)
         if not form.is_valid():
-            return render(request, self.template_name, {"form": form})
+            return render(request, self.template_name, self.context(form))
         with transaction.atomic():
             system = form.save()
-            device, token = install_device(system, request.user)
-        request.session[NEW_TOKEN_SESSION_KEY] = {"system_id": system.id, "token": token}
-        messages.success(request, f"Impianto {system.name} creato e dispositivo {device.username} installato.")
+            self.install(system)
         return redirect("SP:installation_detail", system_id=system.id)
+
+    def context(self, form):
+        return {"form": form}
+
+    def install(self, system):
+        """Installa il dispositivo sul nuovo impianto: il token compare una volta sola nella pagina seguente."""
+        device, token = install_device(system, self.request.user)
+        self.request.session[NEW_TOKEN_SESSION_KEY] = {"system_id": system.id, "token": token}
+        messages.success(self.request, f"Impianto {system.name} creato e dispositivo {device.username} installato.")
 
 
 class InstallationDetailView(TechnicianRequiredMixin, View):
@@ -156,10 +203,13 @@ class InstallationDetailView(TechnicianRequiredMixin, View):
 
     def render(self, request, system, form, token, status=200):
         device = getattr(system, "device", None)
+        pairing, pairing_step = awaited_pairing(system.pairings, device)
         context = {
             "system": system,
             "device": device,
             "token": token,
+            "pairing": pairing,
+            "pairing_step": pairing_step,
             "commands": bridge_commands(device, token) if device and token else None,
             "form": form,
             "topics": [mqtt.topic(system.id, name) for name in

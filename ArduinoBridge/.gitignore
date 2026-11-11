@@ -1,1 +1,3 @@
 .state/
+# File locali con password (per esempio della rete Wi-Fi): non vanno su git
+secrets.h

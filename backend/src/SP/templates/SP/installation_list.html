@@ -10,7 +10,10 @@
                 <h2 class="fw-bold text-dark mb-0">Installazioni</h2>
                 <p class="text-muted mb-0">Dispositivi (Arduino e bridge) installati sugli impianti: si collegano al broker MQTT con le credenziali del proprio impianto.</p>
             </div>
-            <a href="{% url 'SP:installation_new' %}" class="btn btn-success rounded-pill fw-bold"><i class="fas fa-plus me-2"></i>Nuova installazione</a>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'SP:community_list' %}" class="btn btn-outline-primary rounded-pill"><i class="fas fa-broadcast-tower me-2"></i>Master delle community</a>
+                <a href="{% url 'SP:installation_new' %}" class="btn btn-success rounded-pill fw-bold"><i class="fas fa-plus me-2"></i>Nuova installazione</a>
+            </div>
         </div>
     </div>
 

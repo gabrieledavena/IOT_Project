@@ -6,9 +6,15 @@
 <div class="container mb-5">
     <div class="row mb-4">
         <div class="col-12">
-            <a href="{% url 'SP:installation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le installazioni</a>
-            <h2 class="fw-bold text-dark mb-0 mt-2">Nuova installazione</h2>
-            <p class="text-muted mb-0">Il nuovo impianto viene aggiunto alla community con il suo dispositivo: nella pagina seguente trovi le credenziali per avviare il bridge.</p>
+            {% if pairing %}
+                <a href="{% url 'SP:pair' pairing.code %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Impianto esistente</a>
+                <h2 class="fw-bold text-dark mb-0 mt-2">Nuova installazione</h2>
+                <p class="text-muted mb-0">Il nuovo impianto viene aggiunto alla community e il dispositivo <span class="badge rounded-pill bg-dark font-monospace">{{ pairing.display_code }}</span> ne riceve le credenziali appena lo salvi.</p>
+            {% else %}
+                <a href="{% url 'SP:installation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le installazioni</a>
+                <h2 class="fw-bold text-dark mb-0 mt-2">Nuova installazione</h2>
+                <p class="text-muted mb-0">Il nuovo impianto viene aggiunto alla community con il suo dispositivo: nella pagina seguente trovi le credenziali per avviare il bridge.</p>
+            {% endif %}
         </div>
     </div>
 
@@ -28,7 +34,7 @@
                                 </div>
                             {% endfor %}
                         </div>
-                        <button type="submit" class="btn btn-success rounded-pill fw-bold mt-4"><i class="fas fa-microchip me-2"></i>Crea impianto e installa il dispositivo</button>
+                        <button type="submit" class="btn btn-success rounded-pill fw-bold mt-4"><i class="fas fa-microchip me-2"></i>Crea impianto e installa il dispositivo{% if pairing %} {{ pairing.display_code }}{% endif %}</button>
                     </form>
                 </div>
             </div>
