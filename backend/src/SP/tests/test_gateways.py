@@ -218,6 +218,24 @@ class GatewayMessageTests(GatewayTestCase):
         self.assertEqual(reading.time_stamp, datetime(2026, 11, 11, 14, 32, tzinfo=dt_timezone.utc))
         self.assertIsNone(mqtt.handle_message(topic, payload))   # lo stesso minuto due volte: scartato
 
+    def test_a_virtual_node_of_the_master(self):
+        # MasterNode.ino simula impianti in più: il nodo entra senza segnale radio, con lo scenario come tipo
+        gateway, _ = self.install()
+        Gateway.objects.filter(pk=gateway.pk).update(join_until=timezone.now() + timedelta(minutes=3))
+        node = self.event(gateway, event="node_joined", node="1A3F2C1D", key=KEY, kind="virtuale sporco")
+        self.assertEqual((node.kind, node.rssi), ("virtuale sporco", None))
+        with mock.patch("SP.mqtt.publish"), self.captureOnCommitCallbacks(execute=True):
+            assign_node(node, self.system, self.staff)
+        # Il master pubblica il lavaggio dei suoi nodi: la fine del lavaggio è quella che il server verifica
+        topic = mqtt.topic(self.system.id, mqtt.EVENTS)
+        self.assertTrue(mqtt.may_access(f"gw-{self.community.id}", topic, mqtt.ACC_WRITE))
+        mqtt.handle_message(topic, b'{"event": "pump_on", "at": "2026-11-11T14:40:00+00:00"}')
+        self.assertTrue(Device.objects.get(system=self.system).pump_running)
+        mqtt.handle_message(topic, b'{"event": "pump_off", "at": "2026-11-11T14:40:10+00:00"}')
+        device = Device.objects.get(system=self.system)
+        self.assertFalse(device.pump_running)
+        self.assertEqual(device.last_cleaning, datetime(2026, 11, 11, 14, 40, 10, tzinfo=dt_timezone.utc))
+
     def test_when_the_master_goes_offline_its_nodes_do_too(self):
         gateway, _ = self.install()
         with mock.patch("SP.mqtt.publish"), self.captureOnCommitCallbacks(execute=True):

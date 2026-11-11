@@ -20,18 +20,22 @@
 // Dopo l'adesione ogni pacchetto è protetto con AES-128-CCM: intestazione [+ dati in chiaro] + contatore (4) +
 // dati cifrati + codice di autenticazione (8). Ogni direzione ha il suo contatore, che cresce sempre: chi riceve
 // scarta i contatori già visti, così un pacchetto registrato e ritrasmesso non vale.
-//   BATTITO     nodo -> master   ogni minuto: secondi dall'accensione (4)
+//   BATTITO     nodo -> master   ogni minuto: secondi dall'accensione (4) e l'impronta del nome dell'impianto che
+//                                il nodo conosce (2, 0 se nessuno)
 //   RISPOSTA    master -> nodo   dopo ogni battito e quando cambia: stato dell'impianto (3, "---" se il nodo non
-//                                è ancora assegnato a un impianto) e, se il master la sa (NTP), l'ora (4, secondi
-//                                Unix UTC): il nodo ci regola il suo orologio DS1307
+//                                è ancora assegnato a un impianto), l'ora se il master la sa da internet (4, secondi
+//                                Unix UTC, altrimenti 0: il nodo ci regola il suo orologio DS1307) e, solo se
+//                                l'impronta del battito non è quella giusta, il nome dell'impianto (fino a NOME
+//                                byte, UTF-8): così il nome viaggia solo quando il nodo non lo ha
 //   MISURA      nodo -> master   ogni 10 secondi, senza risposta: l'ora del nodo (4, secondi Unix UTC, 0 se non
 //                                la sa), la temperatura (2, decimi di °C con segno, TEMPERATURA_ASSENTE se il
-//                                DHT11 non risponde), la luce (4, lux) e i segnali (1: SEGNALE_LAVAGGIO)
+//                                DHT11 non risponde), la luce (4, lux), i segnali (1: SEGNALE_LAVAGGIO) e la
+//                                produzione misurata dalla pinza amperometrica (2, W)
 //   IDENTIFICA  master -> nodo   secondi di lampeggio veloce del LED (1)
 //   RIMOZIONE   master -> nodo   il nodo esce dalla rete e torna come nuovo
 //   USCITA      nodo -> master   il nodo è stato riportato come nuovo (PRG tenuto 10 secondi)
 //
-// Tempo in aria a SF7: una MISURA (34 byte) dura circa 77 ms, un BATTITO (27 byte) circa 67 ms. Una misura ogni
+// Tempo in aria a SF7: una MISURA (36 byte) dura circa 77 ms, un BATTITO (29 byte) circa 67 ms. Una misura ogni
 // 10 secondi e un battito al minuto sono circa lo 0,85% del tempo, sotto il limite dell'1% della banda.
 #pragma once
 
@@ -77,7 +81,9 @@ const size_t MASSIMO = 64;      // lunghezza massima di un pacchetto
 const size_t STATO = 3;         // codice dello stato dell'impianto: OK, DRT, FLT, BRK
 const char NON_ASSEGNATO[] = "---";
 const size_t ORA = 4;           // secondi Unix UTC, dopo lo stato nella RISPOSTA
-const size_t DATI_MISURA = 11;  // ora (4) + temperatura (2) + luce (4) + segnali (1)
+const size_t DATI_MISURA = 13;  // ora (4) + temperatura (2) + luce (4) + segnali (1) + produzione (2)
+const size_t DATI_BATTITO = 6;  // secondi dall'accensione (4) + impronta del nome (2)
+const size_t NOME = 24;         // byte del nome dell'impianto nella RISPOSTA: oltre si accorcia
 const int16_t TEMPERATURA_ASSENTE = INT16_MIN;
 const uint8_t SEGNALE_LAVAGGIO = 0x01;   // la pompa (l'animazione dell'acqua sul display) è accesa
 const uint32_t ORA_MINIMA = 1735689600;  // 1/1/2025: un'ora prima di questa non è stata regolata
@@ -118,6 +124,7 @@ struct Misura {
   int16_t temperatura;   // decimi di °C, TEMPERATURA_ASSENTE se il DHT11 non risponde
   uint32_t luce;         // lux
   uint8_t segnali;
+  uint16_t potenza;      // W, dalla pinza amperometrica
 };
 
 inline void scriviMisura(uint8_t dati[DATI_MISURA], const Misura &misura) {
@@ -125,6 +132,7 @@ inline void scriviMisura(uint8_t dati[DATI_MISURA], const Misura &misura) {
   scrivi16(dati + 4, (uint16_t)misura.temperatura);
   scrivi32(dati + 6, misura.luce);
   dati[10] = misura.segnali;
+  scrivi16(dati + 11, misura.potenza);
 }
 
 inline Misura leggiMisura(const uint8_t dati[DATI_MISURA]) {
@@ -133,7 +141,34 @@ inline Misura leggiMisura(const uint8_t dati[DATI_MISURA]) {
   misura.temperatura = (int16_t)leggi16(dati + 4);
   misura.luce = leggi32(dati + 6);
   misura.segnali = dati[10];
+  misura.potenza = leggi16(dati + 11);
   return misura;
+}
+
+// Il nome dell'impianto accorciato a NOME byte, senza spezzare un carattere UTF-8 (accentato, di più byte)
+inline void accorciaNome(const char *nome, char breve[NOME + 1]) {
+  size_t lunghezza = strnlen(nome, NOME + 1);
+  if (lunghezza > NOME) {
+    lunghezza = NOME;
+    while (lunghezza > 0 && ((uint8_t)nome[lunghezza] & 0xC0) == 0x80) {
+      lunghezza--;   // nome[lunghezza] è il seguito di un carattere: lo si toglie tutto
+    }
+  }
+  memcpy(breve, nome, lunghezza);
+  breve[lunghezza] = '\0';
+}
+
+// Impronta del nome (FNV-1a a 32 bit ripiegata su 16): 0 solo per il nome vuoto
+inline uint16_t impronta(const char *nome) {
+  if (nome[0] == '\0') {
+    return 0;
+  }
+  uint32_t valore = 2166136261u;
+  for (const char *c = nome; *c != '\0'; c++) {
+    valore = (valore ^ (uint8_t)*c) * 16777619u;
+  }
+  uint16_t risultato = (uint16_t)((valore >> 16) ^ (valore & 0xFFFF));
+  return risultato == 0 ? 1 : risultato;
 }
 
 // Id della scheda: 4 byte del suo MAC, scritto come 8 cifre esadecimali (come lo mostra il sito)
