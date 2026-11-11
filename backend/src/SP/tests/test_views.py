@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import RestrictedError
 from django.test import TestCase
 
+from SP.access import NOT_A_CUSTOMER
 from SP.models import Customer
 from SP.tests.helpers import (
     DEFAULT_WEATHER, add_readings, create_city, create_community, create_customer, create_system, create_technician,
@@ -61,7 +62,7 @@ class CommunityDashboardTests(TestCase):
         response = self.client.get("/sp/community/")
 
         self.assertEqual(response.status_code, 403)
-        self.assertContains(response, "Utente non associato a un cliente.", status_code=403)
+        self.assertContains(response, NOT_A_CUSTOMER, status_code=403)
 
     def test_anonymous_user_is_sent_to_login(self):
         self.client.logout()
@@ -132,20 +133,6 @@ class SystemListAndRegistrationTests(TestCase):
         self.assertContains(response, "Impianti di Rossi Trasporti")
         self.assertContains(response, "Titolare: Mario Rossi")
 
-    def test_registration_creates_customer_and_logs_in(self):
-        community = create_community()
-
-        response = self.client.post("/sp/register/", {
-            "username": "nuovo", "password1": "Una-password-sicura-42", "password2": "Una-password-sicura-42",
-            "name": "Anna", "surname": "Bianchi", "community": community.id,
-        })
-
-        self.assertRedirects(response, "/", fetch_redirect_response=False)
-        customer = Customer.objects.get(user__username="nuovo")
-        self.assertEqual(customer.community, community)
-        # Primo utente della community: ne diventa il titolare
-        self.assertTrue(customer.is_owner)
-
 
 class CommunityOwnerTests(TestCase):
     def setUp(self):
@@ -193,8 +180,8 @@ class CommunityOwnerTests(TestCase):
         owners = response.context["adminform"].form.fields["owner"].queryset
         self.assertEqual(set(owners), {self.owner, self.member})
 
-    def test_deleting_the_community_deletes_its_users_profiles(self):
+    def test_deleting_the_community_leaves_its_users_waiting_for_another(self):
         self.community.delete()
 
-        self.assertFalse(Customer.objects.exists())
+        self.assertEqual(Customer.objects.filter(community__isnull=True).count(), 2)
 

@@ -5,16 +5,107 @@ from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from .models import Community, Customer, Intervention, PhotovoltaicSystem
+from .models import City, Community, Customer, Intervention, PhotovoltaicSystem
+
+NOT_SPECIFIED = "Non indicata"
+
+
+def cities_with_coordinates():
+    # Solo i comuni con coordinate: senza, non si può scaricare il meteo per stime, previsioni e dashboard
+    return City.objects.filter(latitude__isnull=False, longitude__isnull=False).order_by("name", "province")
+
+
+class CityChoiceForm(forms.Form):
+    """Scelta del comune con i menu a cascata regione, provincia e comune (SP/static/SP/city_select.js).
+
+    Il template passa city_options allo script con json_script "city-options".
+    """
+
+    # Regione e provincia servono solo a filtrare l'elenco dei comuni
+    region = forms.ChoiceField(label="Regione", required=False)
+    province = forms.ChoiceField(label="Provincia", required=False)
+    city = forms.ModelChoiceField(
+        label="Comune",
+        queryset=cities_with_coordinates(),
+        empty_label="Scegli un comune",
+        error_messages={"invalid_choice": "Scegli un comune dall'elenco."},
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Comuni selezionabili, con regione e provincia, per i menu a cascata
+        self.city_options = [
+            {"id": pk, "name": name, "province": province or NOT_SPECIFIED, "region": region or NOT_SPECIFIED}
+            for pk, name, province, region in cities_with_coordinates().values_list("id", "name", "province", "region")
+        ]
+        regions = sorted({city["region"] for city in self.city_options})
+        provinces = sorted({city["province"] for city in self.city_options})
+        self.fields["region"].choices = [("", "Scegli una regione")] + [(name, name) for name in regions]
+        self.fields["province"].choices = [("", "Scegli una provincia")] + [(name, name) for name in provinces]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        city = cleaned_data.get("city")
+        if city:
+            for field, value in (("region", city.region), ("province", city.province)):
+                chosen = cleaned_data.get(field)
+                if chosen and chosen != (value or NOT_SPECIFIED):
+                    self.add_error("city", "Il comune non appartiene alla regione o alla provincia scelta.")
+                    break
+        return cleaned_data
+
+
+class CommunityForm(CityChoiceForm):
+    """Community di un'azienda o di una famiglia, nuova o da modificare (community=...): solo i tecnici
+    (SP/customers.py). Modificandola si sceglie anche il titolare, tra i suoi utenti."""
+
+    name = forms.CharField(label="Nome", max_length=Community._meta.get_field("name").max_length,
+                           help_text="Es. il nome dell'azienda o \"Famiglia Bianchi\".")
+
+    field_order = ("name", "region", "province", "city")
+
+    def __init__(self, *args, community=None, **kwargs):
+        self.community = community
+        if community is not None:
+            kwargs.setdefault("initial", {"name": community.name, "city": community.city_id,
+                                          "owner": community.owner_id})
+        super().__init__(*args, **kwargs)
+        if community is not None:
+            members = community.customers.select_related("user").order_by("surname", "name")
+            if members.exists():
+                # Una community con utenti ha sempre un titolare (Community.clean)
+                self.fields["owner"] = forms.ModelChoiceField(
+                    label="Titolare", queryset=members, empty_label=None,
+                    help_text="Uno degli utenti della community.",
+                )
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "form-select" if isinstance(field.widget, forms.Select) else "form-control"
+
+    def clean_name(self):
+        name = " ".join(self.cleaned_data["name"].split())
+        others = Community.objects.exclude(pk=self.community.pk) if self.community else Community.objects.all()
+        if others.filter(name__iexact=name).exists():
+            raise forms.ValidationError("Esiste già una community con questo nome.")
+        return name
+
 
 class CustomerRegistrationForm(UserCreationForm):
-    name = forms.CharField(max_length=100, required=True)
-    surname = forms.CharField(max_length=100, required=True)
-    community = forms.ModelChoiceField(queryset=Community.objects.all(), required=True)
+    """Registrazione di un cliente, privato o di un'azienda. Non si sceglie la community: la assegna un tecnico."""
+
+    name = forms.CharField(label="Nome", max_length=100, required=True)
+    surname = forms.CharField(label="Cognome", max_length=100, required=True)
+    email = forms.EmailField(label="Email (facoltativa)", required=False)
+    phone = forms.CharField(
+        label="Telefono (facoltativo)", max_length=Customer._meta.get_field("phone").max_length, required=False,
+        validators=Customer._meta.get_field("phone").validators,
+    )
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = UserCreationForm.Meta.fields + ('name', 'surname', 'community',)
+        fields = UserCreationForm.Meta.fields + ('name', 'surname', 'email', 'phone')
+
+    def clean_phone(self):
+        return " ".join(self.cleaned_data["phone"].split())
 
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -24,9 +115,18 @@ class CustomerRegistrationForm(UserCreationForm):
                 user=user,
                 name=self.cleaned_data.get('name'),
                 surname=self.cleaned_data.get('surname'),
-                community=self.cleaned_data.get('community'),
+                phone=self.cleaned_data.get('phone'),
             )
         return user
+
+
+class CommunityAssignmentForm(forms.Form):
+    """Il tecnico sceglie la community a cui associare un utente appena registrato."""
+
+    community = forms.ModelChoiceField(
+        queryset=Community.objects.select_related("city").order_by("name"), label="Community",
+        empty_label="Scegli la community", widget=forms.Select(attrs={"class": "form-select form-select-sm"}),
+    )
 
 
 # Un intervento si può chiedere da domani ai prossimi due mesi

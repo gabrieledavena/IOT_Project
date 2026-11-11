@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Elimina {{ community.name }}{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <a href="{% url 'SP:community_edit' community.id %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>{{ community.name }}</a>
+            <h2 class="fw-bold text-dark mb-0 mt-2">Elimina la community</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold">{{ community.name }} <span class="small text-muted fw-normal">{{ community.city }}</span></h5>
+                    {% if systems %}
+                        <div class="alert alert-warning rounded-4 mb-0 mt-3" role="alert">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            La community ha <strong>{{ systems }} impiant{{ systems|pluralize:"o,i" }}</strong>: eliminandola se ne
+                            andrebbero anche le misure e gli interventi. Prima vanno eliminati o spostati in un'altra community.
+                        </div>
+                    {% else %}
+                        <ul class="text-muted mt-3">
+                            {% if users %}
+                                <li>I suoi <strong>{{ users }}</strong> utent{{ users|pluralize:"e,i" }} restano registrat{{ users|pluralize:"o,i" }} e tornano in attesa di una community, nella pagina Nuovi utenti.</li>
+                            {% else %}
+                                <li>La community non ha utenti.</li>
+                            {% endif %}
+                            {% if has_gateway %}<li>Il master della community viene disinstallato, con i suoi nodi LoRa.</li>{% endif %}
+                            <li>L'operazione non si può annullare.</li>
+                        </ul>
+                        <form method="post" class="d-flex gap-2">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger rounded-pill"><i class="fas fa-trash-alt me-1"></i>Elimina {{ community.name }}</button>
+                            <a href="{% url 'SP:community_manage_list' %}" class="btn btn-outline-secondary rounded-pill">Annulla</a>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

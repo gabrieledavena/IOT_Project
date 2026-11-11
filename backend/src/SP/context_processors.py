@@ -9,14 +9,19 @@ def roles(request):
     if not user.is_authenticated:
         return {}
     return {
-        "is_customer": Customer.objects.filter(user=user).exists(),
+        # Solo con una community: chi è in attesa che un tecnico gliela assegni non ha ancora impianti da vedere
+        "is_customer": Customer.objects.filter(user=user, community__isnull=False).exists(),
         "is_technician": is_technician(user),
         "is_consultant": is_consultant(user),
     }
 
 
 def pending_interventions(request):
-    """Richieste di intervento da accettare, per il contatore nel menu dei tecnici."""
+    """Richieste di intervento da accettare e utenti da associare a una community, per i contatori nel menu
+    dei tecnici."""
     if not is_technician(request.user):
         return {}
-    return {"pending_interventions": Intervention.objects.filter(status=Intervention.Status.REQUESTED).count()}
+    return {
+        "pending_interventions": Intervention.objects.filter(status=Intervention.Status.REQUESTED).count(),
+        "pending_customers": Customer.objects.filter(community__isnull=True).count(),
+    }

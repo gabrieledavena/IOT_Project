@@ -4,6 +4,7 @@
 
 {% block content %}
     <h2>Registrati</h2>
+    <p>Dopo la registrazione un nostro tecnico associa il tuo account alla community del tuo impianto, della tua famiglia o della tua azienda.</p>
     <form method="post">
         {% csrf_token %}
         {{ form.as_p }}

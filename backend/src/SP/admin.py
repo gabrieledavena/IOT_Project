@@ -91,9 +91,9 @@ class CommunityAdmin(admin.ModelAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "surname", "community")
+    list_display = ("id", "name", "surname", "phone", "community")
     list_select_related = ("community",)
-    search_fields = ("name", "surname", "user__username")
+    search_fields = ("name", "surname", "phone", "user__username", "user__email")
 
 
 @admin.register(PhotovoltaicSystem)

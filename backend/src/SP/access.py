@@ -4,7 +4,7 @@ from django.contrib.auth.mixins import UserPassesTestMixin
 from .models import Customer, PhotovoltaicSystem
 from .roles import is_consultant, is_technician
 
-NOT_A_CUSTOMER = "Utente non associato a un cliente."
+NOT_A_CUSTOMER = "Il tuo account non è associato a una community."
 
 
 class AccessError(Exception):

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Monitoraggio fotovoltaico per aziende{% endblock %}
+{% block title %}Monitoraggio fotovoltaico per famiglie e aziende{% endblock %}
 
 {% block main %}
 <!-- Apertura: cosa offriamo, con il collegamento al confronto tra città -->
@@ -8,17 +8,20 @@
     <div class="container py-5">
         <div class="row align-items-center g-5 py-lg-4">
             <div class="col-lg-6" data-aos="fade-up">
-                <span class="badge rounded-pill landing-eyebrow mb-3"><i class="fas fa-solar-panel me-1"></i>Monitoraggio fotovoltaico per aziende</span>
+                <span class="badge rounded-pill landing-eyebrow mb-3"><i class="fas fa-solar-panel me-1"></i>Monitoraggio fotovoltaico per famiglie e aziende</span>
                 <h1 class="display-5 fw-bold mb-3">I tuoi impianti fotovoltaici, sempre sotto controllo</h1>
                 <p class="lead mb-4 landing-lead">
-                    Misuriamo ogni minuto la produzione dei tuoi impianti, la confrontiamo con il meteo e con gli impianti
-                    vicini e interveniamo quando qualcosa non va: pannelli sporchi, guasti, cali di rendimento.
+                    Che sia il tetto di casa o il capannone dell'azienda, misuriamo ogni minuto la produzione del tuo
+                    impianto, la confrontiamo con il meteo e con gli impianti vicini e interveniamo quando qualcosa non va:
+                    pannelli sporchi, guasti, cali di rendimento. Anche se il tuo impianto non è smart.
                 </p>
                 <div class="d-flex flex-wrap gap-2">
                     <a href="{% url 'SP:city_benchmark' %}" class="btn btn-light btn-lg rounded-pill fw-bold px-4 text-success">
                         <i class="fas fa-map-marked-alt me-2"></i>Confronta le città
                     </a>
-                    <a href="{% url 'SP:login' %}" class="btn btn-outline-light btn-lg rounded-pill px-4">Area clienti</a>
+                    <a href="#retrofit" class="btn btn-outline-light btn-lg rounded-pill px-4">
+                        <i class="fas fa-plug me-2"></i>Rendi smart il tuo impianto
+                    </a>
                 </div>
             </div>
 
@@ -78,7 +81,7 @@
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="fs-2 fw-bold text-success">{{ communities }}</div>
-                    <div class="small text-muted text-uppercase fw-bold">Aziende clienti</div>
+                    <div class="small text-muted text-uppercase fw-bold">Clienti</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="fs-2 fw-bold text-success">{{ cities }}</div>
@@ -89,11 +92,56 @@
     </section>
 {% endif %}
 
-<!-- Servizi -->
+<!-- Per chi è: privati e aziende -->
 <section class="container py-5">
     <div class="text-center mb-5" data-aos="fade-up">
+        <h2 class="fw-bold text-dark">Per la tua casa e per la tua azienda</h2>
+        <p class="lead text-muted mb-0">Lo stesso servizio, per un singolo impianto sul tetto o per decine di impianti in più sedi.</p>
+    </div>
+    <div class="row g-4">
+        <div class="col-md-6" data-aos="fade-up">
+            <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift">
+                <div class="card-body p-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-home"></i></div>
+                    <h4 class="fw-bold text-dark">Privati e famiglie</h4>
+                    <p class="text-muted">
+                        Hai già i pannelli sul tetto o stai pensando di installarli? Ti aiutiamo a scegliere l'impianto giusto
+                        e poi lo teniamo d'occhio al posto tuo, così rende quanto promesso.
+                    </p>
+                    <ul class="list-unstyled text-muted mb-0">
+                        <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Stima di produzione e rientro dell'investimento prima di installare</li>
+                        <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Quanto stai producendo oggi, dal telefono o dal computer</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Pulizia e manutenzione senza doverti accorgere del problema</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6" data-aos="fade-up">
+            <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift">
+                <div class="card-body p-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-industry"></i></div>
+                    <h4 class="fw-bold text-dark">Aziende</h4>
+                    <p class="text-muted">
+                        Tutti gli impianti delle tue sedi in un'unica dashboard, con lo stato di ognuno e prima quelli
+                        che hanno un problema.
+                    </p>
+                    <ul class="list-unstyled text-muted mb-0">
+                        <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Energia totale prodotta per mese e per anno</li>
+                        <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Confronto della resa tra le tue sedi e con le altre città</li>
+                        <li><i class="fas fa-check text-success me-2"></i>Interventi dei tecnici prenotati e documentati</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Servizi -->
+<section class="bg-white border-top border-bottom">
+<div class="container py-5">
+    <div class="text-center mb-5" data-aos="fade-up">
         <h2 class="fw-bold text-dark">Cosa facciamo per te</h2>
-        <p class="lead text-muted mb-0">Dalla misura alla manutenzione, un solo servizio per tutti i tuoi impianti.</p>
+        <p class="lead text-muted mb-0">Dalla scelta dell'impianto alla manutenzione, un solo servizio dall'inizio alla fine.</p>
     </div>
     <div class="row g-4">
         <div class="col-md-6 col-lg-4" data-aos="fade-up">
@@ -151,6 +199,58 @@
             </div>
         </div>
     </div>
+</div>
+</section>
+
+<!-- Retrofitting: rendiamo smart gli impianti esistenti -->
+<section id="retrofit" class="container py-5">
+    <div class="row align-items-center g-5">
+        <div class="col-lg-6" data-aos="fade-up">
+            <span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success mb-3">
+                <i class="fas fa-plug me-1"></i>Retrofitting
+            </span>
+            <h2 class="fw-bold text-dark">Il tuo impianto non è smart? Lo rendiamo noi</h2>
+            <p class="lead text-muted">
+                Molti impianti, soprattutto quelli di qualche anno fa, non dicono a nessuno quanto stanno producendo:
+                ci si accorge di un guasto solo dalla bolletta.
+            </p>
+            <p class="text-muted">
+                Installiamo sul tuo impianto esistente il nostro sensore e il sistema di lavaggio dei pannelli, senza
+                sostituire pannelli né inverter. Da quel momento ha tutti i servizi di un impianto nuovo: monitoraggio,
+                previsioni, controllo automatico, pulizia e interventi dei tecnici.
+            </p>
+            <a href="{% url 'SP:register' %}" class="btn btn-success btn-lg rounded-pill px-4">
+                Rendi smart il tuo impianto<i class="fas fa-arrow-right ms-2"></i>
+            </a>
+        </div>
+        <div class="col-lg-6" data-aos="fade-left">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <div class="d-flex gap-3 mb-4">
+                        <div class="landing-step flex-shrink-0">1</div>
+                        <div>
+                            <h5 class="fw-bold text-dark mb-1">Sopralluogo</h5>
+                            <p class="text-muted mb-0">Un tecnico verifica l'impianto, qualunque sia la marca o l'età.</p>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-3 mb-4">
+                        <div class="landing-step flex-shrink-0">2</div>
+                        <div>
+                            <h5 class="fw-bold text-dark mb-1">Installazione</h5>
+                            <p class="text-muted mb-0">Montiamo sensore e pompa di lavaggio sul tetto: niente lavori sui pannelli esistenti.</p>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-3">
+                        <div class="landing-step flex-shrink-0">3</div>
+                        <div>
+                            <h5 class="fw-bold text-dark mb-1">Subito online</h5>
+                            <p class="text-muted mb-0">L'impianto compare nella tua dashboard e da quel minuto è sotto controllo.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </section>
 
 <!-- Come funziona -->
@@ -191,9 +291,12 @@
             Confronta le città<i class="fas fa-arrow-right ms-2"></i>
         </a>
     </div>
-    <p class="text-center text-muted mt-4 mb-0">
-        Sei già cliente? <a href="{% url 'SP:login' %}" class="fw-bold text-success">Accedi</a>
-        o <a href="{% url 'SP:register' %}" class="fw-bold text-success">registrati</a> con la tua azienda per vedere i tuoi impianti.
-    </p>
+    {% if not user.is_authenticated %}
+        <!-- I consulenti vedono la stessa vetrina da autenticati: a loro non serve l'invito ad accedere -->
+        <p class="text-center text-muted mt-4 mb-0">
+            Sei già cliente? <a href="{% url 'SP:login' %}" class="fw-bold text-success">Accedi</a>
+            o <a href="{% url 'SP:register' %}" class="fw-bold text-success">registrati</a>, come privato o con la tua azienda, per vedere i tuoi impianti.
+        </p>
+    {% endif %}
 </section>
 {% endblock %}

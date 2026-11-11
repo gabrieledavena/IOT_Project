@@ -5,7 +5,8 @@ from SP.roles import CONSULTANTS, TECHNICIANS
 from SP.tests.helpers import create_community, create_consultant, create_customer, create_system, create_technician
 
 # Pagine dei tecnici (impianti, dispositivi, interventi) e dei consulenti (preventivi)
-TECHNICIAN_PAGES = ["/sp/installations/", "/sp/installations/new/", "/sp/interventions/"]
+TECHNICIAN_PAGES = ["/sp/installations/", "/sp/installations/new/", "/sp/interventions/", "/sp/customers/",
+                    "/sp/customers/communities/new/"]
 CONSULTANT_PAGES = ["/roi/"]
 
 
@@ -27,11 +28,14 @@ class RoleAccessTests(TestCase):
         self.assert_status(TECHNICIAN_PAGES, 403)
         # Nessun impianto: né la sua pagina né quella dell'installazione
         self.assert_status([f"/sp/system/{self.system.id}/", f"/sp/installations/{self.system.id}/"], 403)
-        # La home è il calcolo del ROI, e nel menu c'è solo quello
-        self.assertRedirects(self.client.get("/"), "/roi/")
-        menu = self.client.get("/roi/")
+        # La home è la vetrina dei servizi, come per i visitatori ma senza l'invito ad accedere;
+        # nel menu c'è solo il calcolo del ROI
+        menu = self.client.get("/")
+        self.assertTemplateUsed(menu, "SP/landing.html")
+        self.assertNotContains(menu, "Sei già cliente?")
         self.assertContains(menu, 'href="/roi/"')
-        for link in ('href="/sp/installations/"', 'href="/sp/interventions/"', 'href="/admin/"', 'href="/sp/community/"'):
+        for link in ('href="/sp/installations/"', 'href="/sp/interventions/"', 'href="/admin/"', 'href="/sp/community/"',
+                     'href="/sp/customers/"'):
             self.assertNotContains(menu, link)
 
     def test_technicians_install_and_manage_the_systems(self):

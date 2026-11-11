@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -36,7 +37,7 @@ class City(models.Model):
 
 
 class Community(models.Model):
-    """Un'azienda: possiede gli impianti e vi accedono i suoi utenti, ognuno con il proprio account."""
+    """Un'azienda o una famiglia: possiede gli impianti e vi accedono i suoi utenti, ognuno con il proprio account."""
 
     name = models.CharField(max_length=100, unique=True)
     # PROTECT: eliminare una città non deve eliminare a cascata community, clienti e misure
@@ -68,10 +69,21 @@ class Community(models.Model):
 
 
 class Customer(models.Model):
+    """Utente che si è registrato. Chi si registra non ha una community: lo associa un tecnico (SP/customers.py),
+    e fino ad allora non vede impianti."""
+
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
     surname = models.CharField(max_length=100)
-    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="customers")
+    # Facoltativo, come l'email (User.email): servono al tecnico per contattare il cliente
+    phone = models.CharField(
+        "Telefono", max_length=20, blank=True,
+        validators=[RegexValidator(r"^\+?[0-9 ]{6,19}$", "Inserisci un numero di telefono valido, es. +39 333 1234567.")],
+    )
+    # SET_NULL: eliminata la community, i suoi utenti restano in attesa di un'altra
+    community = models.ForeignKey(
+        Community, on_delete=models.SET_NULL, null=True, blank=True, related_name="customers",
+    )
 
     def __str__(self):
         return f"{self.name} {self.surname}"
@@ -83,17 +95,17 @@ class Customer(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # Il primo utente di una community ne diventa il titolare
-        if self.community.owner_id is None:
+        if self.community_id is not None and self.community.owner_id is None:
             self.community.owner = self
             self.community.save(update_fields=["owner"])
 
     @property
     def is_owner(self):
-        return self.community.owner_id == self.pk
+        return self.community_id is not None and self.community.owner_id == self.pk
 
     @staticmethod
     def community_of(user):
-        """Community del cliente associato all'utente, o None se l'utente non è un cliente."""
+        """Community del cliente associato all'utente, o None se l'utente non è un cliente o non ne ha ancora una."""
         customer = Customer.objects.select_related("community__city", "community__owner").filter(user=user).first()
         return customer.community if customer else None
 
