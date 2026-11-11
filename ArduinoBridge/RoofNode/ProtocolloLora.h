@@ -20,12 +20,19 @@
 // Dopo l'adesione ogni pacchetto è protetto con AES-128-CCM: intestazione [+ dati in chiaro] + contatore (4) +
 // dati cifrati + codice di autenticazione (8). Ogni direzione ha il suo contatore, che cresce sempre: chi riceve
 // scarta i contatori già visti, così un pacchetto registrato e ritrasmesso non vale.
-//   BATTITO     nodo -> master   ogni minuto: secondi dall'accensione (4). Poi porterà anche le misure
+//   BATTITO     nodo -> master   ogni minuto: secondi dall'accensione (4)
 //   RISPOSTA    master -> nodo   dopo ogni battito e quando cambia: stato dell'impianto (3, "---" se il nodo non
-//                                è ancora assegnato a un impianto)
+//                                è ancora assegnato a un impianto) e, se il master la sa (NTP), l'ora (4, secondi
+//                                Unix UTC): il nodo ci regola il suo orologio DS1307
+//   MISURA      nodo -> master   ogni 10 secondi, senza risposta: l'ora del nodo (4, secondi Unix UTC, 0 se non
+//                                la sa), la temperatura (2, decimi di °C con segno, TEMPERATURA_ASSENTE se il
+//                                DHT11 non risponde), la luce (4, lux) e i segnali (1: SEGNALE_LAVAGGIO)
 //   IDENTIFICA  master -> nodo   secondi di lampeggio veloce del LED (1)
 //   RIMOZIONE   master -> nodo   il nodo esce dalla rete e torna come nuovo
 //   USCITA      nodo -> master   il nodo è stato riportato come nuovo (PRG tenuto 10 secondi)
+//
+// Tempo in aria a SF7: una MISURA (34 byte) dura circa 77 ms, un BATTITO (27 byte) circa 67 ms. Una misura ogni
+// 10 secondi e un battito al minuto sono circa lo 0,85% del tempo, sotto il limite dell'1% della banda.
 #pragma once
 
 #include <Arduino.h>
@@ -54,6 +61,7 @@ enum Tipo : uint8_t {
   IDENTIFICA = 5,
   RIMOZIONE = 6,
   USCITA = 7,
+  MISURA = 8,
 };
 
 enum Direzione : uint8_t { VERSO_MASTER = 0, VERSO_NODO = 1 };
@@ -68,6 +76,11 @@ const size_t CODICE = 8;
 const size_t MASSIMO = 64;      // lunghezza massima di un pacchetto
 const size_t STATO = 3;         // codice dello stato dell'impianto: OK, DRT, FLT, BRK
 const char NON_ASSEGNATO[] = "---";
+const size_t ORA = 4;           // secondi Unix UTC, dopo lo stato nella RISPOSTA
+const size_t DATI_MISURA = 11;  // ora (4) + temperatura (2) + luce (4) + segnali (1)
+const int16_t TEMPERATURA_ASSENTE = INT16_MIN;
+const uint8_t SEGNALE_LAVAGGIO = 0x01;   // la pompa (l'animazione dell'acqua sul display) è accesa
+const uint32_t ORA_MINIMA = 1735689600;  // 1/1/2025: un'ora prima di questa non è stata regolata
 
 struct Intestazione {
   uint8_t tipo;
@@ -88,6 +101,39 @@ inline void scrivi32(uint8_t *destinazione, uint32_t valore) {
 
 inline uint32_t leggi32(const uint8_t *origine) {
   return (uint32_t)origine[0] | ((uint32_t)origine[1] << 8) | ((uint32_t)origine[2] << 16) | ((uint32_t)origine[3] << 24);
+}
+
+inline void scrivi16(uint8_t *destinazione, uint16_t valore) {
+  destinazione[0] = valore & 0xFF;
+  destinazione[1] = valore >> 8;
+}
+
+inline uint16_t leggi16(const uint8_t *origine) {
+  return (uint16_t)origine[0] | ((uint16_t)origine[1] << 8);
+}
+
+// Una misura del nodo sul tetto
+struct Misura {
+  uint32_t ora;          // secondi Unix UTC, 0 se il nodo non sa l'ora
+  int16_t temperatura;   // decimi di °C, TEMPERATURA_ASSENTE se il DHT11 non risponde
+  uint32_t luce;         // lux
+  uint8_t segnali;
+};
+
+inline void scriviMisura(uint8_t dati[DATI_MISURA], const Misura &misura) {
+  scrivi32(dati, misura.ora);
+  scrivi16(dati + 4, (uint16_t)misura.temperatura);
+  scrivi32(dati + 6, misura.luce);
+  dati[10] = misura.segnali;
+}
+
+inline Misura leggiMisura(const uint8_t dati[DATI_MISURA]) {
+  Misura misura;
+  misura.ora = leggi32(dati);
+  misura.temperatura = (int16_t)leggi16(dati + 4);
+  misura.luce = leggi32(dati + 6);
+  misura.segnali = dati[10];
+  return misura;
 }
 
 // Id della scheda: 4 byte del suo MAC, scritto come 8 cifre esadecimali (come lo mostra il sito)
