@@ -1,6 +1,6 @@
 """Master delle community e nodi LoRa (SP/gateways.py, SP/mqtt.py, SP/pairing.py)."""
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest import mock
 
 from django.test import Client, TestCase
@@ -201,6 +201,22 @@ class GatewayMessageTests(GatewayTestCase):
         self.assertFalse(LoRaNode.objects.exists())
         self.assertFalse(Device.objects.filter(system=self.system).exists())
         self.assertIn((mqtt.topic(self.system.id, mqtt.STATUS), None), self.published)
+
+    def test_the_master_publishes_the_readings_of_its_nodes(self):
+        gateway, _ = self.install()
+        with mock.patch("SP.mqtt.publish"), self.captureOnCommitCallbacks(execute=True):
+            assign_node(self.join(gateway), self.system, self.staff)
+        topic = mqtt.topic(self.system.id, mqtt.TELEMETRY)
+        username = f"gw-{self.community.id}"
+        self.assertTrue(mqtt.may_access(username, topic, mqtt.ACC_WRITE))
+        self.assertFalse(mqtt.may_access(username, mqtt.topic(self.other_system.id, mqtt.TELEMETRY), mqtt.ACC_WRITE))
+        # Il JSON come lo scrive MasterNode.ino: media del minuto, ora UTC, potenza della pinza in kW
+        payload = b'{"time_stamp":"2026-11-11T14:32:00+00:00","temperature":23.4,"lightness":812.5,"power":3.4512,"samples":6}'
+        reading = mqtt.handle_message(topic, payload)
+        self.assertEqual((reading.system, reading.temperature, reading.lightness, reading.power),
+                         (self.system, 23.4, 812.5, 3.4512))
+        self.assertEqual(reading.time_stamp, datetime(2026, 11, 11, 14, 32, tzinfo=dt_timezone.utc))
+        self.assertIsNone(mqtt.handle_message(topic, payload))   # lo stesso minuto due volte: scartato
 
     def test_when_the_master_goes_offline_its_nodes_do_too(self):
         gateway, _ = self.install()

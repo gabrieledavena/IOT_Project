@@ -14,9 +14,16 @@
 //   3. Nodi, come in una rete Zigbee. Dal sito il tecnico preme "Aggiungi nodi" (comando permit_join): per 3 minuti il
 //      master accetta i nodi nuovi che sente, concorda con ognuno una chiave (ProtocolloLora.h) e lo segnala al
 //      server, dove il tecnico lo assegna al suo impianto. Da allora il master pubblica la presenza del nodo sul
-//      topic connection dell'impianto e gli inoltra lo stato dell'impianto.
+//      topic connection dell'impianto e gli inoltra lo stato dell'impianto e l'ora (NTP), con cui il nodo regola
+//      il suo orologio.
 // Il server è descritto in backend/src/SP/pairing.py e SP/gateways.py; il monitor seriale (115200 baud) mostra
 // ogni passo.
+//
+// Il display mostra in tempo reale la produzione dei pannelli, misurata (per ora simulata) dalla pinza
+// amperometrica, e l'ultima misura dei nodi sui tetti: temperatura, luce e l'ora del loro orologio. La pinza è un
+// potenziometro da 10 kΩ: estremi a 3V3 e GND, centrale su GPIO7 (connettore J3, pin 18).
+// Delle misure di ogni nodo assegnato a un impianto il master fa la media di ogni minuto, con la produzione della
+// pinza, e la pubblica sul topic telemetry dell'impianto: il server la salva come faceva con bridge.py.
 //
 // Pulsante PRG, con le istruzioni sul display mentre è premuto:
 //   - tenuto 3 secondi: la scheda dimentica l'installazione e mostra un nuovo QR di abbinamento;
@@ -39,6 +46,7 @@
 #include <U8g2lib.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <time.h>
 #include "ProtocolloLora.h"
 #include "qrcode.h"
 
@@ -60,6 +68,22 @@ const int pinLoraReset = 12;
 const int pinLoraBusy = 13;
 const int pinLoraDio1 = 14;
 
+// --- PIN DELLA PINZA AMPEROMETRICA (connettore J3) ---
+// Con il Wi-Fi acceso l'ADC2 non si può usare: il potenziometro va su un pin dell'ADC1 (GPIO1-10)
+const int pinPinza = 7;         // J3 pin 18, ADC1_CH6
+
+// --- PINZA AMPEROMETRICA (simulata) ---
+// Una pinza vera (per esempio una SCT-013-030) abbraccia il cavo che esce dall'inverter e dà una tensione
+// proporzionale alla corrente. Il potenziometro la simula: da 0 V (0 A) a fondo corsa (30 A). La potenza è
+// P = V × I, con la tensione di rete di 230 V (l'inverter immette corrente in fase con la tensione)
+const float CORRENTE_MASSIMA = 30.0;     // A, a fondo scala
+const float TENSIONE_RETE = 230.0;       // V
+const float FONDO_SCALA_MV = 3100.0;     // l'ADC dell'ESP32-S3, con l'attenuazione di default, legge fino a ~3,1 V
+const float ZERO_MV = 30.0;              // sotto, il potenziometro è a zero
+const int CAMPIONI_PINZA = 16;
+const unsigned long INTERVALLO_PINZA = 50;
+const unsigned long MISURA_RECENTE = 60000;   // l'ultima misura di un nodo, più vecchia, è segnata come vecchia
+
 // --- PARAMETRI ---
 const unsigned long PRESSIONE_INSTALLAZIONE = 3000;   // PRG: dimentica l'installazione
 const unsigned long PRESSIONE_WIFI = 10000;           // PRG: dimentica anche il Wi-Fi
@@ -78,6 +102,9 @@ const char PREFERENZE[] = "solarfamily";       // credenziali dell'installazione
 const char PREFERENZE_RETE[] = "sf-rete";      // rete Wi-Fi e indirizzo del server
 const char PREFERENZE_NODI[] = "sf-nodi";      // contatori dei pacchetti di ogni nodo
 const char PREFISSO_USERNAME[] = "gw-";        // username gw-<id della community>
+const char FUSO_ORARIO[] = "CET-1CEST,M3.5.0,M10.5.0/3";   // ora italiana, con l'ora legale
+const char SERVER_NTP[] = "pool.ntp.org";
+const char SERVER_NTP_RISERVA[] = "ntp1.inrim.it";      // l'Istituto Nazionale di Ricerca Metrologica
 // Lettere e cifre che non si confondono (niente 0/O, 1/I/L): la password della rete della scheda si legge anche
 // dal display e si scrive a mano
 const char ALFABETO_PASSWORD[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -182,9 +209,39 @@ struct Nodo {
   unsigned long entratoDa;
   bool daRimuovere;
   unsigned long rimozioneDa;
+  bool misurato;               // ha mandato almeno una misura
+  unsigned long misuraDa;      // millis() dell'ultima misura
+  lora::Misura misura;         // l'ultima misura
+  // Media del minuto in corso, per il topic telemetry dell'impianto
+  uint32_t minuto;             // inizio del minuto (secondi Unix UTC), 0 se non ce n'è uno aperto
+  float sommaTemperatura;      // °C
+  int campioniTemperatura;
+  float sommaLuce;             // lux
+  float sommaPotenza;          // W
+  int campioni;
 };
 const int NODI_MASSIMI = 16;
 Nodo nodi[NODI_MASSIMI];
+uint32_t ultimoMisurato = 0;   // il nodo dell'ultima misura, mostrata sul display
+
+// --- MISURE DA PUBBLICARE ---
+// Le medie dei minuti finiti aspettano qui il broker: senza internet ne restano le ultime 2 ore, in memoria (si
+// perdono se il master si riavvia). Il server scarta i doppioni: una misura per impianto e minuto
+struct MediaMinuto {
+  int impianto;
+  char testo[160];             // il JSON del topic telemetry
+};
+const int CODA_MASSIMA = 120;
+MediaMinuto coda[CODA_MASSIMA];
+int codaInizio = 0;
+int codaLunghezza = 0;
+unsigned long pubblicate = 0;
+const unsigned long ATTESA_FINE_MINUTO = 15;   // s: un minuto senza misure nuove si chiude 15 s dopo la sua fine
+
+// --- PINZA E ORA ---
+float corrente = 0;            // A, media mobile delle letture del potenziometro
+unsigned long prossimaPinza = 0;
+bool ntpAvviato = false;
 
 // Adesione in corso: il master ha risposto e aspetta il primo battito del nodo, protetto con la nuova chiave.
 // La risposta resta pronta: se il nodo non l'ha ricevuta e richiede, gliela si rimanda uguale
@@ -847,8 +904,186 @@ void inviaAlNodo(Nodo &nodo, uint8_t tipo, const uint8_t *dati, size_t lunghezza
   trasmetti(pacchetto, totale);
 }
 
+bool oraNota() {
+  return time(nullptr) >= (time_t)lora::ORA_MINIMA;
+}
+
+// Stato dell'impianto e, se il master sa l'ora (NTP), l'ora: il nodo ci regola il suo orologio
 void inviaStato(Nodo &nodo) {
-  inviaAlNodo(nodo, lora::RISPOSTA, (const uint8_t *)nodo.stato, lora::STATO);
+  uint8_t dati[lora::STATO + lora::ORA];
+  memcpy(dati, nodo.stato, lora::STATO);
+  size_t lunghezza = lora::STATO;
+  if (oraNota()) {
+    lora::scrivi32(dati + lora::STATO, (uint32_t)time(nullptr));
+    lunghezza += lora::ORA;
+  }
+  inviaAlNodo(nodo, lora::RISPOSTA, dati, lunghezza);
+}
+
+String oraLocale(uint32_t secondi) {
+  if (secondi == 0) {
+    return "--:--:--";
+  }
+  time_t istante = secondi;
+  struct tm data;
+  localtime_r(&istante, &data);
+  char testo[12];
+  strftime(testo, sizeof(testo), "%H:%M:%S", &data);
+  return testo;
+}
+
+// L'ora arriva da internet appena il Wi-Fi è collegato, e poi si aggiorna da sola ogni ora
+void avviaNtp() {
+  if (ntpAvviato || portaleAperto || WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+  configTzTime(FUSO_ORARIO, SERVER_NTP, SERVER_NTP_RISERVA);
+  ntpAvviato = true;
+  Serial.println("Ora: la chiedo a internet (NTP)");
+}
+
+// --- PINZA AMPEROMETRICA ---
+
+void leggiPinza() {
+  if (!scaduto(prossimaPinza)) {
+    return;
+  }
+  prossimaPinza = millis() + INTERVALLO_PINZA;
+  uint32_t somma = 0;
+  for (int i = 0; i < CAMPIONI_PINZA; i++) {
+    somma += analogReadMilliVolts(pinPinza);
+  }
+  float millivolt = (float)somma / CAMPIONI_PINZA;
+  float lettura = millivolt < ZERO_MV ? 0 : min(1.0f, millivolt / FONDO_SCALA_MV) * CORRENTE_MASSIMA;
+  // Media mobile: il numero sul display non balla, ma segue il potenziometro in meno di mezzo secondo
+  corrente = 0.7f * corrente + 0.3f * lettura;
+}
+
+float potenzaW() {
+  return corrente * TENSIONE_RETE;
+}
+
+String conVirgola(float valore, int decimali, const char *unita) {
+  char testo[24];
+  snprintf(testo, sizeof(testo), "%.*f%s", decimali, valore, unita);
+  char *punto = strchr(testo, '.');
+  if (punto != nullptr) {
+    *punto = ',';
+  }
+  return testo;
+}
+
+String testoTemperatura(int16_t decimi) {
+  if (decimi == lora::TEMPERATURA_ASSENTE) {
+    return "-- °C";
+  }
+  char testo[16];
+  snprintf(testo, sizeof(testo), "%s%d,%d °C", decimi < 0 ? "-" : "", abs(decimi) / 10, abs(decimi) % 10);
+  return testo;
+}
+
+String testoLuce(uint32_t lux) {
+  return String(lux) + " lux";
+}
+
+// --- MISURE AL SERVER: UNA MEDIA AL MINUTO PER IMPIANTO ---
+// Come faceva bridge.py: il topic telemetry dell'impianto riceve la media di ogni minuto, con l'ora UTC del minuto
+// (time_stamp), temperatura (°C), luce (lux) e potenza (kW). La potenza è quella della pinza del master quando
+// arriva ogni misura del nodo: nella prova c'è un solo impianto, la pinza è la sua
+
+void accodaMedia(int impianto, const char *testo) {
+  if (codaLunghezza == CODA_MASSIMA) {
+    codaInizio = (codaInizio + 1) % CODA_MASSIMA;   // Coda piena: si perde la più vecchia
+    codaLunghezza--;
+  }
+  MediaMinuto &media = coda[(codaInizio + codaLunghezza) % CODA_MASSIMA];
+  media.impianto = impianto;
+  strncpy(media.testo, testo, sizeof(media.testo) - 1);
+  media.testo[sizeof(media.testo) - 1] = '\0';
+  codaLunghezza++;
+}
+
+// Il minuto del nodo è finito: la sua media va in coda per il broker
+void chiudiMinuto(Nodo &nodo) {
+  if (nodo.minuto == 0) {
+    return;
+  }
+  uint32_t minuto = nodo.minuto;
+  nodo.minuto = 0;
+  if (nodo.impianto == 0) {
+    return;   // Nodo non ancora assegnato: le misure non sono di nessun impianto
+  }
+  if (nodo.campioniTemperatura == 0) {
+    Serial.printf("Nodo %s: minuto senza temperatura (DHT11), non inviato\n", idLeggibile(nodo.id).c_str());
+    return;
+  }
+  time_t istante = minuto;
+  struct tm data;
+  gmtime_r(&istante, &data);
+  char ora[32];
+  strftime(ora, sizeof(ora), "%Y-%m-%dT%H:%M:%S+00:00", &data);
+  JsonDocument messaggio;
+  messaggio["time_stamp"] = ora;
+  messaggio["temperature"] = roundf(nodo.sommaTemperatura / nodo.campioniTemperatura * 100) / 100;
+  messaggio["lightness"] = roundf(nodo.sommaLuce / nodo.campioni * 10) / 10;
+  messaggio["power"] = roundf(nodo.sommaPotenza / nodo.campioni / 1000 * 10000) / 10000;   // il server vuole kW
+  messaggio["samples"] = nodo.campioni;
+  char testo[160];
+  serializeJson(messaggio, testo, sizeof(testo));
+  accodaMedia(nodo.impianto, testo);
+}
+
+// Ogni misura del nodo entra nella media del suo minuto. Serve l'ora: quella dell'orologio del nodo, o quella
+// del master se il nodo non la sa ancora
+void aggiungiAlMinuto(Nodo &nodo, const lora::Misura &misura) {
+  uint32_t istante = misura.ora >= lora::ORA_MINIMA ? misura.ora : (oraNota() ? (uint32_t)time(nullptr) : 0);
+  if (istante == 0) {
+    return;   // Né il nodo né il master sanno l'ora: la misura non si può datare
+  }
+  uint32_t minuto = istante - istante % 60;
+  if (nodo.minuto != 0 && minuto != nodo.minuto) {
+    chiudiMinuto(nodo);
+  }
+  if (nodo.minuto == 0) {
+    nodo.minuto = minuto;
+    nodo.sommaTemperatura = nodo.sommaLuce = nodo.sommaPotenza = 0;
+    nodo.campioniTemperatura = nodo.campioni = 0;
+  }
+  if (misura.temperatura != lora::TEMPERATURA_ASSENTE) {
+    nodo.sommaTemperatura += misura.temperatura / 10.0f;
+    nodo.campioniTemperatura++;
+  }
+  nodo.sommaLuce += misura.luce;
+  nodo.sommaPotenza += potenzaW();
+  nodo.campioni++;
+}
+
+// Un nodo che smette di mandare misure: il suo ultimo minuto si chiude lo stesso
+void controllaMinuti() {
+  if (!oraNota()) {
+    return;
+  }
+  uint32_t adesso = time(nullptr);
+  for (int i = 0; i < NODI_MASSIMI; i++) {
+    if (nodi[i].usato && nodi[i].minuto != 0 && adesso >= nodi[i].minuto + 60 + ATTESA_FINE_MINUTO) {
+      chiudiMinuto(nodi[i]);
+    }
+  }
+}
+
+// Pubblica le medie in coda, dalla più vecchia, finché il broker le accetta
+void svuotaCoda() {
+  while (codaLunghezza > 0 && mqtt.connected()) {
+    MediaMinuto &media = coda[codaInizio];
+    if (!mqtt.publish(argomentoImpianto(media.impianto, "telemetry").c_str(), media.testo)) {
+      Serial.println("Telemetry: pubblicazione non riuscita, riprovo");
+      return;
+    }
+    pubblicate++;
+    Serial.printf("Telemetry dell'impianto %d: %s\n", media.impianto, media.testo);
+    codaInizio = (codaInizio + 1) % CODA_MASSIMA;
+    codaLunghezza--;
+  }
 }
 
 // --- NODI: MESSAGGI AL SERVER ---
@@ -995,6 +1230,19 @@ void riceviDalNodo(const uint8_t *pacchetto, size_t lunghezza, const lora::Intes
     } else {
       inviaStato(*nodo);
     }
+  } else if (intestazione.tipo == lora::MISURA && lunghezzaDati == lora::DATI_MISURA) {
+    // Nessuna risposta: il nodo ne manda una ogni 10 secondi
+    nodo->sentitoDa = millis();
+    nodo->misura = lora::leggiMisura(dati);
+    nodo->misurato = true;
+    nodo->misuraDa = millis();
+    ultimoMisurato = nodo->id;
+    aggiungiAlMinuto(*nodo, nodo->misura);
+    Serial.printf("Misura del nodo %s (impianto %d): %s, %s, ora del nodo %s%s | pinza %.1f A = %.2f kW\n",
+                  idLeggibile(nodo->id).c_str(), nodo->impianto, testoTemperatura(nodo->misura.temperatura).c_str(),
+                  testoLuce(nodo->misura.luce).c_str(), oraLocale(nodo->misura.ora).c_str(),
+                  (nodo->misura.segnali & lora::SEGNALE_LAVAGGIO) ? ", lavaggio in corso" : "", corrente,
+                  potenzaW() / 1000);
   } else if (intestazione.tipo == lora::USCITA) {
     ultimoEvento = idLeggibile(nodo->id) + " uscito";
     Serial.printf("Nodo %s uscito dalla rete (reset)\n", idLeggibile(nodo->id).c_str());
@@ -1341,35 +1589,75 @@ void mostraAbbinamento() {
   }
 }
 
+// Toglie caratteri dalla fine (interi, anche quelli accentati di più byte) finché il testo non sta nei pixel dati
+String adatta(String testo, int larghezza) {
+  while (testo.length() > 0 && schermo.getUTF8Width(testo.c_str()) > larghezza) {
+    int fine = testo.length() - 1;
+    while (fine > 0 && (testo[fine] & 0xC0) == 0x80) {
+      fine--;
+    }
+    testo.remove(fine);
+  }
+  return testo;
+}
+
+// In alto la community e il broker; al centro la produzione della pinza e l'ultima misura dei nodi; in basso
+// lo stato della rete
 void mostraMaster() {
   schermo.setFont(u8g2_font_5x7_tf);
-  schermo.drawStr(0, 0, "SolarFamily Master");
-  schermo.drawStr(128 - schermo.getStrWidth(username.c_str()), 0, username.c_str());
-  schermo.setFont(u8g2_font_6x10_tf);
-  schermo.drawUTF8(0, 10, nomeCommunity.c_str());
+  const char *broker = mqtt.connected() ? "MQTT ok" : "MQTT --";
+  int larghezzaBroker = schermo.getStrWidth(broker);
+  schermo.drawStr(128 - larghezzaBroker, 0, broker);
+  schermo.drawUTF8(0, 0, adatta(nomeCommunity, 128 - larghezzaBroker - 4).c_str());
+  schermo.drawHLine(0, 8, 128);
+
+  // Produzione, dalla pinza amperometrica: aggiornata a ogni giro del display
+  schermo.setFont(u8g2_font_helvB12_tf);
+  schermo.drawStr(0, 11, conVirgola(potenzaW() / 1000, 2, " kW").c_str());
   schermo.setFont(u8g2_font_5x7_tf);
-  if (mqtt.connected()) {
-    schermo.drawStr(0, 24, "Broker: collegato");
-  } else if (credenzialiRifiutate()) {
-    // Master disinstallato, o installato un altro master sulla community: serve un nuovo abbinamento
-    schermo.drawStr(0, 24, "Credenziali rifiutate");
+  String testo = conVirgola(corrente, 1, " A");
+  schermo.drawStr(128 - schermo.getStrWidth(testo.c_str()), 11, testo.c_str());
+  schermo.drawStr(128 - schermo.getStrWidth("pinza"), 19, "pinza");
+
+  // Ultima misura dei nodi sui tetti
+  Nodo *nodo = ultimoMisurato != 0 ? trovaNodo(ultimoMisurato) : nullptr;
+  bool misura = nodo != nullptr && nodo->misurato;
+  unsigned long eta = misura ? millis() - nodo->misuraDa : 0;
+  schermo.setFont(u8g2_font_6x10_tf);
+  testo = misura ? testoTemperatura(nodo->misura.temperatura) : String("-- °C");
+  schermo.drawUTF8(0, 28, testo.c_str());
+  testo = misura ? testoLuce(nodo->misura.luce) : String("-- lux");
+  schermo.drawUTF8(128 - schermo.getUTF8Width(testo.c_str()), 28, testo.c_str());
+  schermo.setFont(u8g2_font_5x7_tf);
+  if (!misura) {
+    testo = "Nessuna misura dai nodi";
+  } else if (eta > MISURA_RECENTE) {
+    testo = idLeggibile(nodo->id) + ": muto da " + String(eta / 60000) + " min";
+  } else if (nodo->misura.segnali & lora::SEGNALE_LAVAGGIO) {
+    testo = (millis() / 500) % 2 ? String(idLeggibile(nodo->id) + ": lavaggio") : String("");
+  } else if (nodo->misura.ora != 0) {
+    testo = idLeggibile(nodo->id) + " alle " + oraLocale(nodo->misura.ora);
   } else {
-    schermo.drawStr(0, 24, statoBroker == MQTT_DISCONNECTED ? "Broker: collegamento..." : "Broker non raggiungibile");
+    testo = idLeggibile(nodo->id) + ", " + String(eta / 1000) + " s fa";
   }
+  schermo.drawStr(0, 39, testo.c_str());
+
   char riga[32];
-  snprintf(riga, sizeof(riga), "Nodi: %d, da assegnare: %d", nodiInRete(), nodiDaAssegnare());
-  schermo.drawStr(0, 34, riga);
   if (statoRadio != RADIOLIB_ERR_NONE) {
     snprintf(riga, sizeof(riga), "Radio LoRa: errore %d", statoRadio);
-    schermo.drawStr(0, 44, riga);
+  } else if (credenzialiRifiutate()) {
+    // Master disinstallato, o installato un altro master sulla community: serve un nuovo abbinamento
+    strcpy(riga, "Credenziali rifiutate");
+  } else if (!mqtt.connected()) {
+    strcpy(riga, statoBroker == MQTT_DISCONNECTED ? "Broker: collegamento..." : "Broker non raggiungibile");
   } else if (finestraAperta) {
     long resto = max(0L, (long)(finestraFino - millis()) / 1000);
     snprintf(riga, sizeof(riga), "Aggiunta nodi: %ld:%02ld", resto / 60, resto % 60);
-    schermo.drawStr(0, 44, riga);
-  } else if (!ultimoEvento.isEmpty()) {
-    schermo.drawStr(0, 44, ("Nodo " + ultimoEvento).c_str());
+  } else {
+    snprintf(riga, sizeof(riga), "Nodi: %d, da assegnare: %d", nodiInRete(), nodiDaAssegnare());
   }
-  schermo.drawStr(0, 56, "PRG 3 s: nuovo QR");
+  schermo.drawStr(0, 48, riga);
+  schermo.drawStr(0, 56, ultimoEvento.isEmpty() ? "PRG 3 s: nuovo QR" : ("Nodo " + ultimoEvento).c_str());
 }
 
 void mostra() {
@@ -1440,6 +1728,8 @@ void setup() {
 void loop() {
   controllaPulsante();
   gestisciRadio();
+  leggiPinza();
+  avviaNtp();
   if (portaleAperto) {
     gestisciPortale();
   } else if (WiFi.status() != WL_CONNECTED) {
@@ -1454,6 +1744,8 @@ void loop() {
   }
   if (!username.isEmpty()) {
     controllaNodi();
+    controllaMinuti();
+    svuotaCoda();
   }
   mostra();
 }
