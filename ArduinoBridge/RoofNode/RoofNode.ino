@@ -1,8 +1,11 @@
 // Nodo sul tetto: il sensore di un impianto, su una scheda Heltec WiFi LoRa 32 V3. Non ha internet: parla solo con il
-// master della sua community, via LoRa (ProtocolloLora.h). Ogni 10 secondi gli manda una misura (temperatura, luce
-// e ora del suo orologio) e ogni minuto un battito, a cui il master risponde con lo stato dell'impianto e l'ora.
+// master della sua community, via LoRa (ProtocolloLora.h). Ogni 10 secondi gli manda una misura (produzione,
+// temperatura, luce e ora del suo orologio) e ogni minuto un battito, a cui il master risponde con lo stato
+// dell'impianto, l'ora e, se il nodo non lo sa ancora, il nome dell'impianto.
 //
-// Sensori, tutti sul connettore J3 (pin 15-18), con 3V3 e GND dello stesso connettore:
+// Sensori, tutti sul connettore J3 (pin 13 e 15-18), con 3V3 e GND dello stesso connettore:
+//   GPIO2         la pinza amperometrica, che misura la produzione dell'impianto. Per le prove è simulata da un
+//                 potenziometro da 10 kΩ: estremi a 3V3 e GND, centrale su GPIO2
 //   GPIO4, GPIO5  SDA e SCL del modulo orologio DS1307 (Tiny RTC), su un bus I2C a 100 kHz separato da quello del
 //                 display. Il DS1307 funziona solo a 5 V: si alimenta dal pin 5V di J2, che ha tensione solo con
 //                 la scheda collegata a USB o al power bank. A batteria l'orologio non risponde e il nodo usa l'ora
@@ -11,7 +14,7 @@
 //   GPIO7         fotoresistenza: partitore con la fotoresistenza verso 3V3 e una resistenza da 1 kΩ verso GND
 // DHT11 e DS1307 si leggono senza librerie (le funzioni sono qui sotto).
 //
-// Il display della scheda mostra le misure, l'ora e lo stato. Al posto del LED blu della pompa, durante il lavaggio
+// Il display della scheda mostra il nome dell'impianto, le misure, lo stato e l'ora. Al posto del LED blu della pompa, durante il lavaggio
 // dei pannelli mostra un'animazione dell'acqua: 10 secondi quando l'impianto passa a "pannelli sporchi" (DRT) o a
 // "probabile guasto" (FLT), una volta per cambiamento (lo stato già gestito resta nella flash).
 //
@@ -66,6 +69,18 @@ const int pinOrologioSda = 4;   // J3 pin 15
 const int pinOrologioScl = 5;   // J3 pin 16
 const int pinDht = 6;           // J3 pin 17
 const int pinLuce = 7;          // J3 pin 18, ADC1_CH6
+const int pinPinza = 2;         // J3 pin 13, ADC1_CH1
+
+// --- PINZA AMPEROMETRICA (simulata) ---
+// Una pinza vera (per esempio una SCT-013-030) abbraccia il cavo che esce dall'inverter e dà una tensione
+// proporzionale alla corrente. Il potenziometro la simula: da 0 V (0 A) a fondo corsa (30 A). La potenza è
+// P = V × I, con la tensione di rete di 230 V (l'inverter immette corrente in fase con la tensione)
+const float CORRENTE_MASSIMA = 30.0;     // A, a fondo scala
+const float TENSIONE_RETE = 230.0;       // V
+const float FONDO_SCALA_MV = 3100.0;     // l'ADC dell'ESP32-S3, con l'attenuazione di default, legge fino a ~3,1 V
+const float ZERO_MV = 30.0;              // sotto, il potenziometro è a zero
+const int CAMPIONI_PINZA = 16;
+const unsigned long INTERVALLO_PINZA = 100;
 
 // --- PARAMETRI ---
 const unsigned long INTERVALLO_BATTITO = 60000;
@@ -134,13 +149,14 @@ bool attesaRisposta = false;
 int senzaRisposta = 0;
 char stato[lora::STATO + 1] = "---";
 unsigned long prossimaMisura = 0;
-unsigned long ultimaMisura = 0;        // millis() dell'ultima misura inviata
-bool misuraInviata = false;
 
 // --- SENSORI ---
 int16_t temperatura = lora::TEMPERATURA_ASSENTE;   // decimi di °C, dell'ultima lettura riuscita
 unsigned long temperaturaDa = 0;
 float luce = 0;                                     // lux
+float corrente = 0;                                 // A, media mobile delle letture della pinza
+unsigned long prossimaPinza = 0;
+char nomeImpianto[lora::NOME + 1] = "";             // dal master, nella flash
 unsigned long prossimaLettura = 0;
 portMUX_TYPE sezioneDht = portMUX_INITIALIZER_UNLOCKED;
 
@@ -191,6 +207,9 @@ void carica() {
   if (preferenze.isKey("lavato")) {
     preferenze.getString("lavato", statoLavato, sizeof(statoLavato));
   }
+  if (preferenze.isKey("nome")) {
+    preferenze.getString("nome", nomeImpianto, sizeof(nomeImpianto));
+  }
   if (abbinato) {
     preferenze.putUInt("inviato", inviato);
   }
@@ -215,6 +234,13 @@ void salvaContatore(const char *nome, uint32_t valore) {
   preferenze.end();
 }
 
+void salvaNome() {
+  Preferences preferenze;
+  preferenze.begin(PREFERENZE, false);
+  preferenze.putString("nome", nomeImpianto);
+  preferenze.end();
+}
+
 void salvaStatoLavato() {
   Preferences preferenze;
   preferenze.begin(PREFERENZE, false);
@@ -234,9 +260,9 @@ void dimentica() {
   memset(chiave, 0, sizeof(chiave));
   strcpy(stato, lora::NON_ASSEGNATO);
   statoLavato[0] = '\0';
+  nomeImpianto[0] = '\0';
   senzaRisposta = 0;
   attesaRisposta = false;
-  misuraInviata = false;
   cercaDa = millis();
   prossimaAdesione = millis();
   Serial.println("Il nodo è tornato come nuovo: cerco un master");
@@ -453,6 +479,32 @@ float leggiLuce() {
   return min(LUX_MASSIMI, 10.0f * powf(LDR_R10 / resistenza, 1.0f / LDR_GAMMA));
 }
 
+// La pinza: 16 letture ogni 100 ms, con una media mobile perché il numero sul display non balli
+void leggiPinza() {
+  if (!scaduto(prossimaPinza)) {
+    return;
+  }
+  prossimaPinza = millis() + INTERVALLO_PINZA;
+  uint32_t somma = 0;
+  for (int i = 0; i < CAMPIONI_PINZA; i++) {
+    somma += analogReadMilliVolts(pinPinza);
+  }
+  float millivolt = (float)somma / CAMPIONI_PINZA;
+  float lettura = millivolt < ZERO_MV ? 0 : min(1.0f, millivolt / FONDO_SCALA_MV) * CORRENTE_MASSIMA;
+  corrente = 0.7f * corrente + 0.3f * lettura;
+}
+
+float potenzaW() {
+  return corrente * TENSIONE_RETE;
+}
+
+String testoPotenza(float watt) {
+  char testo[16];
+  snprintf(testo, sizeof(testo), "%.2f kW", watt / 1000);
+  *strchr(testo, '.') = ',';
+  return testo;
+}
+
 bool temperaturaValida() {
   return temperatura != lora::TEMPERATURA_ASSENTE && millis() - temperaturaDa < VALIDITA_TEMPERATURA;
 }
@@ -512,11 +564,13 @@ void avviaLavaggio(const char *motivo) {
   }
   lavaggio = true;
   lavaggioDa = millis();
+  prossimaMisura = millis();   // Il master lo sa subito e avvisa il server (pump_on)
 }
 
 void fermaLavaggio() {
   if (lavaggio) {
     lavaggio = false;
+    prossimaMisura = millis();   // Il master lo sa subito e avvisa il server (pump_off)
     Serial.println("Lavaggio finito: pompa spenta");
   }
 }
@@ -661,8 +715,9 @@ void battiti() {
   if (!scaduto(prossimoBattito)) {
     return;
   }
-  uint8_t dati[4];
+  uint8_t dati[lora::DATI_BATTITO];
   lora::scrivi32(dati, millis() / 1000);
+  lora::scrivi16(dati + 4, lora::impronta(nomeImpianto));   // Il master manda il nome solo se non è questo
   inviaAlMaster(lora::BATTITO, dati, sizeof(dati));
   ultimoBattito = millis();
   attesaRisposta = true;
@@ -680,16 +735,33 @@ void misure() {
   misura.temperatura = temperaturaValida() ? temperatura : lora::TEMPERATURA_ASSENTE;
   misura.luce = (uint32_t)lroundf(luce);
   misura.segnali = lavaggio ? lora::SEGNALE_LAVAGGIO : 0;
+  misura.potenza = (uint16_t)min(65535L, lroundf(potenzaW()));
   uint8_t dati[lora::DATI_MISURA];
   lora::scriviMisura(dati, misura);
   inviaAlMaster(lora::MISURA, dati, sizeof(dati));
-  ultimaMisura = millis();
-  misuraInviata = true;
   prossimaMisura = millis() + INTERVALLO_MISURA + random(VARIAZIONE_MISURA);
-  Serial.printf("Misura inviata: %s, %s, ora %s%s\n",
+  Serial.printf("Misura inviata: %s, %s, %s, ora %s%s\n", testoPotenza(misura.potenza).c_str(),
                 misura.temperatura == lora::TEMPERATURA_ASSENTE ? "temperatura assente"
                                                                 : testoTemperatura(misura.temperatura).c_str(),
                 testoLuce(luce).c_str(), oraLocale(misura.ora).c_str(), lavaggio ? ", lavaggio in corso" : "");
+}
+
+// Il nome dell'impianto: arriva solo quando il nodo non ha quello giusto. Senza impianto il nodo non ne ha
+void riceviNome(const uint8_t *nome, size_t lunghezza) {
+  char nuovo[lora::NOME + 1];
+  if (!assegnato()) {
+    nuovo[0] = '\0';
+  } else if (lunghezza > 0) {
+    memcpy(nuovo, nome, lunghezza);
+    nuovo[lunghezza] = '\0';
+  } else {
+    return;
+  }
+  if (strcmp(nuovo, nomeImpianto) != 0) {
+    strcpy(nomeImpianto, nuovo);
+    salvaNome();
+    Serial.printf("Impianto: %s\n", nomeImpianto[0] != '\0' ? nomeImpianto : "nessuno");
+  }
 }
 
 void riceviDalMaster(const uint8_t *pacchetto, size_t lunghezza, const lora::Intestazione &intestazione) {
@@ -707,7 +779,8 @@ void riceviDalMaster(const uint8_t *pacchetto, size_t lunghezza, const lora::Int
   ricevuto = contatore;
   salvaContatore("ricevuto", ricevuto);
   if (intestazione.tipo == lora::RISPOSTA &&
-      (lunghezzaDati == lora::STATO || lunghezzaDati == lora::STATO + lora::ORA)) {
+      (lunghezzaDati == lora::STATO || (lunghezzaDati >= lora::STATO + lora::ORA &&
+                                         lunghezzaDati <= lora::STATO + lora::ORA + lora::NOME))) {
     bool cambiato = memcmp(stato, dati, lora::STATO) != 0;
     memcpy(stato, dati, lora::STATO);
     attesaRisposta = false;
@@ -719,9 +792,11 @@ void riceviDalMaster(const uint8_t *pacchetto, size_t lunghezza, const lora::Int
     } else if (cambiato) {
       Serial.println("Nella rete, da assegnare a un impianto");
     }
-    if (lunghezzaDati == lora::STATO + lora::ORA) {
-      riceviOra(lora::leggi32(dati + lora::STATO));
+    if (lunghezzaDati >= lora::STATO + lora::ORA) {
+      riceviOra(lora::leggi32(dati + lora::STATO));   // 0 se il master non sa l'ora: riceviOra la ignora
     }
+    riceviNome(dati + lora::STATO + lora::ORA, lunghezzaDati >= lora::STATO + lora::ORA
+                                                    ? lunghezzaDati - lora::STATO - lora::ORA : 0);
     gestisciStato();
   } else if (intestazione.tipo == lora::IDENTIFICA && lunghezzaDati == 1) {
     identifica = true;
@@ -899,21 +974,36 @@ void mostraLavaggio() {
   schermo.setDrawColor(1);
 }
 
-void mostraStato() {
-  schermo.setFont(u8g2_font_5x7_tf);
-  String titolo = "Tetto " + idLeggibile(idNodo);
-  schermo.drawStr(0, 0, titolo.c_str());
-  String ora = oraLocale(adesso());
-  schermo.drawStr(128 - schermo.getStrWidth(ora.c_str()), 0, ora.c_str());
-  schermo.drawHLine(0, 9, 128);
+// Toglie caratteri dalla fine (interi, anche quelli accentati di più byte) finché il testo non sta nei pixel dati
+String adatta(String testo, int larghezza) {
+  while (testo.length() > 0 && schermo.getUTF8Width(testo.c_str()) > larghezza) {
+    int fine = testo.length() - 1;
+    while (fine > 0 && (testo[fine] & 0xC0) == 0x80) {
+      fine--;
+    }
+    testo.remove(fine);
+  }
+  return testo;
+}
 
-  schermo.drawStr(0, 15, "Temperatura");
-  schermo.drawStr(0, 28, "Luce");
+// In alto il nome dell'impianto; poi produzione, temperatura e luce; in fondo lo stato, il nodo e l'ora
+void mostraStato() {
   schermo.setFont(u8g2_font_6x10_tf);
-  String valore = temperaturaValida() ? testoTemperatura(temperatura) : String("DHT11 ?");
-  schermo.drawUTF8(128 - schermo.getUTF8Width(valore.c_str()), 13, valore.c_str());
+  String titolo = nomeImpianto[0] != '\0' ? String(nomeImpianto) : "Tetto " + idLeggibile(idNodo);
+  schermo.drawUTF8(0, 0, adatta(titolo, 128).c_str());
+  schermo.drawHLine(0, 11, 128);
+
+  schermo.setFont(u8g2_font_5x7_tf);
+  schermo.drawStr(0, 15, "Produzione");
+  schermo.drawStr(0, 26, "Temperatura");
+  schermo.drawStr(0, 37, "Luce");
+  schermo.setFont(u8g2_font_6x10_tf);
+  String valore = testoPotenza(potenzaW());
+  schermo.drawStr(128 - schermo.getStrWidth(valore.c_str()), 13, valore.c_str());
+  valore = temperaturaValida() ? testoTemperatura(temperatura) : String("DHT11 ?");
+  schermo.drawUTF8(128 - schermo.getUTF8Width(valore.c_str()), 24, valore.c_str());
   valore = testoLuce(luce);
-  schermo.drawUTF8(128 - schermo.getUTF8Width(valore.c_str()), 26, valore.c_str());
+  schermo.drawUTF8(128 - schermo.getUTF8Width(valore.c_str()), 35, valore.c_str());
 
   schermo.setFont(u8g2_font_5x7_tf);
   const char *riga;
@@ -930,17 +1020,14 @@ void mostraStato() {
   } else {
     riga = descrizioneStato();
   }
-  schermo.drawStr(0, 43, riga);
+  schermo.drawStr(0, 47, riga);
 
-  char testo[32] = "";
-  if (statoOrologio == OROLOGIO_ASSENTE) {
-    strcpy(testo, "Orologio: non risponde");
-  } else if (statoOrologio == OROLOGIO_FERMO) {
-    strcpy(testo, "Orologio: da regolare");
-  } else if (misuraInviata) {
-    snprintf(testo, sizeof(testo), "Misura inviata %lu s fa", (millis() - ultimaMisura) / 1000);
-  }
-  schermo.drawStr(0, 54, testo);
+  const char *testo = statoOrologio == OROLOGIO_ASSENTE ? "RTC assente"
+                      : statoOrologio == OROLOGIO_FERMO ? "RTC da regolare" : nullptr;
+  String sinistra = testo != nullptr ? String(testo) : "Nodo " + idLeggibile(idNodo);
+  schermo.drawStr(0, 56, sinistra.c_str());
+  String ora = oraLocale(adesso());
+  schermo.drawStr(128 - schermo.getStrWidth(ora.c_str()), 56, ora.c_str());
 }
 
 void mostra() {
@@ -1006,6 +1093,7 @@ void setup() {
 void loop() {
   controllaPulsante();
   gestisciRadio();
+  leggiPinza();
   leggiSensori();
   controllaLavaggio();
   if (statoRadio == RADIOLIB_ERR_NONE) {
