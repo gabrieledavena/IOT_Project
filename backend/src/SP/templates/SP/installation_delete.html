@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Elimina {{ system.name }}{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <a href="{% if next %}{{ next }}{% else %}{% url 'SP:installation_detail' system.id %}{% endif %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Indietro</a>
+            <h2 class="fw-bold text-dark mb-0 mt-2">Elimina l'impianto</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold">{{ system.name }} <span class="small text-muted fw-normal">{{ system.community.name }} · {{ system.community.city }} · {{ system.max_power|floatformat:2 }} kW</span></h5>
+                    <p class="text-muted mt-3 mb-2">Insieme all'impianto si eliminano:</p>
+                    <ul class="text-muted">
+                        <li><strong>{{ readings }}</strong> misur{{ readings|pluralize:"a,e" }}: la produzione dell'impianto sparisce anche dai totali della community;</li>
+                        <li><strong>{{ interventions }}</strong> intervent{{ interventions|pluralize:"o,i" }}, con i loro rapporti;</li>
+                        {% if device %}<li>il dispositivo <strong>{{ device.username }}</strong>: le sue credenziali smettono di funzionare;</li>{% endif %}
+                    </ul>
+                    {% if node %}
+                        <p class="text-muted">Il nodo LoRa <strong>{{ node.node_id }}</strong> resta nella rete del master e torna tra quelli da assegnare.</p>
+                    {% endif %}
+                    <p class="text-danger fw-bold">L'operazione non si può annullare.</p>
+                    <form method="post" class="d-flex gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ next }}">
+                        <button type="submit" class="btn btn-danger rounded-pill"><i class="fas fa-trash-alt me-1"></i>Elimina {{ system.name }}</button>
+                        <a href="{% if next %}{{ next }}{% else %}{% url 'SP:installation_detail' system.id %}{% endif %}" class="btn btn-outline-secondary rounded-pill">Annulla</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

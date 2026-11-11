@@ -85,7 +85,7 @@ backend/src/
     interventions.py      Maintenance interventions: request, technicians' dashboard, acceptance, execution, report
     mqtt.py               MQTT topics and messages: readings received, status and configuration published
     mqtt_auth.py          Who can connect to the broker and to which topics (asked by the broker)
-    installations.py      Installation of the devices on the systems (technicians)
+    installations.py      Installation of the devices on the systems and deletion of the systems (technicians)
     customers.py          New users waiting for a community; creation, editing and deletion of communities (technicians)
     pairing.py            Installation with the QR of the device's display: code, technician's choice, credentials
     gateways.py           Masters of the communities and their LoRa nodes: add nodes, identify, assign, remove
@@ -129,7 +129,12 @@ waiting for a technician. Only technicians and administrators create, edit and d
 (**Nuova community**, with name and city, optionally for a waiting user who becomes its owner; **Tutte le
 community**, `/sp/customers/communities/`, to change name, city and owner or to delete one) or, administrators,
 from the admin. A community with systems cannot be deleted from there (its readings and interventions would go
-with it): its systems must be deleted or moved first; deleting it uninstalls its master. If a community is deleted, its users go back to waiting. Every community has one
+with it): its systems must be deleted or moved first; deleting it uninstalls its master.
+
+Technicians delete a system from its installation page (**Elimina l'impianto**, `/sp/installations/<id>/delete/`),
+also from the list of the systems shown when deleting its community. A confirmation page shows how many readings and
+interventions go with it; its device stops working and its retained messages are cleared, and its LoRa node, if it
+had one, goes back among those to assign. If a community is deleted, its users go back to waiting. Every community has one
 owner, one of its users: the first user of a community becomes its owner, and another one can be chosen from the
 admin; the owner can only be deleted together with the community.
 

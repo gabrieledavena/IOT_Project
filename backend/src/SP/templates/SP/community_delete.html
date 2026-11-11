@@ -22,6 +22,14 @@
                             La community ha <strong>{{ systems }} impiant{{ systems|pluralize:"o,i" }}</strong>: eliminandola se ne
                             andrebbero anche le misure e gli interventi. Prima vanno eliminati o spostati in un'altra community.
                         </div>
+                        <ul class="list-unstyled mb-0 mt-3">
+                            {% for system in system_list %}
+                                <li class="d-flex justify-content-between align-items-center py-2 {% if not forloop.first %}border-top{% endif %}">
+                                    <a href="{% url 'SP:installation_detail' system.id %}" class="fw-bold text-decoration-none">{{ system.name }}</a>
+                                    <a href="{% url 'SP:installation_delete' system.id %}?next={{ request.path|urlencode }}" class="btn btn-sm btn-outline-danger rounded-pill"><i class="fas fa-trash-alt me-1"></i>Elimina</a>
+                                </li>
+                            {% endfor %}
+                        </ul>
                     {% else %}
                         <ul class="text-muted mt-3">
                             {% if users %}

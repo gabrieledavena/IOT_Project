@@ -160,7 +160,8 @@ class DeleteCommunityView(TechnicianRequiredMixin, View):
     def get(self, request, community_id):
         community, systems, users = self.load(community_id)
         context = {"community": community, "systems": systems, "users": users,
-                   "has_gateway": hasattr(community, "gateway")}
+                   "has_gateway": hasattr(community, "gateway"),
+                   "system_list": community.photovoltaic_systems.order_by("name") if systems else []}
         return render(request, self.template_name, context)
 
     def post(self, request, community_id):
