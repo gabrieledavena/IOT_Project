@@ -50,7 +50,9 @@ def uninstall_gateway(community):
     for node in gateway.nodes.filter(system__isnull=False):
         uninstall_device(node.system)
     gateway.delete()
-    transaction.on_commit(lambda: mqtt.clear_gateway_retained(community.id))
+    # L'id letto subito: se poi si elimina anche la community, al commit community.id è None
+    community_id = community.id
+    transaction.on_commit(lambda: mqtt.clear_gateway_retained(community_id))
 
 
 def permit_join(gateway):

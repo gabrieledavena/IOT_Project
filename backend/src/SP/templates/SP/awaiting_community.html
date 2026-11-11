@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Registrazione completata{% endblock %}
+
+{% block content %}
+<!-- Home di chi si è appena registrato: un tecnico deve ancora associarlo alla community del suo impianto -->
+<div class="row justify-content-center my-5">
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body p-4 p-md-5">
+                <div class="text-center mb-4">
+                    <div class="landing-icon mb-3"><i class="fas fa-check"></i></div>
+                    <h2 class="fw-bold text-dark">Registrazione completata</h2>
+                    <p class="lead text-muted mb-0">
+                        Ciao {{ customer.name }}, il tuo account è stato creato correttamente.
+                    </p>
+                </div>
+
+                <div class="alert alert-warning rounded-4 d-flex gap-3 align-items-start" role="status">
+                    <i class="fas fa-hourglass-half fs-4 mt-1"></i>
+                    <div>
+                        <div class="fw-bold">In attesa dell'assegnazione a una community</div>
+                        Un nostro tecnico deve associare il tuo account alla community del tuo impianto: la tua famiglia
+                        o la tua azienda. Appena lo farà, in questa pagina troverai i tuoi impianti e la loro produzione.
+                    </div>
+                </div>
+
+                <ul class="list-unstyled mb-0 mt-4">
+                    <li class="d-flex gap-3 align-items-center py-2">
+                        <span class="badge rounded-pill bg-success"><i class="fas fa-check"></i></span>
+                        <span class="text-dark">Registrazione</span>
+                    </li>
+                    <li class="d-flex gap-3 align-items-center py-2 border-top">
+                        <span class="badge rounded-pill bg-warning text-dark"><i class="fas fa-hourglass-half"></i></span>
+                        <span class="text-dark fw-bold">Assegnazione della community da parte di un tecnico</span>
+                    </li>
+                    <li class="d-flex gap-3 align-items-center py-2 border-top text-muted">
+                        <span class="badge rounded-pill bg-light text-muted border"><i class="fas fa-solar-panel"></i></span>
+                        <span>Accesso ai tuoi impianti</span>
+                    </li>
+                </ul>
+
+                {% if user.email or customer.phone %}
+                    <p class="small text-muted mt-4 mb-0">
+                        Se servisse, il tecnico ti contatterà
+                        {% if user.email %}all'indirizzo <strong>{{ user.email }}</strong>{% endif %}
+                        {% if user.email and customer.phone %}o{% endif %}
+                        {% if customer.phone %}al numero <strong>{{ customer.phone }}</strong>{% endif %}.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

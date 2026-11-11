@@ -135,7 +135,7 @@
 
 {% block extra_js %}
 {{ form.city_options|json_script:"city-options" }}
-<script src="{% static 'roi/city_select.js' %}"></script>
+<script src="{% static 'SP/city_select.js' %}"></script>
 {% if result %}
     {{ chart_data|json_script:"roi-chart-data" }}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>

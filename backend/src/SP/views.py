@@ -59,18 +59,17 @@ def register_view(request):
 
 
 def home(request):
-    """Home del sito: la vetrina dei servizi per i visitatori, il calcolo del ROI per i consulenti, per gli altri
-    utenti la dashboard degli impianti."""
+    """Home del sito: la vetrina dei servizi per i visitatori e per i consulenti (che la mostrano ai clienti), per
+    gli altri utenti la dashboard degli impianti."""
     user = request.user
-    if not user.is_authenticated:
+    if not user.is_authenticated or (is_consultant(user) and not is_technician(user)):
         return LandingView.as_view()(request)
-    if is_consultant(user) and not is_technician(user):
-        return redirect("roi:calculator")
     return UserDashboardView.as_view()(request)
 
 
 class LandingView(View):
-    """Vetrina dei servizi per i visitatori, con i numeri degli impianti seguiti e il link al confronto tra città."""
+    """Vetrina dei servizi per i visitatori e i consulenti, con i numeri degli impianti seguiti e il link al
+    confronto tra città."""
 
     template_name = "SP/landing.html"
 
@@ -108,6 +107,10 @@ class UserDashboardView(LoginRequiredMixin, View):
         staff = is_technician(request.user)
         community = None if staff else Customer.community_of(request.user)
         if not staff and community is None:
+            # Appena registrato: la registrazione è riuscita, si aspetta il tecnico che lo associ a una community
+            customer = Customer.objects.filter(user=request.user).first()
+            if customer is not None:
+                return render(request, "SP/awaiting_community.html", {"customer": customer})
             return render(request, self.template_name, {"error": NOT_A_CUSTOMER}, status=403)
 
         systems = PhotovoltaicSystem.objects.select_related("community__city")

@@ -64,6 +64,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'SP:installation_list' %}"><i class="fas fa-microchip me-1"></i>Installazioni</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'SP:customer_assignment' %}"><i class="fas fa-user-plus me-1"></i>Nuovi utenti
+                            {% if pending_customers %}<span class="badge rounded-pill bg-danger ms-1" title="Utenti da associare a una community">{{ pending_customers }}</span>{% endif %}
+                        </a>
+                    </li>
                     {% endif %}
                     {% if is_consultant %}
                     <li class="nav-item">

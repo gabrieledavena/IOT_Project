@@ -1,7 +1,7 @@
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import path
 
-from . import api, gateways, installations, interventions, mqtt_auth, pairing, views
+from . import api, customers, gateways, installations, interventions, mqtt_auth, pairing, views
 
 app_name = "SP"
 
@@ -19,6 +19,14 @@ urlpatterns = [
     path("interventions/", interventions.InterventionDashboardView.as_view(), name="intervention_dashboard"),
     path("interventions/<int:pk>/", interventions.InterventionDetailView.as_view(), name="intervention_detail"),
     path("interventions/<int:pk>/report/", interventions.InterventionReportView.as_view(), name="intervention_report"),
+    # Utenti appena registrati, che un tecnico associa a una community
+    path("customers/", customers.PendingCustomerListView.as_view(), name="customer_assignment"),
+    path("customers/<int:customer_id>/assign/", customers.AssignCommunityView.as_view(), name="customer_assign"),
+    path("customers/communities/", customers.ManageCommunitiesView.as_view(), name="community_manage_list"),
+    path("customers/communities/new/", customers.NewCommunityView.as_view(), name="community_new"),
+    path("customers/communities/<int:community_id>/", customers.EditCommunityView.as_view(), name="community_edit"),
+    path("customers/communities/<int:community_id>/delete/", customers.DeleteCommunityView.as_view(),
+         name="community_delete"),
     path("installations/", installations.InstallationListView.as_view(), name="installation_list"),
     path("installations/new/", installations.NewInstallationView.as_view(), name="installation_new"),
     path("installations/<int:system_id>/", installations.InstallationDetailView.as_view(), name="installation_detail"),

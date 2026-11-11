@@ -86,6 +86,7 @@ backend/src/
     mqtt.py               MQTT topics and messages: readings received, status and configuration published
     mqtt_auth.py          Who can connect to the broker and to which topics (asked by the broker)
     installations.py      Installation of the devices on the systems (technicians)
+    customers.py          New users waiting for a community; creation, editing and deletion of communities (technicians)
     pairing.py            Installation with the QR of the device's display: code, technician's choice, credentials
     gateways.py           Masters of the communities and their LoRa nodes: add nodes, identify, assign, remove
     roles.py              Roles of the staff: technicians and consultants
@@ -120,8 +121,15 @@ docker exec iot_django_server python manage.py populate_db         # realistic d
 docker exec iot_django_server python manage.py createsuperuser
 ```
 
-The web app is at http://localhost:8000. A community is a company: it owns the photovoltaic systems and its
-users access it with their own accounts (each user belongs to exactly one community). Every community has one
+The web app is at http://localhost:8000. A community is a company or a family: it owns the photovoltaic systems
+and its users access it with their own accounts (each user belongs to at most one community). Users register with
+name, surname and, optionally, email and phone, but without a community: until a technician assigns them to one
+(**Nuovi utenti**, `/sp/customers/`), their home says that the registration succeeded and that the assignment is
+waiting for a technician. Only technicians and administrators create, edit and delete communities: from the same page
+(**Nuova community**, with name and city, optionally for a waiting user who becomes its owner; **Tutte le
+community**, `/sp/customers/communities/`, to change name, city and owner or to delete one) or, administrators,
+from the admin. A community with systems cannot be deleted from there (its readings and interventions would go
+with it): its systems must be deleted or moved first; deleting it uninstalls its master. If a community is deleted, its users go back to waiting. Every community has one
 owner, one of its users: the first user of a community becomes its owner, and another one can be chosen from the
 admin; the owner can only be deleted together with the community.
 
@@ -169,9 +177,9 @@ The token can also be passed with the environment variable `SOLAR_DEVICE_TOKEN`.
 
 | Role | Who | What they can do |
 |---|---|---|
-| Customer | registers on the site, choosing their community | the systems of their community: production, forecasts, intervention requests |
-| Technician | group `Tecnici` | every system: installation of the devices, status, maintenance interventions; in the admin, systems, devices and interventions (communities, customers and cities only to read them) |
-| Consultant | group `Consulenti` | only the ROI calculator and the quotes: after login the home is the calculator; no access to the admin |
+| Customer | registers on the site; a technician assigns them to their community | the systems of their community: production, forecasts, intervention requests |
+| Technician | group `Tecnici` | every system: installation of the devices, status, maintenance interventions; creation, editing and deletion of the communities and assignment of the new users to one; in the admin, systems, devices and interventions (communities, customers and cities only to read them) |
+| Consultant | group `Consulenti` | only the ROI calculator and the quotes; after login the home is the public showcase of the services, to show it to the clients; no access to the admin |
 | Administrator | superuser (`createsuperuser`) | everything, including the users |
 
 Only the administrators create technicians and consultants: in the admin, **Utenti → Aggiungi**, choosing the

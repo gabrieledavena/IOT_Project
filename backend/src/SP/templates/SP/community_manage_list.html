@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Community{% endblock %}
+
+{% block content %}
+<div class="container mb-5">
+    <div class="row mb-4 align-items-end g-3">
+        <div class="col-lg">
+            <a href="{% url 'SP:customer_assignment' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Nuovi utenti</a>
+            <h2 class="fw-bold text-dark mb-0 mt-2">Community</h2>
+            <p class="text-muted mb-0">Le community delle aziende e delle famiglie: nome, comune e titolare si modificano; si elimina solo una community senza impianti.</p>
+        </div>
+        <div class="col-lg-auto">
+            <a href="{% url 'SP:community_new' %}" class="btn btn-outline-primary rounded-pill"><i class="fas fa-plus me-1"></i>Nuova community</a>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+            <form method="get" class="d-flex flex-wrap gap-2 mb-3">
+                <input type="search" name="q" value="{{ query }}" class="form-control" style="max-width: 320px;" placeholder="Cerca community o città" aria-label="Cerca community o città">
+                <button type="submit" class="btn btn-outline-primary"><i class="fas fa-search me-1"></i>Cerca</button>
+            </form>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr class="small text-muted"><th>Community</th><th>Titolare</th><th>Utenti</th><th>Impianti</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for community in page %}
+                            <tr>
+                                <td class="fw-bold">{{ community.name }}<div class="small text-muted fw-normal">{{ community.city }}</div></td>
+                                <td>{% if community.owner %}{{ community.owner }}{% else %}<span class="text-muted small">Nessuno</span>{% endif %}</td>
+                                <td>{{ community.users }}</td>
+                                <td>{{ community.systems }}</td>
+                                <td class="text-end text-nowrap">
+                                    <a href="{% url 'SP:community_edit' community.id %}" class="btn btn-sm btn-primary rounded-pill"><i class="fas fa-pen me-1"></i>Modifica</a>
+                                    <a href="{% url 'SP:community_delete' community.id %}" class="btn btn-sm btn-outline-danger rounded-pill" aria-label="Elimina {{ community.name }}"><i class="fas fa-trash-alt"></i></a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="5" class="text-muted text-center py-4">Nessuna community trovata.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if page.has_other_pages %}
+                <nav class="mt-4" aria-label="Pagine">
+                    <ul class="pagination justify-content-center mb-0">
+                        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>{% endif %}
+                        <li class="page-item disabled"><span class="page-link">Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span></li>
+                        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>{% endif %}
+                    </ul>
+                </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

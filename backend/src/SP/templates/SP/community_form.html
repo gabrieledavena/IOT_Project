@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if community %}{{ community.name }}{% else %}Nuova community{% endif %}{% endblock %}
+
+{% block content %}
+<!-- Nuova community, o modifica di una esistente (community) -->
+<div class="container mb-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            {% if community %}
+                <a href="{% url 'SP:community_manage_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le community</a>
+                <h2 class="fw-bold text-dark mb-0 mt-2">{{ community.name }}</h2>
+                <p class="text-muted mb-0">Nome, comune e titolare della community. Il comune serve per il meteo e le previsioni dei suoi impianti.</p>
+            {% else %}
+                <a href="{% url 'SP:customer_assignment' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Nuovi utenti</a>
+                <h2 class="fw-bold text-dark mb-0 mt-2">Nuova community</h2>
+                <p class="text-muted mb-0">La community di un'azienda o di una famiglia: possiede gli impianti e vi accedono i suoi utenti. Il comune serve per il meteo e le previsioni dei suoi impianti.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            {% if customer %}
+                <div class="alert alert-info rounded-4 d-flex gap-2 align-items-start" role="status">
+                    <i class="fas fa-user-plus mt-1"></i>
+                    <div>Alla nuova community sarà associato <strong>{{ customer }}</strong> ({{ customer.user.username }}), che ne diventerà il titolare.</div>
+                </div>
+            {% endif %}
+            <!-- Senza action: si invia allo stesso indirizzo, con l'eventuale ?customer= -->
+            <form method="post" class="card border-0 shadow-sm rounded-4">
+                {% csrf_token %}
+                <div class="card-body p-4">
+                    {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+                    {% for field in form %}
+                        <div class="mb-3">
+                            <label for="{{ field.id_for_label }}" class="form-label fw-bold small text-muted">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                            {% for error in field.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                        </div>
+                    {% endfor %}
+                    {% if community %}
+                        <button type="submit" class="btn btn-primary w-100 mt-2"><i class="fas fa-save me-1"></i>Salva</button>
+                    {% else %}
+                        <button type="submit" class="btn btn-primary w-100 mt-2"><i class="fas fa-plus me-1"></i>Crea la community</button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+
+        {% if community %}
+            <div class="col-lg-6">
+                <div class="card border-0 shadow-sm rounded-4 mb-4">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-3">Utenti</h5>
+                        <ul class="list-unstyled mb-0">
+                            {% for member in members %}
+                                <li class="d-flex justify-content-between align-items-center py-2 {% if not forloop.first %}border-top{% endif %}">
+                                    <span><span class="fw-bold">{{ member }}</span> <span class="small text-muted">{{ member.user.username }}</span></span>
+                                    {% if member.pk == community.owner_id %}<span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success"><i class="fas fa-user-tie me-1"></i>Titolare</span>{% endif %}
+                                </li>
+                            {% empty %}
+                                <li class="text-muted">Nessun utente: associalo dalla pagina <a href="{% url 'SP:customer_assignment' %}">Nuovi utenti</a>.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+                <a href="{% url 'SP:community_delete' community.id %}" class="btn btn-outline-danger rounded-pill"><i class="fas fa-trash-alt me-1"></i>Elimina la community</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ form.city_options|json_script:"city-options" }}
+<script src="{% static 'SP/city_select.js' %}"></script>
+{% endblock %}
