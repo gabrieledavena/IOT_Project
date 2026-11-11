@@ -31,6 +31,7 @@ urlpatterns = [
     path("installations/new/", installations.NewInstallationView.as_view(), name="installation_new"),
     path("installations/<int:system_id>/", installations.InstallationDetailView.as_view(), name="installation_detail"),
     path("installations/<int:system_id>/pair/", pairing.PairingCodeView.as_view(), name="installation_pair"),
+    path("installations/<int:system_id>/delete/", installations.DeleteSystemView.as_view(), name="installation_delete"),
     # Master delle community e i loro nodi LoRa
     path("installations/communities/", gateways.CommunityListView.as_view(), name="community_list"),
     path("installations/communities/<int:community_id>/", gateways.CommunityInstallationView.as_view(),

@@ -145,6 +145,14 @@
                     </form>
                 </div>
             </div>
+
+            <div class="card border-0 shadow-sm rounded-4 mt-4 border-start border-danger border-5">
+                <div class="card-body p-4">
+                    <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-trash-alt me-1"></i>Elimina l'impianto</h6>
+                    <p class="small text-muted">Con l'impianto si eliminano le sue misure e i suoi interventi; il dispositivo smette di funzionare.</p>
+                    <a href="{% url 'SP:installation_delete' system.id %}" class="btn btn-outline-danger rounded-pill"><i class="fas fa-trash-alt me-2"></i>Elimina…</a>
+                </div>
+            </div>
         </div>
     </div>
 </div>

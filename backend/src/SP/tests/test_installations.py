@@ -7,8 +7,12 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.utils import timezone
 
-from SP.models import Device, PhotovoltaicSystem
-from SP.tests.helpers import create_community, create_customer, create_system, create_technician, install_device
+from SP import mqtt
+from SP.gateways import install_gateway
+from SP.models import Device, Intervention, LoRaNode, PanelData, PhotovoltaicSystem
+from SP.tests.helpers import (
+    add_readings, create_community, create_customer, create_system, create_technician, install_device, utc,
+)
 
 LIST_URL = "/sp/installations/"
 NEW_URL = "/sp/installations/new/"
@@ -209,3 +213,70 @@ class AdminStatusChangeTests(InstallationTestCase):
         self.change("DRT")
 
         self.assertEqual(self.system.status_changed_at, changed_at)
+
+
+class DeleteSystemTests(InstallationTestCase):
+    def setUp(self):
+        super().setUp()
+        self.url = f"/sp/installations/{self.system.id}/delete/"
+        add_readings(self.system, utc(2026, 6, 1, 10), [2.0, 2.5, 3.0])
+
+    def delete(self, **data):
+        with mock.patch("SP.mqtt.publish") as publish, self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, data)
+        return response, [m for call in publish.call_args_list for m in call.args[0]]
+
+    def test_confirmation_lists_what_is_lost(self):
+        install_device(self.system)
+        Intervention.objects.create(system=self.system, requested_by=self.customer,
+                                    preferred_date=timezone.localdate() + timedelta(days=1))
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, "<strong>3</strong> misure")
+        self.assertContains(response, "<strong>1</strong> intervento")
+        self.assertContains(response, f"il dispositivo <strong>pv-{self.system.id}</strong>")
+        self.assertContains(self.client.get(self.detail_url()), f'href="{self.url}"')
+
+    def test_deletes_the_system_its_readings_interventions_and_device(self):
+        install_device(self.system)
+        system_id = self.system.id
+
+        response, published = self.delete()
+
+        self.assertRedirects(response, LIST_URL, fetch_redirect_response=False)
+        self.assertFalse(PhotovoltaicSystem.objects.filter(pk=system_id).exists())
+        self.assertFalse(PanelData.objects.exists())
+        self.assertFalse(Device.objects.exists())
+        # I messaggi retained dell'impianto eliminato, non di un impianto "None"
+        self.assertIn(mqtt.topic(system_id, mqtt.STATUS), [m["topic"] for m in published if m["payload"] is None])
+
+    def test_its_lora_node_goes_back_to_be_assigned(self):
+        with mock.patch("SP.mqtt.publish"), self.captureOnCommitCallbacks(execute=True):
+            gateway, _ = install_gateway(self.community)
+        node = LoRaNode.objects.create(gateway=gateway, node_id="A3F2C1D0", key="0" * 32, system=self.system)
+        self.assertContains(self.client.get(self.url), "torna tra quelli da assegnare")
+
+        self.delete()
+
+        node.refresh_from_db()
+        self.assertIsNone(node.system)
+
+    def test_next_leads_back_only_to_this_site(self):
+        community_page = f"/sp/customers/communities/{self.community.id}/delete/"
+        self.assertContains(self.client.get(community_page), f"{self.url}?next={community_page}")
+
+        response, _ = self.delete(next=community_page)
+        self.assertRedirects(response, community_page, fetch_redirect_response=False)
+
+        other = create_system(self.community, "Sede")
+        self.url = f"/sp/installations/{other.id}/delete/"
+        response, _ = self.delete(next="https://example.com/")
+        self.assertRedirects(response, LIST_URL, fetch_redirect_response=False)
+
+    def test_only_technicians_delete_systems(self):
+        self.client.force_login(self.customer)
+
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+        self.assertEqual(self.delete()[0].status_code, 403)
+        self.assertTrue(PhotovoltaicSystem.objects.filter(pk=self.system.pk).exists())

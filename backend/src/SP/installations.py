@@ -12,6 +12,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 
 from . import mqtt
@@ -52,7 +53,19 @@ def install_device(system, staff=None):
 def uninstall_device(system):
     detach_node(system)
     Device.objects.filter(system=system).delete()
-    transaction.on_commit(lambda: mqtt.clear_retained(system.id))
+    # L'id letto subito: se poi si elimina anche l'impianto, al commit system.id è None
+    system_id = system.id
+    transaction.on_commit(lambda: mqtt.clear_retained(system_id))
+
+
+def delete_system(system):
+    """Elimina l'impianto con le sue misure e i suoi interventi.
+
+    Il dispositivo smette di funzionare e i suoi messaggi retained si cancellano; il nodo LoRa, se il sensore era
+    un nodo, torna da assegnare nella pagina del master.
+    """
+    uninstall_device(system)
+    system.delete()
 
 
 def force_status(system, status):
@@ -216,3 +229,39 @@ class InstallationDetailView(TechnicianRequiredMixin, View):
                        (mqtt.TELEMETRY, mqtt.CONNECTION, mqtt.EVENTS, mqtt.STATUS, mqtt.CONFIG)],
         }
         return render(request, self.template_name, context, status=status)
+
+
+class DeleteSystemView(TechnicianRequiredMixin, View):
+    """Elimina un impianto, dopo una pagina di conferma con quello che si perde.
+
+    ?next= riporta alla pagina da cui si arriva (per esempio l'eliminazione della community).
+    """
+
+    template_name = "SP/installation_delete.html"
+
+    def next_url(self, request):
+        url = request.POST.get("next") or request.GET.get("next")
+        if url and url_has_allowed_host_and_scheme(url, allowed_hosts={request.get_host()},
+                                                   require_https=request.is_secure()):
+            return url
+        return None
+
+    def get(self, request, system_id):
+        system = get_object_or_404(systems_with_devices(), pk=system_id)
+        context = {
+            "system": system,
+            "device": getattr(system, "device", None),
+            "node": getattr(system, "lora_node", None),
+            "readings": system.panel_data.count(),
+            "interventions": system.interventions.count(),
+            "next": self.next_url(request) or "",
+        }
+        return render(request, self.template_name, context)
+
+    def post(self, request, system_id):
+        system = get_object_or_404(systems_with_devices(), pk=system_id)
+        name, community = system.name, system.community.name
+        with transaction.atomic():
+            delete_system(system)
+        messages.success(request, f"Impianto {name} di {community} eliminato.")
+        return redirect(self.next_url(request) or "SP:installation_list")
