@@ -5,7 +5,7 @@ from statistics import mean
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, IntegerField, Q, Sum, Value, When
+from django.db.models import Case, Count, F, FloatField, IntegerField, Q, Sum, Value, When
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -20,6 +20,7 @@ from .forms import CustomerRegistrationForm
 from .models import City, Community, Customer, PanelData, PhotovoltaicSystem
 from .production import energy_kwh, get_community_series, get_system_series
 from .roles import is_consultant, is_technician
+from .sorting import SYSTEM_STATES, Ordering, problems_first
 from .weather import get_day_weather
 
 # Come mostrare l'esito del controllo automatico (SP/monitoring.py) nella pagina dell'impianto
@@ -92,15 +93,16 @@ class UserDashboardView(LoginRequiredMixin, View):
 
     template_name = "SP/user_dashboard.html"
     per_page = 50
-    Status = PhotovoltaicSystem.Status
-    checked = Q(last_check__isnull=False)
     # Filtri per stato: mai controllati a parte, perché il loro stato è solo quello iniziale
-    FILTERS = {
-        "broken": checked & Q(status=Status.BROKEN),
-        "fault": checked & Q(status=Status.FAULT),
-        "dirty": checked & Q(status=Status.DIRTY),
-        "ok": checked & Q(status=Status.OK),
-        "new": Q(last_check__isnull=True),
+    FILTERS = SYSTEM_STATES
+    ORDERINGS = {
+        "status": ("Prima i problemi", (problems_first(), "community__name", "name")),
+        "name": ("Nome (A-Z)", ("name", "community__name")),
+        "community": ("Community (A-Z)", ("community__name", "name")),
+        "power_desc": ("Potenza più alta", ("-max_power", "name")),
+        "power": ("Potenza più bassa", ("max_power", "name")),
+        "checked_desc": ("Controllo più recente", (F("last_check").desc(nulls_last=True), "name")),
+        "checked": ("Controllo meno recente", (F("last_check").asc(nulls_first=True), "name")),
     }
 
     def get(self, request):
@@ -122,11 +124,10 @@ class UserDashboardView(LoginRequiredMixin, View):
         selected = request.GET.get("status") if request.GET.get("status") in self.FILTERS else ""
         if selected:
             systems = systems.filter(self.FILTERS[selected])
-        priority = Case(
-            *(When(self.FILTERS[name], then=Value(rank)) for rank, name in enumerate(self.FILTERS)),
-            output_field=IntegerField(),
-        )
-        systems = systems.order_by(priority, "community__name", "name")
+        # La community solo per i tecnici, che vedono gli impianti di tutte
+        orderings = self.ORDERINGS if staff else {k: v for k, v in self.ORDERINGS.items() if k != "community"}
+        ordering = Ordering(request, orderings)
+        systems = ordering.apply(systems)
 
         page = Paginator(systems, self.per_page).get_page(request.GET.get("page"))
         context = {
@@ -135,6 +136,7 @@ class UserDashboardView(LoginRequiredMixin, View):
             "is_owner": bool(community) and community.owner_id is not None and community.owner.user_id == request.user.id,
             "counts": counts,
             "selected": selected,
+            "ordering": ordering,
             "page": page,
             "rows": [(system, SYSTEM_STATUSES[system.status] if system.last_check else None) for system in page],
         }
@@ -177,6 +179,16 @@ class CityBenchmarkView(View):
 
     template_name = "SP/city_benchmark.html"
     cities_per_page = 50
+    ORDERINGS = {
+        "data": ("Prima le città con dati", ("-has_data", "name", "province")),
+        "name": ("Nome (A-Z)", ("name", "province")),
+        "name_desc": ("Nome (Z-A)", ("-name", "-province")),
+        "province": ("Provincia (A-Z)", ("province", "name")),
+        "region": ("Regione (A-Z)", ("region", "province", "name")),
+        "yield_desc": ("Resa più alta", (F("specific_yield").desc(nulls_last=True), "name")),
+        "yield": ("Resa più bassa", (F("specific_yield").asc(nulls_last=True), "name")),
+        "systems": ("Più impianti", (F("measured_systems").desc(nulls_last=True), "name")),
+    }
 
     def get(self, request):
         stats = measured_city_yields()
@@ -191,9 +203,15 @@ class CityBenchmarkView(View):
             cities = cities.filter(region=region)
         if only_with_data:
             cities = cities.filter(id__in=stats)
-        # Prima le città con dati, poi le altre in ordine alfabetico
+        # Resa e impianti misurati, calcolati fuori dal database: per ordinare la tabella diventano annotazioni
         has_data = Case(When(id__in=list(stats), then=Value(1)), default=Value(0), output_field=IntegerField())
-        cities = cities.annotate(has_data=has_data if stats else Value(0)).order_by("-has_data", "name", "province")
+        cities = cities.annotate(
+            has_data=has_data if stats else Value(0),
+            specific_yield=self.by_city(stats, "specific_yield", FloatField()),
+            measured_systems=self.by_city(stats, "systems", IntegerField()),
+        )
+        ordering = Ordering(request, self.ORDERINGS)
+        cities = ordering.apply(cities)
 
         page = Paginator(cities, self.cities_per_page).get_page(request.GET.get("page"))
         filters = request.GET.copy()
@@ -206,12 +224,21 @@ class CityBenchmarkView(View):
             "query": query,
             "region": region,
             "only_with_data": only_with_data,
+            "ordering": ordering,
             "filters": filters.urlencode(),
             "cities_with_data": len(stats),
             "average_yield": mean(s["specific_yield"] for s in stats.values()) if stats else None,
             "heatmap": self.heatmap_data(stats),
         }
         return render(request, self.template_name, context)
+
+    @staticmethod
+    def by_city(stats, name, output_field):
+        """Il valore delle statistiche di ogni città, o NULL per le città senza dati."""
+        if not stats:
+            return Value(None, output_field=output_field)
+        return Case(*(When(id=city_id, then=Value(values[name])) for city_id, values in stats.items()),
+                    default=None, output_field=output_field)
 
     @staticmethod
     def heatmap_data(stats):

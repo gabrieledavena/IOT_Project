@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.db.models import Count
+from django.db.models import Count, F
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -19,6 +19,7 @@ from django.views import View
 from .access import AccessError, TechnicianRequiredMixin, visible_system
 from .forms import InterventionAcceptForm, InterventionCompletionForm, InterventionRequestForm, intervention_date_range
 from .models import Customer, Intervention
+from .sorting import Ordering, person_name
 
 Status = Intervention.Status
 
@@ -74,18 +75,38 @@ class InterventionDashboardView(TechnicianRequiredMixin, View):
 
     template_name = "SP/intervention_dashboard.html"
     per_page = 20
+    # Ordinamenti delle richieste e degli interventi in corso: prima il giorno richiesto più vicino
+    OPEN_ORDERINGS = {
+        "date": ("Giorno richiesto più vicino", ("preferred_date", "requested_at")),
+        "date_desc": ("Giorno richiesto più lontano", ("-preferred_date", "-requested_at")),
+        "requested_desc": ("Richiesta più recente", ("-requested_at",)),
+        "requested": ("Richiesta meno recente", ("requested_at",)),
+        "system": ("Impianto (A-Z)", ("system__name", "preferred_date")),
+        "community": ("Community (A-Z)", ("system__community__name", "system__name", "preferred_date")),
+    }
+    REQUESTER_ORDERING = {"requested_by": ("Richiesto da (A-Z)", (person_name("requested_by"), "preferred_date"))}
+    STAFF_ORDERING = {"staff": ("Tecnico (A-Z)", (person_name("staff"), "preferred_date"))}
     TABS = {
-        "pending": (Status.REQUESTED, "Da accettare", ("preferred_date", "requested_at")),
-        "accepted": (Status.ACCEPTED, "In corso", ("preferred_date", "requested_at")),
-        "done": (Status.DONE, "Eseguiti", ("-executed_on", "-requested_at")),
+        "pending": (Status.REQUESTED, "Da accettare", {**OPEN_ORDERINGS, **REQUESTER_ORDERING}),
+        "accepted": (Status.ACCEPTED, "In corso", {**OPEN_ORDERINGS, **STAFF_ORDERING}),
+        "done": (Status.DONE, "Eseguiti", {
+            "executed_desc": ("Eseguito più di recente", ("-executed_on", "-requested_at")),
+            "executed": ("Eseguito meno di recente", ("executed_on", "requested_at")),
+            "cost_desc": ("Costo più alto", (F("cost").desc(nulls_last=True), "-executed_on")),
+            "cost": ("Costo più basso", (F("cost").asc(nulls_last=True), "-executed_on")),
+            "system": ("Impianto (A-Z)", ("system__name", "-executed_on")),
+            "community": ("Community (A-Z)", ("system__community__name", "system__name", "-executed_on")),
+            "staff": ("Tecnico (A-Z)", (person_name("staff"), "-executed_on")),
+        }),
     }
 
     def get(self, request):
         tab = request.GET.get("tab") if request.GET.get("tab") in self.TABS else "pending"
-        status, _, ordering = self.TABS[tab]
+        status, _, orderings = self.TABS[tab]
+        ordering = Ordering(request, orderings)
         # Le richieste da accettare non hanno ancora un responsabile
         mine = request.GET.get("mine") == "1" and status != Status.REQUESTED
-        interventions = interventions_with_details().filter(status=status).order_by(*ordering)
+        interventions = ordering.apply(interventions_with_details().filter(status=status))
         if mine:
             interventions = interventions.filter(staff=request.user)
 
@@ -95,6 +116,7 @@ class InterventionDashboardView(TechnicianRequiredMixin, View):
         context = {
             "tab": tab,
             "mine": mine,
+            "ordering": ordering,
             "tabs": [(key, label, counts.get(tab_status, 0)) for key, (tab_status, label, _) in self.TABS.items()],
             "page": Paginator(interventions, self.per_page).get_page(request.GET.get("page")),
             "today": today,

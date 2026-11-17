@@ -16,6 +16,7 @@ from django.views import View
 from .access import TechnicianRequiredMixin
 from .forms import CommunityAssignmentForm
 from .models import Customer
+from .sorting import Ordering
 
 
 def assign_community(customer, community):
@@ -34,10 +35,17 @@ class PendingCustomerListView(TechnicianRequiredMixin, View):
 
     template_name = "SP/customer_assignment.html"
     per_page = 20
+    ORDERINGS = {
+        "oldest": ("In attesa da più tempo", ("user__date_joined",)),
+        "newest": ("Registrati da poco", ("-user__date_joined",)),
+        "surname": ("Cognome (A-Z)", ("surname", "name")),
+        "name": ("Nome (A-Z)", ("name", "surname")),
+    }
 
     def get(self, request):
         query = request.GET.get("q", "").strip()
-        customers = Customer.objects.filter(community__isnull=True).select_related("user").order_by("user__date_joined")
+        ordering = Ordering(request, self.ORDERINGS)
+        customers = ordering.apply(Customer.objects.filter(community__isnull=True).select_related("user"))
         total = customers.count()
         if query:
             customers = customers.filter(
@@ -47,6 +55,7 @@ class PendingCustomerListView(TechnicianRequiredMixin, View):
         context = {
             "page": Paginator(customers, self.per_page).get_page(request.GET.get("page")),
             "query": query,
+            "ordering": ordering,
             "total": total,
             # Una scelta della community per ogni utente: la lista si legge una volta per pagina. all(): il
             # queryset del campo è uno solo per tutto il processo, e letto direttamente terrebbe in memoria le
@@ -67,7 +76,8 @@ class AssignCommunityView(TechnicianRequiredMixin, View):
         else:
             customer.refresh_from_db()
             messages.info(request, f"{customer} è già nella community {customer.community}.")
-        # Si torna alla stessa ricerca
-        query = request.POST.get("q", "").strip()
+        # Si torna alla stessa ricerca, con lo stesso ordinamento
+        back = {name: request.POST.get(name, "").strip() for name in ("q", "sort")}
+        back = {name: value for name, value in back.items() if value}
         url = reverse("SP:customer_assignment")
-        return redirect(f"{url}?{urlencode({'q': query})}" if query else url)
+        return redirect(f"{url}?{urlencode(back)}" if back else url)

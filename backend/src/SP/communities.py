@@ -22,6 +22,7 @@ from .gateways import (
 )
 from .installations import awaited_pairing
 from .models import Community, Customer, Device, Gateway, LoRaNode, PhotovoltaicSystem
+from .sorting import Ordering, disconnected_first, problems_first
 
 
 class CommunityListView(TechnicianRequiredMixin, View):
@@ -29,9 +30,20 @@ class CommunityListView(TechnicianRequiredMixin, View):
 
     template_name = "SP/community_list.html"
     per_page = 50
+    ORDERINGS = {
+        "name": ("Nome (A-Z)", ("name",)),
+        "name_desc": ("Nome (Z-A)", ("-name",)),
+        "city": ("Città", ("city__name", "name")),
+        "systems": ("Più impianti", ("-systems", "name")),
+        "users": ("Più utenti", ("-users", "name")),
+        "offline": ("Più sensori scollegati", ("-offline", "name")),
+        "without_sensor": ("Più impianti senza sensore", ("-without_sensor", "name")),
+        "pending_nodes": ("Più nodi da assegnare", ("-pending_nodes", "name")),
+    }
 
     def get(self, request):
         query = request.GET.get("q", "").strip()
+        ordering = Ordering(request, self.ORDERINGS)
         communities = Community.objects.select_related("city", "owner", "gateway").annotate(
             users=Count("customers", distinct=True),
             systems=Count("photovoltaic_systems", distinct=True),
@@ -42,15 +54,16 @@ class CommunityListView(TechnicianRequiredMixin, View):
                                  distinct=True),
             node_count=Count("gateway__nodes", distinct=True),
             pending_nodes=Count("gateway__nodes", filter=Q(gateway__nodes__system__isnull=True), distinct=True),
-        ).order_by("name")
+        )
         if query:
             # Anche per nome di un impianto, con una sottoquery: così i conteggi restano di tutti gli impianti
             systems = PhotovoltaicSystem.objects.filter(name__icontains=query).values("community")
             communities = communities.filter(Q(name__icontains=query) | Q(city__name__icontains=query)
                                              | Q(pk__in=systems))
         context = {
-            "page": Paginator(communities, self.per_page).get_page(request.GET.get("page")),
+            "page": Paginator(ordering.apply(communities), self.per_page).get_page(request.GET.get("page")),
             "query": query,
+            "ordering": ordering,
             "counts": {
                 "communities": Community.objects.count(),
                 "systems": PhotovoltaicSystem.objects.count(),
@@ -69,12 +82,23 @@ class CommunityDetailView(TechnicianRequiredMixin, View):
     gli impianti con il loro sensore."""
 
     template_name = "SP/community_detail.html"
+    # Ordinamenti della tabella degli impianti
+    ORDERINGS = {
+        "name": ("Nome (A-Z)", ("name",)),
+        "name_desc": ("Nome (Z-A)", ("-name",)),
+        "id": ("Id", ("id",)),
+        "power_desc": ("Potenza più alta", ("-max_power", "name")),
+        "power": ("Potenza più bassa", ("max_power", "name")),
+        "status": ("Prima i problemi", (problems_first(), "name")),
+        "sensor": ("Prima i sensori scollegati", (disconnected_first(), "name")),
+    }
 
     def get(self, request, community_id):
+        ordering = Ordering(request, self.ORDERINGS)
         community = get_object_or_404(Community.objects.select_related("city", "owner"), pk=community_id)
         gateway = Gateway.objects.filter(community=community).select_related("installed_by").first()
         nodes = list(gateway.nodes.select_related("system__device").order_by("system", "-joined_at")) if gateway else []
-        systems = list(community.photovoltaic_systems.select_related("device", "lora_node").order_by("name"))
+        systems = list(ordering.apply(community.photovoltaic_systems.select_related("device", "lora_node")))
         pairing, pairing_step = awaited_pairing(community.pairings, gateway)
         # La pagina si ricarica quando cambia qualcosa: master, finestra, nodi e collegamento dei sensori
         signature = "|".join([
@@ -89,6 +113,7 @@ class CommunityDetailView(TechnicianRequiredMixin, View):
             "pending": [node for node in nodes if node.system_id is None],
             "assigned": [node for node in nodes if node.system_id is not None],
             "systems": systems,
+            "ordering": ordering,
             "pairing": pairing,
             "pairing_step": pairing_step,
             "signature": signature,
@@ -134,7 +159,8 @@ class CommunityDetailView(TechnicianRequiredMixin, View):
             with transaction.atomic():
                 remove_node(node)
             messages.success(request, f"Nodo {node.node_id} rimosso: esce dalla rete del master e torna come nuovo.")
-        return redirect("SP:community_detail", community_id=community.id)
+        # Stessa pagina, con lo stesso ordinamento degli impianti
+        return redirect(request.get_full_path())
 
 
 class NewCommunityView(TechnicianRequiredMixin, View):
