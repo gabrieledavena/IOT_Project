@@ -75,6 +75,12 @@
                         <a class="nav-link" href="{% url 'roi:calculator' %}"><i class="fas fa-calculator me-1"></i>ROI</a>
                     </li>
                     {% endif %}
+                    {% if user.is_superuser %}
+                    <!-- Simulazione degli impianti senza sensore, eseguita dal master della community (demo) -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'SP:simulation_list' %}"><i class="fas fa-sliders-h me-1"></i>Simulazione</a>
+                    </li>
+                    {% endif %}
                     {% if user.is_staff %}
                     <!-- Admin: amministratori e tecnici (impianti, dispositivi e interventi) -->
                     <li class="nav-item">

@@ -1,0 +1,2 @@
+{# Ultima misura salvata dal server per un impianto (state di SP/simulation.py); simulation.js la aggiorna #}
+<span data-field="reading">{% if state.reading %}{{ state.reading.time }} · {{ state.reading.power|floatformat:2 }} kW · {{ state.reading.temperature|floatformat:1 }} °C · {{ state.reading.lightness|floatformat:"0g" }} lux{% else %}nessuna{% endif %}</span>

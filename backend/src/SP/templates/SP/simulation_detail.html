@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% load l10n static %}
+
+{% block title %}Simulazione · {{ community.name }}{% endblock %}
+
+{% block content %}
+<div class="container mb-5" data-simulation data-status-url="{% url 'SP:simulation_status' community.id %}">
+    <div class="row mb-4">
+        <div class="col-12 d-flex flex-wrap justify-content-between align-items-end gap-3">
+            <div>
+                <a href="{% url 'SP:simulation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le community</a>
+                <h2 class="fw-bold text-dark mb-1 mt-2">Simulazione · {{ community.name }}</h2>
+                <span class="text-muted">{{ community.city }} · {{ simulated|length }} impiant{{ simulated|length|pluralize:"o,i" }} simulat{{ simulated|length|pluralize:"o,i" }} · {{ real|length }} con un sensore vero</span>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                {% if gateway %}
+                    <span class="me-1">Master
+                        <span data-gateway>{% if gateway.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>{% else %}<span class="badge rounded-pill bg-secondary">Scollegato</span>{% endif %}</span>
+                    </span>
+                {% endif %}
+                {% if gateway and candidates %}
+                    <form method="post" class="m-0">
+                        {% csrf_token %}
+                        <button type="submit" name="action" value="start" class="btn btn-success rounded-pill fw-bold">
+                            <i class="fas fa-play me-2"></i>{% if simulated %}Simula anche {{ candidates|length }} nuov{{ candidates|length|pluralize:"o,i" }} impiant{{ candidates|length|pluralize:"o,i" }}{% else %}Avvia la simulazione{% endif %}
+                        </button>
+                    </form>
+                {% endif %}
+                {% if simulated %}
+                    <form method="post" class="m-0" onsubmit="return confirm('Fermare la simulazione? Gli impianti simulati tornano senza sensore e il master smette di mostrarli.');">
+                        {% csrf_token %}
+                        <button type="submit" name="action" value="stop" class="btn btn-outline-danger rounded-pill"><i class="fas fa-stop me-2"></i>Ferma la simulazione</button>
+                    </form>
+                {% endif %}
+                <a href="{% url 'SP:community_detail' community.id %}" class="btn btn-outline-secondary rounded-pill"><i class="fas fa-users me-2"></i>Community</a>
+            </div>
+        </div>
+    </div>
+
+    {% include "SP/server_address.html" %}
+
+    {% if not gateway %}
+        <div class="alert alert-warning rounded-4">La community non ha un master: installalo dalla pagina della <a href="{% url 'SP:community_detail' community.id %}">community</a> con il QR del suo display. È il master a simulare i sensori e a mostrarli sul display.</div>
+    {% elif not gateway.online %}
+        <div class="alert alert-secondary rounded-4"><i class="fas fa-plug me-2"></i>Il master è scollegato: riceverà impianti e valori appena si ricollega al broker.</div>
+    {% endif %}
+
+    {% if simulated %}
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-3 px-4 d-flex flex-wrap align-items-center gap-2">
+                <span class="small text-muted fw-bold text-uppercase me-2"><i class="fas fa-layer-group me-1"></i>Tutti gli impianti simulati</span>
+                {% for key, preset in presets.items %}
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill" data-preset-all="{{ key }}">{{ preset.label }}</button>
+                {% endfor %}
+                <span class="small text-muted ms-auto">I valori arrivano al master appena li cambi; ogni minuto il master invia al server la media delle misure.</span>
+            </div>
+        </div>
+
+        <div class="row g-4 mb-4">
+            {% for item in simulated %}
+                {% with system=item.system form=item.form state=item.state %}
+                <div class="col-xl-6">
+                    <form method="post" class="card border-0 shadow-sm rounded-4 h-100" data-system="{{ system.id }}" data-max-power="{{ system.max_power|unlocalize }}" data-state="{{ system.id }}" novalidate>
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="save">
+                        <input type="hidden" name="system" value="{{ system.id }}">
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                                <div>
+                                    <h5 class="fw-bold mb-0">{{ system.name }}</h5>
+                                    <div class="small text-muted">Impianto {{ system.id }} · {{ system.max_power|floatformat:2 }} kW installati · <a href="{% url 'SP:installation_detail' system.id %}" class="text-decoration-none">stato e installazione</a></div>
+                                </div>
+                                <div class="text-end text-nowrap">
+                                    <span data-field="online">{% if state.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Sentito dal master</span>{% else %}<span class="badge rounded-pill bg-secondary">Non ancora sentito</span>{% endif %}</span>
+                                    <div class="small mt-1"><span data-field="pump">{% if state.pump_running %}<span class="badge rounded-pill bg-info text-dark"><i class="fas fa-tint me-1"></i>Lavaggio</span>{% endif %}</span> <span class="text-muted" data-field="status">{{ state.status_label }}</span></div>
+                                </div>
+                            </div>
+                            {% with field=form.power %}
+                                <label class="form-label small fw-bold text-muted d-flex justify-content-between mb-1" for="power-{{ system.id }}"><span><i class="fas fa-bolt me-1"></i>Produzione</span><span class="fw-normal">da 0 a {{ system.max_power|floatformat:2 }} kW</span></label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" class="form-range" min="0" max="{{ system.max_power|unlocalize }}" step="0.01" value="{{ field.value|unlocalize }}" data-pair="power" aria-label="Produzione di {{ system.name }}, cursore" tabindex="-1">
+                                    <div class="input-group input-group-sm flex-shrink-0" style="width: 9rem;">
+                                        <input type="number" name="power" id="power-{{ system.id }}" class="form-control text-end{% if field.errors %} is-invalid{% endif %}" min="0" max="{{ system.max_power|unlocalize }}" step="0.01" value="{{ field.value|unlocalize }}" required>
+                                        <span class="input-group-text">kW</span>
+                                    </div>
+                                </div>
+                                {% for error in field.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+                            {% endwith %}
+                            {% with field=form.temperature %}
+                                <label class="form-label small fw-bold text-muted d-flex justify-content-between mb-1 mt-3" for="temperature-{{ system.id }}"><span><i class="fas fa-thermometer-half me-1"></i>Temperatura</span><span class="fw-normal">da -30 a 60 °C</span></label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" class="form-range" min="-30" max="60" step="0.1" value="{{ field.value|unlocalize }}" data-pair="temperature" aria-label="Temperatura di {{ system.name }}, cursore" tabindex="-1">
+                                    <div class="input-group input-group-sm flex-shrink-0" style="width: 9rem;">
+                                        <input type="number" name="temperature" id="temperature-{{ system.id }}" class="form-control text-end{% if field.errors %} is-invalid{% endif %}" min="-30" max="60" step="0.1" value="{{ field.value|unlocalize }}" required>
+                                        <span class="input-group-text">°C</span>
+                                    </div>
+                                </div>
+                                {% for error in field.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+                            {% endwith %}
+                            {% with field=form.lightness %}
+                                <label class="form-label small fw-bold text-muted d-flex justify-content-between mb-1 mt-3" for="lightness-{{ system.id }}"><span><i class="fas fa-sun me-1"></i>Luce</span><span class="fw-normal">da 0 a 100.000 lux</span></label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" class="form-range" min="0" max="100000" step="100" value="{{ field.value|floatformat:'0u' }}" data-pair="lightness" aria-label="Luce di {{ system.name }}, cursore" tabindex="-1">
+                                    <div class="input-group input-group-sm flex-shrink-0" style="width: 9rem;">
+                                        <input type="number" name="lightness" id="lightness-{{ system.id }}" class="form-control text-end{% if field.errors %} is-invalid{% endif %}" min="0" max="100000" step="1" value="{{ field.value|floatformat:'0u' }}" required>
+                                        <span class="input-group-text">lux</span>
+                                    </div>
+                                </div>
+                                {% for error in field.errors %}<div class="small text-danger">{{ error }}</div>{% endfor %}
+                            {% endwith %}
+                            <div class="d-flex flex-wrap gap-1 mt-3">
+                                {% for key, preset in presets.items %}
+                                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-preset="{{ key }}">{{ preset.label }}</button>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="card-footer bg-transparent border-top px-4 py-2 d-flex flex-wrap justify-content-between align-items-center gap-2 small">
+                            <span class="text-muted"><i class="fas fa-database me-1"></i>Ultima misura salvata: {% include "SP/simulation_reading.html" %}</span>
+                            <span data-field="saved" class="text-nowrap" role="status"></span>
+                            <noscript><button type="submit" class="btn btn-sm btn-primary rounded-pill">Invia al master</button></noscript>
+                        </div>
+                    </form>
+                </div>
+                {% endwith %}
+            {% endfor %}
+        </div>
+    {% elif gateway %}
+        <div class="card border-0 shadow-sm rounded-4 mb-4">
+            <div class="card-body p-4">
+                <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-sliders-h me-1"></i>Impianti senza sensore</h6>
+                {% if candidates %}
+                    <p class="mb-2">Con <strong>Avvia la simulazione</strong> il master simula {{ candidates|length }} impiant{{ candidates|length|pluralize:"o,i" }} senza sensore: {% for system in candidates %}{{ system.name }}{% if not forloop.last %}, {% endif %}{% endfor %}.</p>
+                    <p class="small text-muted mb-0">Ognuno riceve un sensore simulato, come un nodo sul tetto senza radio: il master lo mostra sul display, una pagina per impianto (tasto PRG), e pubblica presenza, misure e lavaggi. Il server li salva e controlla come quelli degli altri impianti. Un impianto smette di essere simulato se gli installi un sensore vero.</p>
+                {% else %}
+                    <p class="text-muted mb-0">Tutti gli impianti della community hanno un sensore vero: non c'è nulla da simulare.</p>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="card border-0 shadow-sm rounded-4">
+        <div class="card-body p-4">
+            <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-satellite-dish me-1"></i>Impianti con un sensore vero</h6>
+            {% if real %}
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                            <tr class="small text-muted"><th>Impianto</th><th>Sensore</th><th>Collegamento</th><th>Ultima misura salvata</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for item in real %}
+                                {% with system=item.system state=item.state %}
+                                <tr data-state="{{ system.id }}">
+                                    <td class="fw-bold">{{ system.name }}<div class="small text-muted fw-normal" data-field="status">{{ state.status_label }}</div></td>
+                                    <td class="small">{% if system.lora_node %}nodo LoRa <span class="font-monospace">{{ system.lora_node.node_id }}</span>{% else %}{{ system.device.username }}{% endif %}</td>
+                                    <td><span data-field="online">{% if state.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>{% else %}<span class="badge rounded-pill bg-secondary">Scollegato</span>{% endif %}</span> <span data-field="pump">{% if state.pump_running %}<span class="badge rounded-pill bg-info text-dark"><i class="fas fa-tint me-1"></i>Lavaggio</span>{% endif %}</span></td>
+                                    <td class="small text-muted">{% include "SP/simulation_reading.html" %}</td>
+                                </tr>
+                                {% endwith %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="small text-muted mb-0">Nessuno: assegna un nodo sul tetto a un impianto dalla pagina della <a href="{% url 'SP:community_detail' community.id %}">community</a>.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{{ presets|json_script:"simulation-presets" }}
+{% endblock %}
+
+{% block extra_js %}
+    <script src="{% static 'SP/simulation.js' %}"></script>
+{% endblock %}

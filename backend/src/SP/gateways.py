@@ -16,7 +16,7 @@ ArduinoBridge/MasterNode/ProtocolloLora.h.
 from django.db import transaction
 from django.utils import timezone
 
-from . import mqtt
+from . import mqtt, simulation
 from .installations import detach_node, uninstall_device
 from .models import Device, Gateway
 
@@ -38,10 +38,11 @@ def install_gateway(community, staff=None):
 
 
 def uninstall_gateway(community):
-    """Disinstalla il master e i suoi nodi: gli impianti dei nodi restano senza dispositivo."""
+    """Disinstalla il master e i suoi nodi: gli impianti dei nodi, e quelli che simulava, restano senza dispositivo."""
     gateway = Gateway.objects.filter(community=community).first()
     if gateway is None:
         return
+    simulation.stop(community)
     for node in gateway.nodes.filter(system__isnull=False):
         uninstall_device(node.system)
     gateway.delete()
@@ -68,11 +69,13 @@ def assign_node(node, system, staff=None):
     """Il nodo diventa il sensore dell'impianto, che deve essere della community del suo master.
 
     Un impianto ha un solo sensore: un altro nodo dell'impianto torna da assegnare, e un dispositivo con le
-    credenziali (un bridge) non può più collegarsi. Il nodo lascia l'impianto che aveva prima.
+    credenziali (un bridge) non può più collegarsi, e uno simulato non lo simula più il master. Il nodo lascia
+    l'impianto che aveva prima.
     """
     previous = node.system
     if previous == system:
         return
+    simulation.release(system)
     detach_node(system)
     if previous is not None:
         uninstall_device(previous)

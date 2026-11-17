@@ -21,14 +21,15 @@
 //
 // Il master gestisce tutta la community e non ha sensori: ogni nodo sul tetto misura il suo impianto (produzione
 // dalla pinza amperometrica, temperatura, luce) e gliene manda una misura ogni 10 secondi. Il display mostra la
-// produzione della community e lo stato degli impianti; PRG sfoglia una pagina per impianto.
+// produzione della community e lo stato degli impianti; PRG sfoglia una pagina per impianto. Per le demo con un
+// solo nodo vero il master simula anche gli impianti senza sensore scelti sul sito (vedi IMPIANTI SIMULATI).
 // Delle misure di ogni nodo assegnato a un impianto il master fa la media di ogni minuto e la pubblica sul topic
 // telemetry dell'impianto: il server la salva come faceva con bridge.py. A ogni battito risponde al nodo con lo
 // stato dell'impianto, l'ora e, se il nodo non lo ha ancora, il nome dell'impianto da mostrare sul suo display.
 //
 // Pulsante PRG, con le istruzioni sul display mentre è premuto:
 //   - premuto e rilasciato subito: la pagina seguente del display. Dopo quella generale c'è una pagina per ogni
-//     impianto della community con un nodo (vero o virtuale): stato, ultima misura, nodo e ultimo lavaggio;
+//     impianto della community con un nodo vero o simulato: stato, ultima misura, nodo e ultimo lavaggio;
 //   - tenuto 3 secondi: la scheda dimentica l'installazione e mostra un nuovo QR di abbinamento;
 //   - tenuto 10 secondi: dimentica anche il Wi-Fi e riapre la configurazione (l'indirizzo del server resta).
 // Se la rete salvata non risponde per 2 minuti (password cambiata, router spostato) la configurazione si riapre
@@ -73,25 +74,17 @@ const int pinLoraDio1 = 14;
 
 const unsigned long MISURA_RECENTE = 60000;   // l'ultima misura di un nodo, più vecchia, è segnata come vecchia
 
-// --- IMPIANTI VIRTUALI (per le prove, con un solo nodo vero) ---
-// Il master simula NODI_VIRTUALI nodi sul tetto in più, senza radio: entrano nella rete quando il tecnico preme
-// "Aggiungi nodi" sul sito (lì compaiono come "virtuale sano", "virtuale sporco", "virtuale guasto") e si
-// assegnano a un impianto come quelli veri. Hanno il tetto accanto a quello vero: temperatura e luce sono quelle
-// dell'ultima misura del nodo vero, la produzione è quella della sua pinza scalata sulla potenza dell'impianto e
-// moltiplicata per la resa dello scenario. Il master pubblica per loro presenza, misure e lavaggi come per un nodo
-// vero, quindi il server li controlla davvero:
-//   - sano:   produce come l'impianto vero;
-//   - sporco: produce il 70%; il lavaggio lo riporta al 100% per 6 ore, poi si risporca;
-//   - guasto: produce il 30%, anche dopo il lavaggio.
-// Con NODI_VIRTUALI = 0 non ce n'è nessuno (un master vero)
-const int NODI_VIRTUALI = 3;
-enum Scenario : uint8_t { SANO, SPORCO, GUASTO };
-const char *const NOMI_SCENARI[] = {"sano", "sporco", "guasto"};
-const float RESA_SPORCO = 0.7;
-const float RESA_GUASTO = 0.3;
-const unsigned long RISPORCO = 6UL * 3600 * 1000;    // ms dopo il lavaggio: i pannelli sporchi tornano sporchi
-const unsigned long INTERVALLO_VIRTUALE = 10000;    // una misura ogni 10 s, come il nodo vero
-const unsigned long BATTITO_VIRTUALE = 60000;
+// --- IMPIANTI SIMULATI (per le demo, con un solo nodo vero) ---
+// Dalla pagina Simulazione del sito (solo amministratori) si chiede al master di simulare gli impianti della
+// community che non hanno un sensore. Il server gli manda l'elenco con i valori dei sensori scelti sul sito
+// (produzione, temperatura, luce) sul topic simulation del master, retained: arriva anche dopo un riavvio
+// (backend/src/SP/simulation.py). Il master li tratta come nodi sul tetto senza radio: una pagina del display per
+// ognuno e, come per un nodo vero, pubblica la presenza, una misura ogni 10 secondi mediata sul minuto e i lavaggi
+// quando lo stato diventa DRT o FLT. Il server quindi li salva e li controlla come gli altri impianti. Quando i
+// valori cambiano sul sito il master li riceve subito e li mostra; un impianto che non è più nell'elenco (fermata
+// la simulazione, o installato un sensore vero) sparisce dal display.
+const unsigned long INTERVALLO_SIMULATO = 10000;    // una misura ogni 10 s, come il nodo vero
+const unsigned long BATTITO_SIMULATO = 60000;
 const unsigned long DURATA_LAVAGGIO = 10000;        // come nel nodo sul tetto
 
 // --- PARAMETRI ---
@@ -235,18 +228,19 @@ struct Nodo {
   bool improntaNota;
   char nomeImpianto[32];       // dall'elenco del server
   float potenzaMassima;        // kW, dal topic config dell'impianto; 0 se non ancora arrivata
-  // Lavaggio dei pannelli: per un nodo vero lo dice la sua misura, per uno virtuale lo simula il master
+  // Lavaggio dei pannelli: per un nodo vero lo dice la sua misura, per un impianto simulato lo simula il master
   bool lavaggio;
   unsigned long lavaggioDa;
   uint32_t ultimoLavaggio;     // fine dell'ultimo lavaggio (secondi Unix UTC), 0 se non c'è stato
-  // Nodo virtuale (vedi IMPIANTI VIRTUALI)
-  bool virtuale;
-  uint8_t scenario;
+  // Impianto simulato (vedi IMPIANTI SIMULATI): nessuna radio e nessun id, i valori arrivano dal server
+  bool simulato;
+  bool nellaSimulazione;       // presente nell'ultimo elenco del server
+  float potenzaSimulata;       // W
+  int16_t temperaturaSimulata; // decimi di °C, come nella misura di un nodo
+  uint32_t luceSimulata;       // lux
   char statoLavato[lora::STATO + 1];   // ultimo stato già gestito, come nel nodo sul tetto
-  bool pulito;                 // scenario sporco: lavato da poco
-  unsigned long pulitoDa;
-  unsigned long prossimaMisuraVirtuale;
-  unsigned long prossimoBattitoVirtuale;
+  unsigned long prossimaMisuraSimulata;
+  unsigned long prossimoBattitoSimulato;
 };
 const int NODI_MASSIMI = 16;
 Nodo nodi[NODI_MASSIMI];
@@ -287,7 +281,7 @@ const int ADESIONI_MASSIME = 4;
 Adesione adesioni[ADESIONI_MASSIME];
 
 // --- PULSANTE E PAGINE DEL DISPLAY ---
-// Pagina 0: la pagina generale; poi una per ogni impianto con un nodo, vero o virtuale. PRG premuto e rilasciato
+// Pagina 0: la pagina generale; poi una per ogni impianto con un nodo, vero o simulato. PRG premuto e rilasciato
 // subito passa alla successiva, e dopo l'ultima si torna alla generale
 int pagina = 0;
 bool pulsantePremuto = false;
@@ -811,28 +805,19 @@ void abbina() {
 
 // --- NODI: ELENCO E CONTATORI ---
 
+// Un nodo vero, della radio: gli impianti simulati non hanno un id
 Nodo *trovaNodo(uint32_t id) {
   for (int i = 0; i < NODI_MASSIMI; i++) {
-    if (nodi[i].usato && nodi[i].id == id) {
+    if (nodi[i].usato && !nodi[i].simulato && nodi[i].id == id) {
       return &nodi[i];
     }
   }
   return nullptr;
 }
 
-// Id dei nodi virtuali di questo master: il suo id con le prime 4 cifre esadecimali cambiate, così sono sempre
-// gli stessi (anche dopo un riavvio, quando tornano dall'elenco del server) e diversi da quelli di un altro master
-uint32_t idVirtuale(int numero) {
-  return lora::idScheda() ^ ((uint32_t)(numero + 1) << 28);
-}
-
-int numeroVirtuale(uint32_t id) {
-  for (int numero = 0; numero < NODI_VIRTUALI; numero++) {
-    if (id == idVirtuale(numero)) {
-      return numero;
-    }
-  }
-  return -1;
+// Per i messaggi del monitor seriale: "nodo A3F2C1D0", o "simulato"
+String nomeNodo(const Nodo &nodo) {
+  return nodo.simulato ? String("simulato") : "nodo " + idLeggibile(nodo.id);
 }
 
 Nodo *nuovoNodo(uint32_t id, const uint8_t chiave[lora::CHIAVE]) {
@@ -844,9 +829,6 @@ Nodo *nuovoNodo(uint32_t id, const uint8_t chiave[lora::CHIAVE]) {
       nodo.id = id;
       memcpy(nodo.chiave, chiave, lora::CHIAVE);
       strcpy(nodo.stato, lora::NON_ASSEGNATO);
-      int numero = numeroVirtuale(id);
-      nodo.virtuale = numero >= 0;
-      nodo.scenario = numero >= 0 ? numero % 3 : SANO;
       return &nodo;
     }
   }
@@ -947,7 +929,7 @@ void trasmetti(const uint8_t *pacchetto, size_t lunghezza) {
 
 void inviaAlNodo(Nodo &nodo, uint8_t tipo, const uint8_t *dati, size_t lunghezza) {
   static const uint8_t NESSUN_DATO[1] = {0};
-  if (nodo.virtuale) {
+  if (nodo.simulato) {
     return;   // Non c'è nessuna radio da cui farlo arrivare
   }
   if (dati == nullptr) {
@@ -966,11 +948,11 @@ bool oraNota() {
 }
 
 // Stato dell'impianto e, se il master sa l'ora (NTP), l'ora: il nodo ci regola il suo orologio
-void gestisciStatoVirtuale(Nodo &nodo);
+void gestisciStatoSimulato(Nodo &nodo);
 
 void inviaStato(Nodo &nodo) {
-  if (nodo.virtuale) {
-    gestisciStatoVirtuale(nodo);
+  if (nodo.simulato) {
+    gestisciStatoSimulato(nodo);
     return;
   }
   // Stato, ora (0 se il master non la sa) e il nome dell'impianto, se il nodo non ha già quello giusto: lo dice
@@ -1048,7 +1030,7 @@ String oraIso(uint32_t secondi) {
 // --- MISURE AL SERVER: UNA MEDIA AL MINUTO PER IMPIANTO ---
 // Come faceva bridge.py: il topic telemetry dell'impianto riceve la media di ogni minuto, con l'ora UTC del minuto
 // (time_stamp), temperatura (°C), luce (lux) e potenza (kW). Per un nodo vero la potenza è quella misurata dalla
-// sua pinza; per un nodo virtuale è quella simulata
+// sua pinza; per un impianto simulato è quella scelta sul sito
 
 void accodaMedia(int impianto, const char *testo) {
   if (codaLunghezza == CODA_MASSIMA) {
@@ -1159,17 +1141,13 @@ void pubblicaEvento(const char *evento, Nodo &nodo, const Adesione *adesione) {
   JsonDocument messaggio;
   messaggio["event"] = evento;
   messaggio["node"] = idLeggibile(nodo.id);
-  if (adesione != nullptr || (nodo.virtuale && strcmp(evento, "node_joined") == 0)) {
+  if (adesione != nullptr) {
     char chiave[2 * lora::CHIAVE + 1];
     lora::esadecimale(nodo.chiave, lora::CHIAVE, chiave);
     messaggio["key"] = chiave;
-  }
-  if (adesione != nullptr) {
     messaggio["kind"] = adesione->tipo == lora::NODO_TETTO ? "roof" : "other";
     messaggio["rssi"] = adesione->rssi;
     messaggio["snr"] = adesione->snr;
-  } else if (nodo.virtuale && strcmp(evento, "node_joined") == 0) {
-    messaggio["kind"] = String("virtuale ") + NOMI_SCENARI[nodo.scenario];   // Così lo mostra il sito
   }
   String testo;
   serializeJson(messaggio, testo);
@@ -1195,11 +1173,11 @@ void pubblicaLavaggio(Nodo &nodo, bool acceso) {
   String testo;
   serializeJson(messaggio, testo);
   bool inviato = mqtt.connected() && mqtt.publish(argomentoImpianto(nodo.impianto, "events").c_str(), testo.c_str());
-  Serial.printf("Impianto %d (nodo %s%s): lavaggio %s%s\n", nodo.impianto, idLeggibile(nodo.id).c_str(),
-                nodo.virtuale ? " virtuale" : "", acceso ? "iniziato" : "finito", inviato ? "" : ", non inviato al server");
+  Serial.printf("Impianto %d (%s): lavaggio %s%s\n", nodo.impianto, nomeNodo(nodo).c_str(),
+                acceso ? "iniziato" : "finito", inviato ? "" : ", non inviato al server");
 }
 
-// Una misura, di un nodo vero o virtuale: per il display e per la media del minuto
+// Una misura, di un nodo vero o di un impianto simulato: per il display e per la media del minuto
 void registraMisura(Nodo &nodo, const lora::Misura &misura, float potenza) {
   nodo.sentitoDa = millis();
   nodo.misura = misura;
@@ -1207,8 +1185,8 @@ void registraMisura(Nodo &nodo, const lora::Misura &misura, float potenza) {
   nodo.misuraDa = millis();
   nodo.potenza = potenza;
   aggiungiAlMinuto(nodo, misura, potenza);
-  if (nodo.virtuale) {
-    return;   // Il lavaggio di un nodo virtuale lo segue la simulazione
+  if (nodo.simulato) {
+    return;   // Il lavaggio di un impianto simulato lo segue la simulazione
   }
   ultimoMisurato = nodo.id;   // La pagina generale mostra il nodo vero
   bool lavaggio = misura.segnali & lora::SEGNALE_LAVAGGIO;
@@ -1218,47 +1196,47 @@ void registraMisura(Nodo &nodo, const lora::Misura &misura, float potenza) {
   }
 }
 
-// --- IMPIANTI VIRTUALI ---
+// --- IMPIANTI SIMULATI ---
 
-// Il nodo vero più recente: i virtuali hanno il tetto accanto al suo
-Nodo *nodoVero() {
-  Nodo *nodo = ultimoMisurato != 0 ? trovaNodo(ultimoMisurato) : nullptr;
-  return nodo != nullptr && nodo->misurato && millis() - nodo->misuraDa < MISURA_RECENTE ? nodo : nullptr;
-}
-
-float resaVirtuale(const Nodo &nodo) {
-  if (nodo.scenario == GUASTO) {
-    return RESA_GUASTO;
+Nodo *trovaSimulato(int impianto) {
+  for (int i = 0; i < NODI_MASSIMI; i++) {
+    if (nodi[i].usato && nodi[i].simulato && nodi[i].impianto == impianto) {
+      return &nodi[i];
+    }
   }
-  return nodo.scenario == SPORCO && !nodo.pulito ? RESA_SPORCO : 1.0f;
+  return nullptr;
 }
 
-// La pinza del nodo vero misura il suo impianto: un vicino sano produce gli stessi kW per kW installato
-float potenzaVirtuale(const Nodo &nodo) {
-  Nodo *vero = nodoVero();
-  float scala = vero != nullptr && vero->potenzaMassima > 0 && nodo.potenzaMassima > 0
-                    ? nodo.potenzaMassima / vero->potenzaMassima : 1.0f;
-  return (vero != nullptr ? vero->potenza : 0) * scala * resaVirtuale(nodo);
+Nodo *nuovoSimulato(int impianto) {
+  for (int i = 0; i < NODI_MASSIMI; i++) {
+    if (!nodi[i].usato) {
+      Nodo &nodo = nodi[i];
+      nodo = Nodo();
+      nodo.usato = true;
+      nodo.simulato = true;
+      nodo.impianto = impianto;
+      strcpy(nodo.stato, lora::NON_ASSEGNATO);   // Fino allo stato retained dell'impianto, che arriva subito
+      nodo.prossimoBattitoSimulato = millis();
+      return &nodo;
+    }
+  }
+  Serial.println("Impianti simulati: elenco dei nodi pieno");
+  return nullptr;
 }
 
-// Temperatura e luce del nodo vero (o 20 °C e 500 lux se non c'è), con qualche decimo di grado e qualche
-// punto percentuale di luce di differenza per tetto
-lora::Misura misuraVirtuale(const Nodo &nodo) {
-  Nodo *vero = nodoVero();
-  int16_t temperatura = vero != nullptr && vero->misura.temperatura != lora::TEMPERATURA_ASSENTE
-                            ? vero->misura.temperatura : 200;
-  uint32_t luce = vero != nullptr ? vero->misura.luce : 500;
-  int scarto = (int)nodo.scenario - 1;   // -1, 0, +1
+// La misura di un impianto simulato: i valori scelti sul sito, con l'ora del master
+lora::Misura misuraSimulata(const Nodo &nodo) {
   lora::Misura misura;
   misura.ora = oraNota() ? (uint32_t)time(nullptr) : 0;
-  misura.temperatura = temperatura + 3 * scarto;
-  misura.luce = luce * (100 + 3 * scarto) / 100;
+  misura.temperatura = nodo.temperaturaSimulata;
+  misura.luce = nodo.luceSimulata;
   misura.segnali = nodo.lavaggio ? lora::SEGNALE_LAVAGGIO : 0;
+  misura.potenza = (uint16_t)min(nodo.potenzaSimulata, 65535.0f);
   return misura;
 }
 
 // Come il nodo sul tetto: con un nuovo DRT o FLT lava i pannelli, una volta per cambiamento
-void gestisciStatoVirtuale(Nodo &nodo) {
+void gestisciStatoSimulato(Nodo &nodo) {
   if (strcmp(nodo.stato, lora::NON_ASSEGNATO) == 0 || strcmp(nodo.stato, nodo.statoLavato) == 0) {
     return;
   }
@@ -1270,53 +1248,69 @@ void gestisciStatoVirtuale(Nodo &nodo) {
   strcpy(nodo.statoLavato, nodo.stato);
 }
 
-// "Aggiungi nodi" sul sito: i nodi virtuali che il master non ha ancora entrano nella rete
-void aggiungiNodiVirtuali() {
-  for (int numero = 0; numero < NODI_VIRTUALI; numero++) {
-    uint32_t id = idVirtuale(numero);
-    if (trovaNodo(id) != nullptr) {
+// Elenco degli impianti da simulare, con i valori dei loro sensori (topic simulation, retained). Arriva a ogni
+// cambiamento sul sito: gli impianti nuovi entrano, quelli che mancano escono, gli altri cambiano i valori
+void riceviSimulazione(JsonDocument &messaggio) {
+  for (int i = 0; i < NODI_MASSIMI; i++) {
+    nodi[i].nellaSimulazione = false;
+  }
+  for (JsonObject voce : messaggio["systems"].as<JsonArray>()) {
+    int impianto = voce["system_id"] | 0;
+    if (impianto <= 0) {
       continue;
     }
-    uint8_t chiave[lora::CHIAVE];
-    esp_fill_random(chiave, sizeof(chiave));   // Il server la vuole; senza radio non serve a nulla
-    Nodo *nodo = nuovoNodo(id, chiave);
-    if (nodo == nullptr) {
-      return;
+    Nodo *nodo = trovaSimulato(impianto);
+    bool nuovo = nodo == nullptr;
+    if (nuovo && (nodo = nuovoSimulato(impianto)) == nullptr) {
+      continue;
     }
-    nodo->entratoDa = millis();
-    ultimoEvento = idLeggibile(id) + " virtuale";
-    Serial.printf("Nodo virtuale %s (%s) entrato nella rete\n", idLeggibile(id).c_str(), NOMI_SCENARI[nodo->scenario]);
-    pubblicaEvento("node_joined", *nodo, nullptr);
+    strncpy(nodo->nomeImpianto, voce["system"] | "", sizeof(nodo->nomeImpianto) - 1);
+    nodo->potenzaMassima = voce["max_power_kw"] | 0.0f;
+    nodo->potenzaSimulata = max(0.0f, (float)(voce["power"] | 0.0f)) * 1000;   // kW sul sito, W come la pinza
+    nodo->temperaturaSimulata = (int16_t)lroundf((voce["temperature"] | 20.0f) * 10);
+    nodo->luceSimulata = (uint32_t)max(0.0f, (float)(voce["lightness"] | 0.0f));
+    nodo->nellaSimulazione = true;
+    // Subito una misura con i valori nuovi: il display li mostra senza aspettare la prossima
+    nodo->prossimaMisuraSimulata = millis();
+    if (nuovo) {
+      ultimoEvento = "simulato aggiunto";   // Sul display: "Nodo simulato aggiunto"
+      Serial.printf("Impianto %d (%s): simulato\n", impianto, nodo->nomeImpianto);
+      iscriviImpianto(impianto);   // Stato e configurazione, retained: arrivano subito
+    }
+    Serial.printf("Impianto %d simulato: %s, %s, %s\n", impianto,
+                  conVirgola(nodo->potenzaSimulata / 1000, 2, " kW").c_str(),
+                  testoTemperatura(nodo->temperaturaSimulata).c_str(), testoLuce(nodo->luceSimulata).c_str());
+  }
+  for (int i = 0; i < NODI_MASSIMI; i++) {
+    Nodo &nodo = nodi[i];
+    if (nodo.usato && nodo.simulato && !nodo.nellaSimulazione) {
+      // La media del minuto in corso si perde: il server non accetta più misure dell'impianto
+      Serial.printf("Impianto %d: non più simulato\n", nodo.impianto);
+      ultimoEvento = "simulato rimosso";
+      dimenticaNodo(nodo);
+    }
   }
 }
 
-// Battiti, misure e lavaggi dei nodi virtuali
-void simulaNodiVirtuali() {
+// Battiti, misure e lavaggi degli impianti simulati
+void simulaImpianti() {
   for (int i = 0; i < NODI_MASSIMI; i++) {
     Nodo &nodo = nodi[i];
-    if (!nodo.usato || !nodo.virtuale || nodo.daRimuovere) {
+    if (!nodo.usato || !nodo.simulato) {
       continue;
     }
-    if (scaduto(nodo.prossimoBattitoVirtuale)) {
+    if (scaduto(nodo.prossimoBattitoSimulato)) {
       nodo.sentitoDa = millis();
       pubblicaPresenza(nodo, true);
-      nodo.prossimoBattitoVirtuale = millis() + BATTITO_VIRTUALE;
+      nodo.prossimoBattitoSimulato = millis() + BATTITO_SIMULATO;
     }
     if (nodo.lavaggio && millis() - nodo.lavaggioDa >= DURATA_LAVAGGIO) {
       nodo.lavaggio = false;
       pubblicaLavaggio(nodo, false);
-      if (nodo.scenario == SPORCO) {
-        nodo.pulito = true;
-        nodo.pulitoDa = millis();
-      }
     }
-    if (nodo.pulito && millis() - nodo.pulitoDa >= RISPORCO) {
-      nodo.pulito = false;
-      Serial.printf("Nodo virtuale %s: i pannelli sono di nuovo sporchi\n", idLeggibile(nodo.id).c_str());
-    }
-    if (scaduto(nodo.prossimaMisuraVirtuale)) {
-      registraMisura(nodo, misuraVirtuale(nodo), potenzaVirtuale(nodo));
-      nodo.prossimaMisuraVirtuale = millis() + INTERVALLO_VIRTUALE;
+    if (scaduto(nodo.prossimaMisuraSimulata)) {
+      registraMisura(nodo, misuraSimulata(nodo), nodo.potenzaSimulata);
+      nodo.prossimaMisuraSimulata = millis() + INTERVALLO_SIMULATO;
     }
   }
 }
@@ -1546,8 +1540,9 @@ void riceviElenco(JsonDocument &messaggio) {
   }
   for (int i = 0; i < NODI_MASSIMI; i++) {
     Nodo &nodo = nodi[i];
-    // Restano i nodi da avvisare della rimozione e quelli appena entrati che il server non ha ancora salvato
-    if (!nodo.usato || nodo.nellElenco || nodo.daRimuovere ||
+    // Restano i nodi da avvisare della rimozione, quelli appena entrati che il server non ha ancora salvato e
+    // gli impianti simulati, che hanno il loro elenco
+    if (!nodo.usato || nodo.simulato || nodo.nellElenco || nodo.daRimuovere ||
         (!nodo.confermato && millis() - nodo.entratoDa < ATTESA_CONFERMA)) {
       continue;
     }
@@ -1562,23 +1557,12 @@ void riceviComando(JsonDocument &messaggio) {
     finestraAperta = true;
     finestraFino = millis() + (messaggio["seconds"] | 180) * 1000UL;
     Serial.println("Aggiunta di nodi aperta: accendi i nodi nuovi");
-    aggiungiNodiVirtuali();
     return;
   }
   const char *testo = messaggio["node"].as<const char *>();
   Nodo *nodo = testo != nullptr ? trovaNodo(strtoul(testo, nullptr, 16)) : nullptr;
   if (nodo == nullptr) {
     return;
-  }
-  if (nodo->virtuale) {
-    if (comando == "remove") {
-      // Nessuna radio da avvisare: il nodo virtuale esce subito (rientra al prossimo "Aggiungi nodi")
-      pubblicaPresenza(*nodo, false);
-      ultimoEvento = idLeggibile(nodo->id) + " rimosso";
-      Serial.printf("Nodo virtuale %s rimosso\n", idLeggibile(nodo->id).c_str());
-      dimenticaNodo(*nodo);
-    }
-    return;   // "Identifica": un nodo virtuale non ha un LED
   }
   if (comando == "identify") {
     uint8_t secondi = messaggio["seconds"] | 10;
@@ -1604,13 +1588,13 @@ void riceviStato(int impianto, JsonDocument &messaggio) {
     if (nodo.usato && nodo.impianto == impianto && !nodo.daRimuovere) {
       strncpy(nodo.stato, stato, lora::STATO);
       nodo.stato[lora::STATO] = '\0';
-      Serial.printf("Impianto %d: stato %s, inoltrato al nodo %s\n", impianto, nodo.stato, idLeggibile(nodo.id).c_str());
+      Serial.printf("Impianto %d: stato %s, inoltrato al %s\n", impianto, nodo.stato, nomeNodo(nodo).c_str());
       inviaStato(nodo);
     }
   }
 }
 
-// Configurazione di un impianto: nome e potenza massima (per scalare la produzione dei nodi virtuali)
+// Configurazione di un impianto: nome e potenza massima
 void riceviConfigurazione(int impianto, JsonDocument &messaggio) {
   for (int i = 0; i < NODI_MASSIMI; i++) {
     Nodo &nodo = nodi[i];
@@ -1633,6 +1617,8 @@ void messaggioRicevuto(char *topic, byte *payload, unsigned int lunghezza) {
     riceviElenco(messaggio);
   } else if (nome == argomento("commands")) {
     riceviComando(messaggio);
+  } else if (nome == argomento("simulation")) {
+    riceviSimulazione(messaggio);
   } else if (nome.startsWith("solarfamily/systems/") && nome.endsWith("/status")) {
     riceviStato(nome.substring(strlen("solarfamily/systems/")).toInt(), messaggio);
   } else if (nome.startsWith("solarfamily/systems/") && nome.endsWith("/config")) {
@@ -1660,6 +1646,7 @@ void collegaBroker() {
   mqtt.publish(connection.c_str(), "online", true);
   mqtt.subscribe(argomento("config").c_str(), 1);
   mqtt.subscribe(argomento("commands").c_str(), 1);
+  mqtt.subscribe(argomento("simulation").c_str(), 1);
   for (int i = 0; i < NODI_MASSIMI; i++) {
     if (nodi[i].usato && nodi[i].impianto != 0) {
       iscriviImpianto(nodi[i].impianto);
@@ -1922,9 +1909,8 @@ void mostraImpianto(Nodo &nodo, int numero, int totale) {
     schermo.drawStr(0, 40, nodo.misurato ? "Nessuna misura da 1 min" : "Nessuna misura");
   }
 
-  if (nodo.virtuale) {
-    snprintf(testo, sizeof(testo), "Nodo virtuale: %s",
-             nodo.scenario == SPORCO && nodo.pulito ? "lavato" : NOMI_SCENARI[nodo.scenario]);
+  if (nodo.simulato) {
+    snprintf(testo, sizeof(testo), "Sensore simulato dal sito");
   } else {
     snprintf(testo, sizeof(testo), "Nodo %s %s", idLeggibile(nodo.id).c_str(), nodo.sentito ? "collegato" : "muto");
   }
@@ -2094,7 +2080,7 @@ void loop() {
   }
   if (!username.isEmpty()) {
     controllaNodi();
-    simulaNodiVirtuali();
+    simulaImpianti();
     controllaMinuti();
     svuotaCoda();
   }

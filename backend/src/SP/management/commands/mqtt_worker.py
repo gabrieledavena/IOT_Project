@@ -13,7 +13,8 @@ class Command(BaseCommand):
     help = (
         "Receives the messages of the devices from the MQTT broker (readings, connection, pump events) and of "
         "the community masters (connection, LoRa nodes joined or left), and publishes the configuration and "
-        "status of every installed system and the nodes of every master when it connects. Runs forever: "
+        "status of every installed system, the nodes of every master and the systems it simulates when it "
+        "connects. Runs forever: "
         "the mqtt-worker service of docker compose starts it."
     )
 
@@ -47,11 +48,14 @@ class Command(BaseCommand):
             # Dai master delle community: collegamento e nodi entrati o usciti
             (mqtt.gateway_topic("+", name), mqtt.QOS) for name in (mqtt.CONNECTION, mqtt.EVENTS)
         ])
-        # Allinea il broker al database: stato e configurazione di ogni impianto installato, e i nodi di ogni
-        # master, retained
+        # Allinea il broker al database: stato e configurazione di ogni impianto installato, i nodi di ogni
+        # master e gli impianti che simula, retained
         messages = mqtt.state_messages(mqtt.installed_systems())
-        gateways = mqtt.gateway_config_messages(mqtt.installed_gateways())
-        for message in messages + gateways:
+        installed_gateways = list(mqtt.installed_gateways())
+        gateways = mqtt.gateway_config_messages(installed_gateways)
+        # Gli impianti che ogni master simula (SP/simulation.py), anche se nessuno
+        simulations = mqtt.gateway_simulation_messages([gateway.community_id for gateway in installed_gateways])
+        for message in messages + gateways + simulations:
             client.publish(**message)
         self.stdout.write(f"Published the state of {len(messages) // 2} installed systems and {len(gateways)} masters.")
 

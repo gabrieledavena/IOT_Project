@@ -3,9 +3,10 @@ from datetime import timedelta
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.utils import timezone
 
-from .models import City, Community, Customer, Intervention, PhotovoltaicSystem
+from .models import City, Community, Customer, Intervention, PhotovoltaicSystem, SimulatedSensor
 
 NOT_SPECIFIED = "Non indicata"
 
@@ -300,3 +301,34 @@ class ForceStatusForm(forms.Form):
         choices=PhotovoltaicSystem.Status.choices, label="Nuovo stato",
         widget=forms.Select(attrs={"class": "form-select"}),
     )
+
+
+class SimulatedValuesForm(forms.ModelForm):
+    """Valori di un sensore simulato, scelti dall'amministratore nella pagina Simulazione (SP/simulation.py).
+
+    La potenza va da 0 a quella installata dell'impianto; temperatura e luce restano tra quelle che un nodo sul tetto
+    può misurare (la luce fino a LUX_MASSIMI di RoofNode.ino).
+    """
+
+    TEMPERATURE_RANGE = (-30.0, 60.0)    # °C
+    LIGHTNESS_RANGE = (0.0, 100000.0)    # lux
+
+    class Meta:
+        model = SimulatedSensor
+        fields = ("power", "temperature", "lightness")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        max_power = self.instance.system.max_power
+        limits = {
+            "power": (0.0, max_power),
+            "temperature": self.TEMPERATURE_RANGE,
+            "lightness": self.LIGHTNESS_RANGE,
+        }
+        for name, (low, high) in limits.items():
+            field = self.fields[name]
+            field.min_value, field.max_value = low, high
+            field.validators += [MinValueValidator(low), MaxValueValidator(high)]
+
+    def clean_power(self):
+        return round(self.cleaned_data["power"], 3)

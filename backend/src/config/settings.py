@@ -162,6 +162,10 @@ MQTT_ENABLED = os.environ.get('MQTT_ENABLED', '1') == '1'
 # stesso host a cui il dispositivo ha chiesto il codice: con docker compose server e broker sono sullo stesso PC
 MQTT_PUBLIC_HOST = os.environ.get('MQTT_PUBLIC_HOST', '')
 MQTT_PUBLIC_PORT = int(os.environ.get('MQTT_PUBLIC_PORT', '1883'))
+# Indirizzo del PC nella rete locale, a cui il master e i telefoni raggiungono il server: in docker il server non lo
+# vede, lo passa start.sh. La pagina Simulazione lo mostra (SP/simulation.py, server_address)
+SERVER_LAN_HOST = os.environ.get('SERVER_LAN_HOST', '')
+SERVER_LAN_PORT = int(os.environ.get('SERVER_LAN_PORT', '8000'))
 
 # Bot Telegram per gli avvisi dei guasti (SP/telegram.py), creato con @BotFather: senza token gli avvisi sono
 # spenti. Il nome utente del bot serve al link con cui il titolare lo collega; SITE_URL ai link nei messaggi

@@ -59,6 +59,7 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | ROI calculator with printable quote, for the consultants | Implemented |
 | Maintenance interventions: requests of the customers, dashboard of the technicians and printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
 | Telegram bot: alert to the owner of the community when a system has a fault and when a technician accepts a request of intervention; status of the systems, daily report of the community, last reading of a system and request of an intervention | Implemented (see [Telegram alerts](#telegram-alerts)) |
+| Simulation of the systems without a sensor, run by the master of the community, with the values chosen by an administrator (for the demo with two boards) | Implemented (see [Simulated systems](#simulated-systems)) |
 | Smart relays of the appliances, 1. self-consumption optimization, 5. energy community simulation | Not implemented yet |
 
 ## Project structure
@@ -75,6 +76,7 @@ ArduinoBridge/            Arduino sketch, SimulIDE circuit and the Python bridge
   serial_ports.py         Serial ports of Windows, macOS and Linux: finds the one where the Arduino answers
   simulated_node.py       Simulated Arduino, to test without SimulIDE
 mosquitto/                Configuration of the MQTT broker
+start.sh                  Starts docker compose passing the server the address of the PC in the local network
 backend/src/
   config/                 Django settings and root URLs
   SP/                     Core app
@@ -92,6 +94,7 @@ backend/src/
     customers.py          New users waiting for a community; creation, editing and deletion of communities (technicians)
     pairing.py            Installation with the QR of the device's display: code, technician's choice, credentials
     gateways.py           Masters of the communities and their LoRa nodes: add nodes, identify, assign, remove
+    simulation.py         Systems without a sensor simulated by the master, with the values chosen by an administrator
     roles.py              Roles of the staff: technicians and consultants
     access.py             Who can see which systems, pages of technicians and consultants
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
@@ -123,6 +126,11 @@ docker exec iot_django_server python manage.py import_cities       # Italian mun
 docker exec iot_django_server python manage.py populate_db         # realistic demo communities, users and readings
 docker exec iot_django_server python manage.py createsuperuser
 ```
+
+On macOS and Linux `./start.sh` (also `./start.sh --build`) can replace `docker compose up -d`: it also passes the
+server the address of the PC in the local network, which the server in Docker cannot see. The page **Simulazione**
+of the administrators shows it, to write it in the master and to open the site from the phone (see
+[Simulated systems](#simulated-systems)); run the script again when the PC changes network or IP.
 
 The web app is at http://localhost:8000. A community is a company or a family: it owns the photovoltaic systems
 and its users access it with their own accounts (each user belongs to at most one community). Users register with
@@ -272,6 +280,7 @@ The master of a community has its topics under `solarfamily/gateways/<id of the 
 | `events` | master → server | no | `{"event": "node_joined", "node": "A3F2C1D0", "key": "...", "kind": "roof", "rssi": -52, "snr": 9.2}` (accepted only while **Aggiungi nodi** is open), `{"event": "node_left", "node": "A3F2C1D0"}` |
 | `config` | server → master | yes | the nodes of the community: `{"community_id": 7, "community": "...", "nodes": [{"id": "A3F2C1D0", "key": "...", "system_id": 42, "system": "Sede"}]}` |
 | `commands` | server → master | no | `{"command": "permit_join", "seconds": 180}`, `{"command": "identify", "node": "A3F2C1D0", "seconds": 10}`, `{"command": "remove", "node": "A3F2C1D0"}` |
+| `simulation` | server → master | yes | the systems to simulate: `{"community_id": 7, "systems": [{"system_id": 43, "system": "Magazzino", "max_power_kw": 10.0, "power": 5.0, "temperature": 24.0, "lightness": 50000.0}]}` (see [Simulated systems](#simulated-systems)) |
 
 All the messages use QoS 1: they are repeated until the broker confirms them, so a reading can arrive twice and
 the second one is discarded (a system has one reading per minute). Status and configuration are retained: the
@@ -290,8 +299,8 @@ connection, publication and subscription:
   `telemetry`, `connection` and `events` of its system and receive only its `status` and `config`. New
   credentials or uninstalling the device stop the old token at once.
 - a master connects as `gw-<id of the community>` with its token. It can access its own topics as in the table
-  above and, as a device, the topics of the systems of its nodes. The device of a system whose sensor is a LoRa node
-  has no token and cannot connect.
+  above and, as a device, the topics of the systems of its nodes and of the systems it simulates. The device of a
+  system whose sensor is a LoRa node (or is simulated) has no token and cannot connect.
 
 **Bridge and Arduino.** The bridge averages the readings of the Arduino over each minute and publishes them; it
 sends to the Arduino the maximum power of the system (`CFG|14620`, in W) and its status (`STATUS|DRT|1`). The
@@ -525,8 +534,9 @@ board *Heltec WiFi LoRa 32(V3)*. Nothing is written in the sketches.
    password, and the display shows its QR (name and password are written next to it). Frame it with the phone's
    camera: the phone joins the network and opens the board's page by itself, as the Wi-Fi of a hotel (otherwise open
    `http://192.168.4.1`). Choose the network (2.4 GHz only) and write its password. Under *Avanzate* write the
-   address of the PC that runs docker compose in the local network, for example `http://192.168.1.10:8000`
-   (`ipconfig getifaddr en0` on macOS, `ipconfig` on Windows); not `localhost` or `0.0.0.0`. The board tries the
+   address of the PC that runs docker compose in the local network, for example `http://192.168.1.10:8000`: started
+   with `./start.sh`, the page **Simulazione** shows it (otherwise `ipconfig getifaddr en0` on macOS, `ipconfig` on
+   Windows); not `localhost` or `0.0.0.0`. The board tries the
    network while keeping its own on, says on the page whether it works and only then saves it.
 2. **Master: installation.** The display shows the pairing QR: connect the phone to the same network as the PC,
    scan it, log in as a technician and choose the community. The page of the community shows the master *Collegato*.
@@ -548,6 +558,48 @@ To test the bridge without a broker or serial port:
 ```bash
 cd ArduinoBridge && python -m unittest discover -s tests -t .
 ```
+
+### Simulated systems
+
+With two boards a community has one system with a real sensor; the **master** can simulate the others, so that its
+display shows the whole community. Only the administrators (superusers) have the page **Simulazione** of the menu
+(`/sp/simulation/`): it lists the communities with a master, and the page of a community (`/sp/simulation/<id>/`):
+
+1. **Avvia la simulazione** gives every system of the community without a device a simulated sensor
+   (`SimulatedSensor`) and a device without a token, as for a LoRa node. The systems with a real sensor (bridge or
+   LoRa node) are not touched. Systems added later are simulated with **Simula anche N nuovi impianti**.
+2. The server sends the list of the simulated systems, with the values of their sensors, to the master (topic
+   `simulation`, retained, see [MQTT](#mqtt)). The master treats each one as a roof node without radio: a page of its
+   display (button PRG, with *Sensore simulato dal sito*), and it publishes for it the connection, a reading every 10
+   seconds averaged over the minute (`telemetry`) and the washing (`events`) when the status becomes DRT or FLT. The
+   server saves and checks them like the other systems: dashboards, totals, Telegram reports and **Imposta stato**
+   of the installation page work as for a real sensor.
+3. For each simulated system the page has production (kW, from 0 to the installed power), temperature (°C, from -30
+   to 60) and light (lux, from 0 to 100,000), with a slider and a box. Every change is sent at once, without
+   reloading the page: the master receives it and shows it on its display within a second. The scenarios *Sole
+   pieno*, *Sole velato*, *Nuvoloso* and *Notte* fill the three values of a system, or of all of them. Every 5
+   seconds the page shows whether the master hears each system, its status and the last reading saved by the server.
+4. **Ferma la simulazione** removes the simulated sensors and their devices: the systems go back without a sensor
+   and the master stops showing them. A simulated system that gets a real sensor (credentials of a bridge, QR of a
+   display or a LoRa node) stops being simulated, and uninstalling the master stops the whole simulation.
+
+**Address of the server.** At the top of the page there is the address at which the master and the phone reach the
+server in the local network (like `http://192.168.1.62:8000`): the one to write under *Avanzate* in the Wi-Fi
+configuration of the master, and the address of the pairing QRs. The server runs in Docker and cannot see the
+network of the PC, so:
+
+- opened with an address of the local network (for example from the phone), the page shows that one;
+- otherwise it shows the one passed by `./start.sh` when it started docker compose (`SERVER_LAN_HOST`), after
+  checking that the site still answers there: if the PC changed network or got a new IP from the router, the page
+  says *Non risponde* and `./start.sh` must be run again (it recreates only the container of the server);
+- without the script the address is unknown (on Windows: `$env:SERVER_LAN_HOST="192.168.1.62"; docker compose up -d`
+  in PowerShell, with the address shown by `ipconfig`).
+
+**Demo with the two Heltec boards.** After installing the master and assigning the roof node to one system (see
+above), log in as an administrator, open **Simulazione** → the community → **Avvia la simulazione**. The display of
+the master adds one page per simulated system and their production to the total of the community; move the sliders
+and the display follows. The master must run the sketch of this version: the previous one simulated three fixed
+virtual nodes that joined with **Aggiungi nodi**; if some are left in the page of the community, remove them.
 
 ## Maintenance interventions
 

@@ -15,10 +15,11 @@ solarfamily/gateways/<id della community>/ e pubblica per gli impianti dei suoi 
     events      master -> server    nodi entrati nella rete o usciti (JSON)
     config      server -> master    nodi della community, con chiave e impianto (JSON, retained)
     commands    server -> master    aggiungi nodi, identifica, rimuovi (JSON)
+    simulation  server -> master    impianti da simulare, con i valori dei sensori (JSON, retained, SP/simulation.py)
 
 Il broker (Mosquitto con il plugin mosquitto-go-auth) chiede al server chi può collegarsi e a quali topic
 può accedere (SP/mqtt_auth.py): un dispositivo solo ai topic del proprio impianto, un master ai propri e a
-quelli degli impianti dei suoi nodi, il server a tutti.
+quelli degli impianti dei suoi nodi e di quelli che simula, il server a tutti.
 """
 import hmac
 import json
@@ -28,10 +29,11 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import close_old_connections
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from .models import Device, Gateway, LoRaNode, PhotovoltaicSystem
+from .models import Device, Gateway, LoRaNode, PhotovoltaicSystem, SimulatedSensor
 from .serializers import PanelDataSerializer
 
 logger = logging.getLogger(__name__)
@@ -45,12 +47,13 @@ EVENTS = "events"
 STATUS = "status"
 CONFIG = "config"
 COMMANDS = "commands"
+SIMULATION = "simulation"
 
 # Cosa può fare un dispositivo sui topic del proprio impianto
 DEVICE_PUBLISHES = {TELEMETRY, CONNECTION, EVENTS}
 DEVICE_RECEIVES = {STATUS, CONFIG}
 GATEWAY_PUBLISHES = {CONNECTION, EVENTS}
-GATEWAY_RECEIVES = {CONFIG, COMMANDS}
+GATEWAY_RECEIVES = {CONFIG, COMMANDS, SIMULATION}
 
 # Tipo di accesso chiesto dal broker per un topic (campo "acc" di mosquitto-go-auth)
 ACC_READ = 1
@@ -130,7 +133,8 @@ def may_access(username, topic_name, acc):
 
 
 def _gateway_may_access(community_id, topic_name, acc):
-    """Il master accede ai propri topic e, come un dispositivo, a quelli degli impianti dei suoi nodi."""
+    """Il master accede ai propri topic e, come un dispositivo, a quelli degli impianti dei suoi nodi e di quelli
+    della sua community che simula."""
     if not Gateway.objects.filter(community_id=community_id).exists():
         return False
     own = parse_gateway_topic(topic_name)
@@ -141,8 +145,9 @@ def _gateway_may_access(community_id, topic_name, acc):
         name = own[1]
     else:
         parsed = parse_topic(topic_name)
-        if parsed is None or not LoRaNode.objects.filter(
-                system_id=parsed[0], gateway__community_id=community_id).exists():
+        if parsed is None or not (
+                LoRaNode.objects.filter(system_id=parsed[0], gateway__community_id=community_id).exists()
+                or SimulatedSensor.objects.filter(system_id=parsed[0], system__community_id=community_id).exists()):
             return False
         publishes, receives = DEVICE_PUBLISHES, DEVICE_RECEIVES
         name = parsed[1]
@@ -234,6 +239,32 @@ def publish_gateway_config(gateway):
     return publish(gateway_config_messages([gateway]))
 
 
+def gateway_simulation_payload(community_id):
+    """Impianti della community che il master simula, con i valori dei sensori (potenza in kW, come telemetry)."""
+    sensors = SimulatedSensor.objects.filter(system__community_id=community_id).select_related("system")
+    return {
+        "community_id": community_id,
+        "systems": [
+            {"system_id": sensor.system_id, "system": sensor.system.name, "max_power_kw": sensor.system.max_power,
+             "power": sensor.power, "temperature": sensor.temperature, "lightness": sensor.lightness}
+            for sensor in sensors.order_by("system_id")
+        ],
+    }
+
+
+def gateway_simulation_messages(community_ids):
+    return [
+        {"topic": gateway_topic(community_id, SIMULATION),
+         "payload": json.dumps(gateway_simulation_payload(community_id)), "qos": QOS, "retain": True}
+        for community_id in community_ids
+    ]
+
+
+def publish_gateway_simulation(community_id):
+    """Impianti simulati e valori dei loro sensori al master (retained: li riceve anche dopo un riavvio)."""
+    return publish(gateway_simulation_messages([community_id]))
+
+
 def publish_command(gateway, command, **fields):
     """Comando al master (non retained: se è scollegato non lo riceve, e le pagine non lo propongono)."""
     payload = json.dumps({"command": command, **fields})
@@ -244,7 +275,7 @@ def publish_command(gateway, command, **fields):
 def clear_gateway_retained(community_id):
     return publish([
         {"topic": gateway_topic(community_id, name), "payload": None, "qos": QOS, "retain": True}
-        for name in (CONFIG, CONNECTION)
+        for name in (CONFIG, CONNECTION, SIMULATION)
     ])
 
 
@@ -395,7 +426,10 @@ def handle_gateway_connection(community_id, payload):
     now = timezone.now()
     Gateway.objects.filter(community_id=community_id).update(online=state == "online", last_seen=now)
     if state == "offline":
-        Device.objects.filter(system__lora_node__gateway__community_id=community_id).update(online=False)
+        Device.objects.filter(
+            Q(system__lora_node__gateway__community_id=community_id)
+            | Q(system__simulated_sensor__isnull=False, system__community_id=community_id)
+        ).update(online=False)
     return Gateway.objects.filter(community_id=community_id).first()
 
 

@@ -1,7 +1,9 @@
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import path
 
-from . import api, communities, customers, installations, interventions, mqtt_auth, pairing, telegram, views
+from . import (
+    api, communities, customers, installations, interventions, mqtt_auth, pairing, simulation, telegram, views,
+)
 
 app_name = "SP"
 
@@ -37,6 +39,11 @@ urlpatterns = [
     path("installations/<int:system_id>/", installations.InstallationDetailView.as_view(), name="installation_detail"),
     path("installations/<int:system_id>/pair/", pairing.PairingCodeView.as_view(), name="installation_pair"),
     path("installations/<int:system_id>/delete/", installations.DeleteSystemView.as_view(), name="installation_delete"),
+    # Simulazione degli impianti senza sensore di una community, eseguita dal suo master (solo amministratori)
+    path("simulation/", simulation.SimulationListView.as_view(), name="simulation_list"),
+    path("simulation/<int:community_id>/", simulation.SimulationView.as_view(), name="simulation_detail"),
+    path("simulation/<int:community_id>/status/", simulation.SimulationStatusView.as_view(),
+         name="simulation_status"),
     # Installazione con il QR del display: la pagina aperta dal QR (indirizzo corto, perché il QR resti piccolo)
     # e le richieste del dispositivo
     path("pair/<str:code>/", pairing.PairingView.as_view(), name="pair"),

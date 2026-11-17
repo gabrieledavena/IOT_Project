@@ -434,6 +434,33 @@ class LoRaNode(models.Model):
         verbose_name_plural = "Nodi LoRa"
 
 
+class SimulatedSensor(models.Model):
+    """Sensore simulato di un impianto senza dispositivo, per le demo con un solo nodo vero (SP/simulation.py).
+
+    Lo simula il master della community, come un nodo sul tetto senza radio: mostra l'impianto sul display e
+    pubblica per lui presenza, misure e lavaggi. I valori misurati li sceglie un amministratore nella pagina
+    Simulazione e il master li riceve via MQTT. L'impianto ha anche un dispositivo senza token (Device), come
+    quello di un nodo LoRa: così collegamento, lavaggi e stato funzionano come per un sensore vero.
+    """
+
+    system = models.OneToOneField(
+        PhotovoltaicSystem, on_delete=models.CASCADE, related_name="simulated_sensor",
+        verbose_name="Impianto Fotovoltaico",
+    )
+    power = models.FloatField("Potenza (kW)")
+    temperature = models.FloatField("Temperatura (°C)")
+    lightness = models.FloatField("Luce (lux)")
+    started_at = models.DateTimeField("Simulato dal", default=timezone.now)
+    updated_at = models.DateTimeField("Valori cambiati il", auto_now=True)
+
+    def __str__(self):
+        return f"Sensore simulato di {self.system}"
+
+    class Meta:
+        verbose_name = "Sensore simulato"
+        verbose_name_plural = "Sensori simulati"
+
+
 class DevicePairing(models.Model):
     """Installazione di un dispositivo con il QR del suo display, senza copiare username e token.
 

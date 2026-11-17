@@ -127,7 +127,7 @@
                                         <select name="system" class="form-select form-select-sm" aria-label="Impianto del nodo {{ node.node_id }}" required>
                                             <option value="">Scegli l'impianto…</option>
                                             {% for system in systems|dictsort:"name" %}
-                                                <option value="{{ system.id }}">{{ system.name }}{% if system.lora_node %} (sostituisce il nodo {{ system.lora_node.node_id }}){% elif system.device %} (sostituisce {{ system.device.username }}){% endif %}</option>
+                                                <option value="{{ system.id }}">{{ system.name }}{% if system.lora_node %} (sostituisce il nodo {{ system.lora_node.node_id }}){% elif system.simulated_sensor %} (ora simulato){% elif system.device %} (sostituisce {{ system.device.username }}){% endif %}</option>
                                             {% endfor %}
                                         </select>
                                         <button type="submit" name="action" value="assign" class="btn btn-sm btn-primary rounded-pill text-nowrap">Assegna</button>
@@ -193,7 +193,7 @@
                                         {% else %}
                                             <span class="badge rounded-pill bg-secondary">Scollegato</span>
                                         {% endif %}
-                                        <div class="small text-muted">{% if system.lora_node %}nodo LoRa <span class="font-monospace">{{ system.lora_node.node_id }}</span>{% else %}{{ system.device.username }}{% endif %}</div>
+                                        <div class="small text-muted">{% if system.lora_node %}nodo LoRa <span class="font-monospace">{{ system.lora_node.node_id }}</span>{% elif system.simulated_sensor %}sensore simulato{% if user.is_superuser %} · <a href="{% url 'SP:simulation_detail' community.id %}">valori</a>{% endif %}{% else %}{{ system.device.username }}{% endif %}</div>
                                     {% else %}
                                         <span class="text-muted small">Non installato</span>
                                     {% endif %}

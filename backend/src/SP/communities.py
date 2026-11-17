@@ -98,7 +98,8 @@ class CommunityDetailView(TechnicianRequiredMixin, View):
         community = get_object_or_404(Community.objects.select_related("city", "owner"), pk=community_id)
         gateway = Gateway.objects.filter(community=community).select_related("installed_by").first()
         nodes = list(gateway.nodes.select_related("system__device").order_by("system", "-joined_at")) if gateway else []
-        systems = list(ordering.apply(community.photovoltaic_systems.select_related("device", "lora_node")))
+        systems = list(ordering.apply(community.photovoltaic_systems.select_related(
+            "device", "lora_node", "simulated_sensor")))
         pairing, pairing_step = awaited_pairing(community.pairings, gateway)
         # La pagina si ricarica quando cambia qualcosa: master, finestra, nodi e collegamento dei sensori
         signature = "|".join([

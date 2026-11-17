@@ -23,6 +23,13 @@ class TechnicianRequiredMixin(UserPassesTestMixin):
         return is_technician(self.request.user)
 
 
+class AdminRequiredMixin(UserPassesTestMixin):
+    """Solo amministratori (superuser): gli altri utenti ricevono 403, i visitatori vanno al login."""
+
+    def test_func(self):
+        return self.request.user.is_superuser
+
+
 class ConsultantRequiredMixin(UserPassesTestMixin):
     """Solo consulenti e amministratori: gli altri utenti ricevono 403, i visitatori vanno al login."""
 

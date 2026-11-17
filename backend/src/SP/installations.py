@@ -16,7 +16,7 @@ from django.utils.functional import cached_property
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 
-from . import mqtt, telegram
+from . import mqtt, simulation, telegram
 from .access import TechnicianRequiredMixin
 from .forms import ForceStatusForm, InstallationForm
 from .models import Community, Device, LoRaNode, PhotovoltaicSystem
@@ -38,8 +38,10 @@ def detach_node(system):
 def install_device(system, staff=None):
     """Installa il dispositivo sull'impianto, o gli dà nuove credenziali se c'è già; restituisce il token.
 
-    Se il sensore dell'impianto era un nodo LoRa, ora è il dispositivo con le credenziali: il nodo si stacca.
+    Se il sensore dell'impianto era un nodo LoRa, ora è il dispositivo con le credenziali: il nodo si stacca. Se
+    era simulato, il master smette di simularlo.
     """
+    simulation.release(system)
     detach_node(system)
     device = Device.objects.filter(system=system).first() or Device(system=system)
     token = device.new_token()
@@ -52,6 +54,7 @@ def install_device(system, staff=None):
 
 
 def uninstall_device(system):
+    simulation.release(system)
     detach_node(system)
     Device.objects.filter(system=system).delete()
     # L'id letto subito: se poi si elimina anche l'impianto, al commit system.id è None

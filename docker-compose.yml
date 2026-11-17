@@ -25,7 +25,11 @@ services:
       - ./backend/src:/app
     ports:
       - "8000:8000"
-    environment: *django-environment
+    environment:
+      <<: *django-environment
+      # Indirizzo del PC nella rete locale, che il server in docker non vede: lo passa start.sh. La pagina
+      # Simulazione lo mostra, da scrivere nel master e da aprire dal telefono
+      SERVER_LAN_HOST: ${SERVER_LAN_HOST:-}
     restart: always
 
   # Controllo automatico degli impianti: ogni ora lancia check_systems, che controlla solo gli impianti non
