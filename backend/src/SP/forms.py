@@ -120,6 +120,36 @@ class CustomerRegistrationForm(UserCreationForm):
         return user
 
 
+class ContactForm(forms.Form):
+    """I recapiti che un cliente cambia dal suo profilo: email e telefono. Quelli del personale li cambiano solo gli
+    amministratori, dall'admin."""
+
+    email = forms.EmailField(label="Email", required=False,
+                             widget=forms.EmailInput(attrs={"class": "form-control", "autocomplete": "email"}))
+    phone = forms.CharField(
+        label="Telefono", max_length=Customer._meta.get_field("phone").max_length, required=False,
+        validators=Customer._meta.get_field("phone").validators,
+        widget=forms.TextInput(attrs={"class": "form-control", "autocomplete": "tel", "placeholder": "Es. +39 333 1234567"}),
+    )
+
+    def __init__(self, *args, customer, **kwargs):
+        self.customer = customer
+        super().__init__(*args, initial={"email": customer.user.email, "phone": customer.phone}, **kwargs)
+
+    def clean_email(self):
+        return self.cleaned_data["email"].strip()
+
+    def clean_phone(self):
+        return " ".join(self.cleaned_data["phone"].split())
+
+    def save(self):
+        user = self.customer.user
+        user.email = self.cleaned_data["email"]
+        user.save(update_fields=["email"])
+        self.customer.phone = self.cleaned_data["phone"]
+        self.customer.save(update_fields=["phone"])
+
+
 class CommunityAssignmentForm(forms.Form):
     """Il tecnico sceglie la community a cui associare un utente appena registrato."""
 

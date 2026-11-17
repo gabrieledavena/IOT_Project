@@ -1,9 +1,12 @@
-"""Pagine web: home (vetrina o dashboard), registrazione, confronto tra città, elenco impianti e dashboard di produzione."""
+"""Pagine web: home (vetrina o dashboard), registrazione, profilo, confronto tra città, elenco impianti e dashboard di
+produzione."""
 from datetime import date
 from statistics import mean
 
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db.models import Case, Count, F, FloatField, IntegerField, Q, Sum, Value, When
 from django.http import JsonResponse
@@ -16,10 +19,10 @@ from forecast.reference_data import REFERENCE_YEARS
 from .access import NOT_A_CUSTOMER, AccessError, visible_system
 from .benchmark import measured_city_yields, reference_yields
 from .energy import period_summary, totalizer
-from .forms import CustomerRegistrationForm
-from .models import City, Community, Customer, PanelData, PhotovoltaicSystem
+from .forms import ContactForm, CustomerRegistrationForm
+from .models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem, StaffProfile
 from .production import energy_kwh, get_community_series, get_system_series
-from .roles import is_consultant, is_technician
+from .roles import ROLES, is_consultant, is_technician
 from .sorting import SYSTEM_STATES, Ordering, problems_first
 from .weather import get_day_weather
 
@@ -172,6 +175,70 @@ class UserDashboardView(LoginRequiredMixin, View):
             },
             "chart_data": series[:: ProductionDashboardView.chart_step],
         }
+
+
+class ProfileView(LoginRequiredMixin, View):
+    """Il proprio account, dal nome nel menu: dati, ruoli e, per un cliente, la sua community; per un tecnico gli
+    interventi che ha in carico. Un cliente vi cambia i suoi recapiti, email e telefono; quelli del personale li
+    cambiano solo gli amministratori, dall'admin, e qui si leggono soltanto."""
+
+    template_name = "SP/profile.html"
+
+    def customer(self):
+        return (Customer.objects.select_related("community__city", "community__owner")
+                .filter(user=self.request.user).first())
+
+    def get(self, request):
+        customer = self.customer()
+        return self.render(request, customer, ContactForm(customer=customer) if customer else None)
+
+    def post(self, request):
+        customer = self.customer()
+        if customer is None:
+            raise PermissionDenied("I recapiti del personale li cambiano gli amministratori.")
+        form = ContactForm(request.POST, customer=customer)
+        if not form.is_valid():
+            return self.render(request, customer, form, status=400)
+        form.save()
+        messages.success(request, "Recapiti aggiornati.")
+        return redirect("SP:profile")
+
+    def render(self, request, customer, form, status=200):
+        user = request.user
+        community = customer.community if customer else None
+        technician = is_technician(user)
+        context = {
+            "profile_user": user,
+            "form": form,
+            "customer": customer,
+            # Il telefono del personale, che lo legge soltanto
+            "staff_phone": None if customer else StaffProfile.objects.filter(user=user).values_list("phone", flat=True).first(),
+            "community": community,
+            "roles": self.roles(user, customer),
+            "technician": technician,
+        }
+        if community:
+            context.update({
+                "members": community.customers.select_related("user").order_by("surname", "name"),
+                "systems": community.photovoltaic_systems.count(),
+                "installed_power": community.photovoltaic_systems.aggregate(total=Sum("max_power"))["total"],
+            })
+        if technician:
+            mine = Intervention.objects.filter(staff=user)
+            context["interventions"] = {
+                "open": mine.filter(status=Intervention.Status.ACCEPTED).count(),
+                "done": mine.filter(status=Intervention.Status.DONE).count(),
+            }
+        return render(request, self.template_name, context, status=status)
+
+    @staticmethod
+    def roles(user, customer):
+        """I ruoli da mostrare: amministratore, i ruoli del personale (i gruppi) e cliente."""
+        roles = ["Amministratore"] if user.is_superuser else []
+        roles += [ROLES[name] for name in user.groups.values_list("name", flat=True).order_by("name") if name in ROLES]
+        if customer:
+            roles.append("Titolare della community" if customer.is_owner else "Cliente")
+        return roles
 
 
 class CityBenchmarkView(View):

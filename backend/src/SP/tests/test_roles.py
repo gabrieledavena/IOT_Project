@@ -1,6 +1,7 @@
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
 
+from SP.models import StaffProfile
 from SP.roles import CONSULTANTS, TECHNICIANS
 from SP.tests.helpers import create_community, create_consultant, create_customer, create_system, create_technician
 
@@ -95,11 +96,37 @@ class AdminTests(TestCase):
         response = self.client.post(f"/admin/auth/user/{user.id}/change/", {
             "username": "mario", "is_active": "on", "groups": [Group.objects.get(name=TECHNICIANS).id],
             "date_joined_0": "2026-10-27", "date_joined_1": "10:00:00",
+            # Il telefono del personale, accanto all'email
+            "email": "mario@example.com", "phone": "+39  051 123456",
         })
 
         self.assertEqual(response.status_code, 302)
         user.refresh_from_db()
         self.assertTrue(user.is_staff)
+        self.assertEqual((user.email, user.staff_profile.phone), ("mario@example.com", "+39 051 123456"))
+
+    def test_email_and_phone_of_the_staff_are_together(self):
+        self.client.force_login(self.admin)
+        technician = create_technician()
+        StaffProfile.objects.create(user=technician, phone="+39 051 123456")
+
+        content = self.client.get(f"/admin/auth/user/{technician.id}/change/").content.decode()
+
+        self.assertIn('value="+39 051 123456"', content)
+        # Nello stesso riquadro, il telefono subito dopo l'email
+        fieldset = content[content.index("Informazioni personali e recapiti"):content.index("Ruolo e permessi")]
+        self.assertLess(fieldset.index('name="email"'), fieldset.index('name="phone"'))
+
+    def test_customers_have_no_staff_phone_in_the_admin(self):
+        self.client.force_login(self.admin)
+        customer = create_customer(create_community())
+
+        response = self.client.get(f"/admin/auth/user/{customer.id}/change/")
+
+        self.assertContains(response, 'name="email"')
+        self.assertNotContains(response, 'name="phone"')
+        self.assertNotContains(self.client.get("/admin/auth/user/add/"), 'name="phone"')
+        self.assertFalse(StaffProfile.objects.exists())
 
     def test_technicians_manage_systems_but_not_users_in_the_admin(self):
         self.client.force_login(create_technician())

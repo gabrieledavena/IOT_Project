@@ -1,13 +1,15 @@
 from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from django.contrib.auth.forms import AdminUserCreationForm
+from django.contrib.auth.forms import AdminUserCreationForm, UserChangeForm
 from django.contrib.auth.models import Group, User
 from django.db import transaction
 from django.utils import timezone
 
 from . import mqtt
-from .models import City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem
+from .models import (
+    PHONE_VALIDATOR, City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem, StaffProfile,
+)
 from .roles import ROLES, TECHNICIANS
 
 
@@ -17,6 +19,20 @@ class StaffUserCreationForm(AdminUserCreationForm):
         help_text="I tecnici installano e gestiscono gli impianti, anche nell'admin; i consulenti preparano i "
                   "preventivi. I clienti si registrano da soli dal sito.",
     )
+
+
+class StaffUserChangeForm(UserChangeForm):
+    """Modifica di un utente, con il telefono del personale accanto all'email (è salvato in StaffProfile)."""
+
+    phone = forms.CharField(label="Telefono", max_length=20, required=False, validators=[PHONE_VALIDATOR])
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        profile = StaffProfile.objects.filter(user_id=self.instance.pk).first() if self.instance.pk else None
+        self.initial["phone"] = profile.phone if profile else ""
+
+    def clean_phone(self):
+        return " ".join(self.cleaned_data["phone"].split())
 
 
 admin.site.unregister(User)
@@ -29,10 +45,13 @@ class StaffUserAdmin(UserAdmin):
     L'accesso all'admin (is_staff) segue il ruolo: ce l'hanno gli amministratori e i tecnici, non i consulenti.
     """
 
+    form = StaffUserChangeForm
     add_form = StaffUserCreationForm
     add_fieldsets = ((None, {"classes": ("wide",), "fields": (*UserAdmin.add_fieldsets[0][1]["fields"], "role")}),)
     fieldsets = (
-        *UserAdmin.fieldsets[:2],
+        UserAdmin.fieldsets[0],
+        # Nome e recapiti insieme: il telefono è del personale, quello dei clienti è nei loro dati di cliente
+        ("Informazioni personali e recapiti", {"fields": ("first_name", "last_name", "email", "phone")}),
         ("Ruolo e permessi", {
             "description": "Il ruolo è il gruppo: Tecnici o Consulenti. L'accesso all'admin (staff) lo hanno gli "
                            "amministratori e i tecnici: si aggiorna da solo al salvataggio.",
@@ -46,6 +65,25 @@ class StaffUserAdmin(UserAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("customer").prefetch_related("groups")
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj is not None and hasattr(obj, "customer"):
+            # Un cliente ha il telefono nei suoi dati di cliente
+            fieldsets = [(name, {**options, "fields": tuple(f for f in options["fields"] if f != "phone")})
+                         for name, options in fieldsets]
+        return fieldsets
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if change and "phone" in form.cleaned_data and not hasattr(obj, "customer"):
+            phone = form.cleaned_data["phone"]
+            profile = StaffProfile.objects.filter(user=obj).first()
+            if profile is not None:
+                profile.phone = phone
+                profile.save(update_fields=["phone"])
+            elif phone:
+                StaffProfile.objects.create(user=obj, phone=phone)
 
     @admin.display(description="Ruolo")
     def role(self, user):
