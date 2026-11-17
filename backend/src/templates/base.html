@@ -52,11 +52,6 @@
                         <a class="nav-link" href="{% url 'forecast:index' %}"><i class="fas fa-cloud-sun me-1"></i>Previsioni</a>
                     </li>
                     {% endif %}
-                    {% if is_community_owner %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'SP:telegram' %}"><i class="fab fa-telegram me-1"></i>Notifiche</a>
-                    </li>
-                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'SP:city_benchmark' %}"><i class="fas fa-map-marked-alt me-1"></i>Confronto città</a>
                     </li>

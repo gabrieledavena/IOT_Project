@@ -4,18 +4,15 @@ from .roles import is_consultant, is_technician
 
 
 def roles(request):
-    """Ruoli dell'utente, per il menu: cliente (e titolare della sua community), tecnico, consulente (gli
-    amministratori sono tecnici e consulenti)."""
+    """Ruoli dell'utente, per il menu: cliente, tecnico, consulente (gli amministratori sono tecnici e consulenti).
+
+    Le notifiche Telegram del titolare non sono nel menu ma nel suo profilo (SP/views.py, ProfileView)."""
     user = request.user
     if not user.is_authenticated:
         return {}
-    customer = Customer.objects.select_related("community").filter(user=user).first()
-    # Solo con una community: chi è in attesa che un tecnico gliela assegni non ha ancora impianti da vedere
-    is_customer = customer is not None and customer.community is not None
     return {
-        "is_customer": is_customer,
-        # Il titolare riceve gli avvisi dei guasti su Telegram
-        "is_community_owner": is_customer and customer.is_owner,
+        # Solo con una community: chi è in attesa che un tecnico gliela assegni non ha ancora impianti da vedere
+        "is_customer": Customer.objects.filter(user=user, community__isnull=False).exists(),
         "is_technician": is_technician(user),
         "is_consultant": is_consultant(user),
     }

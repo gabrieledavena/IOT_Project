@@ -70,7 +70,7 @@
 
         <div class="col-lg-6 d-flex flex-column gap-4">
             {% if customer %}
-                <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card border-0 shadow-sm rounded-4">
                     <div class="card-body p-4">
                         <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-users me-1"></i>La tua community</h6>
                         {% if community %}
@@ -91,6 +91,27 @@
                                 <i class="fas fa-hourglass-half me-1"></i>Non fai ancora parte di una community: un tecnico deve associarti a quella del tuo impianto.
                             </div>
                         {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if telegram %}
+                <div class="card border-0 shadow-sm rounded-4">
+                    <div class="card-body p-4">
+                        <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fab fa-telegram me-1"></i>Notifiche Telegram</h6>
+                        {% if not telegram.enabled %}
+                            <span class="badge rounded-pill bg-secondary mb-2">Bot non disponibile</span>
+                            <p class="text-muted small mb-3">Il bot Telegram non è ancora configurato su questo server: gli avvisi sono spenti.</p>
+                        {% elif telegram.linked %}
+                            <span class="badge rounded-pill bg-success mb-2"><i class="fas fa-check-circle me-1"></i>Collegato</span>
+                            <p class="text-muted small mb-3">Ricevi su Telegram un avviso quando un impianto di {{ community.name }} ha un guasto.</p>
+                        {% else %}
+                            <span class="badge rounded-pill bg-secondary mb-2"><i class="fas fa-times-circle me-1"></i>Non collegato</span>
+                            <p class="text-muted small mb-3">Come titolare puoi ricevere su Telegram un avviso quando un impianto di {{ community.name }} ha un guasto, e chiedere al bot lo stato degli impianti.</p>
+                        {% endif %}
+                        <a href="{% url 'SP:telegram' %}" class="btn {% if telegram.enabled and not telegram.linked %}btn-primary fw-bold{% else %}btn-outline-primary{% endif %} rounded-pill">
+                            <i class="fab fa-telegram me-2"></i>{% if telegram.enabled and not telegram.linked %}Collega Telegram{% else %}Gestisci le notifiche{% endif %}
+                        </a>
                     </div>
                 </div>
             {% endif %}

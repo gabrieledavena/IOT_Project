@@ -9,7 +9,8 @@
     {% else %}
         <div class="row mb-4">
             <div class="col-12">
-                <h2 class="fw-bold text-dark mb-0 mt-4"><i class="fab fa-telegram text-primary me-2"></i>Notifiche Telegram</h2>
+                <a href="{% url 'SP:profile' %}" class="text-decoration-none small d-inline-block mt-4"><i class="fas fa-arrow-left me-1"></i>Il tuo profilo</a>
+                <h2 class="fw-bold text-dark mb-0 mt-2"><i class="fab fa-telegram text-primary me-2"></i>Notifiche Telegram</h2>
                 <p class="text-muted">
                     Come titolare di <strong>{{ customer.community.name }}</strong> puoi ricevere su Telegram un avviso
                     quando un impianto della community ha un guasto, e chiedere al bot lo stato degli impianti.

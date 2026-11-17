@@ -24,6 +24,7 @@ from .models import City, Community, Customer, Intervention, PanelData, Photovol
 from .production import energy_kwh, get_community_series, get_system_series
 from .roles import ROLES, is_consultant, is_technician
 from .sorting import SYSTEM_STATES, Ordering, problems_first
+from .telegram import enabled as telegram_enabled
 from .weather import get_day_weather
 
 # Come mostrare l'esito del controllo automatico (SP/monitoring.py) nella pagina dell'impianto
@@ -180,7 +181,8 @@ class UserDashboardView(LoginRequiredMixin, View):
 class ProfileView(LoginRequiredMixin, View):
     """Il proprio account, dal nome nel menu: dati, ruoli e, per un cliente, la sua community; per un tecnico gli
     interventi che ha in carico. Un cliente vi cambia i suoi recapiti, email e telefono; quelli del personale li
-    cambiano solo gli amministratori, dall'admin, e qui si leggono soltanto."""
+    cambiano solo gli amministratori, dall'admin, e qui si leggono soltanto. Il titolare di una community vi trova
+    le notifiche Telegram: se il suo account è collegato e il link alla pagina per collegarlo (SP/telegram.py)."""
 
     template_name = "SP/profile.html"
 
@@ -217,6 +219,8 @@ class ProfileView(LoginRequiredMixin, View):
             "roles": self.roles(user, customer),
             "technician": technician,
         }
+        if customer and customer.is_owner:
+            context["telegram"] = {"enabled": telegram_enabled(), "linked": bool(customer.telegram_chat_id)}
         if community:
             context.update({
                 "members": community.customers.select_related("user").order_by("surname", "name"),

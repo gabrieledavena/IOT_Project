@@ -582,11 +582,13 @@ one made on the site by another user): who took charge of it, the requested day,
 link to the page of the system. It is sent once, when the request goes from `Richiesta inoltrata` to `Richiesta
 accettata`, from the page of the intervention or from the admin; not when the intervention is executed.
 
-**Linking the account.** Only the owner sees the page **Notifiche** (`/sp/community/telegram/`). Its button
-**Collega Telegram** opens the bot with a code of that owner (`https://t.me/<bot>?start=<code>`); when the owner
-presses **Avvia**, Telegram sends `/start <code>` to the bot and the server saves the chat of the owner. A bot
-cannot write first to a user, so this step is needed. The code works once. **Scollega Telegram** on the same page,
-the command `/stop` or blocking the bot unlinks the account. A Telegram account receives the alerts of one owner.
+**Linking the account.** Only the owner has the box **Notifiche Telegram** in the profile (the username in the menu,
+`/sp/profile/`), which shows whether the account is linked and opens the page **Notifiche Telegram**
+(`/sp/community/telegram/`). Its button **Collega Telegram** opens the bot with a code of that owner
+(`https://t.me/<bot>?start=<code>`); when the owner presses **Avvia**, Telegram sends `/start <code>` to the bot and
+the server saves the chat of the owner. A bot cannot write first to a user, so this step is needed. The code works
+once. **Scollega Telegram** on the same page, the command `/stop` or blocking the bot unlinks the account. A Telegram
+account receives the alerts of one owner.
 
 **Commands** of the bot (also in the menu of the chat):
 
@@ -656,10 +658,10 @@ the page says so and the `telegram-bot` service just waits. Only one process at 
 bot: if two people run docker compose with the same token, Telegram answers `Conflict` to one of them. Each one
 should create a bot for development.
 
-**Trying it.** With the demo data, log in as `user0` (owner of the first community), open **Notifiche** and link
-your account, then send `/stato` to the bot. To get an alert without waiting for a real fault, log in as
-`tecnico1`, open **Community**, choose that community and one of its systems and set its status to `Guasto` with
-**Imposta stato**. The messages and errors of the bot are in its log:
+**Trying it.** With the demo data, log in as `user0` (owner of the first community), open the profile from the
+username in the menu and link your account with **Collega Telegram**, then send `/stato` to the bot. To get an alert
+without waiting for a real fault, log in as `tecnico1`, open **Community**, choose that community and one of its
+systems and set its status to `Guasto` with **Imposta stato**. The messages and errors of the bot are in its log:
 
 ```bash
 docker logs -f iot_telegram_bot

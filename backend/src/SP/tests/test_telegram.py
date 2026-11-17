@@ -257,7 +257,7 @@ class FaultAlertTests(TelegramTestCase):
 
 
 class ManualStatusAlertTests(TelegramTestCase):
-    """Anche lo stato cambiato a mano (admin, pagina Installazioni) avvisa il titolare di un nuovo guasto."""
+    """Anche lo stato cambiato a mano (admin, pagina dell'installazione) avvisa il titolare di un nuovo guasto."""
 
     def setUp(self):
         super().setUp()
@@ -704,11 +704,33 @@ class TelegramPageTests(TelegramTestCase):
         self.assertContains(response, f'href="https://t.me/SolarFamilyTestBot?start={customer_of(self.owner_user).telegram_code}"')
         self.assertContains(response, "/stato")
 
-    def test_the_menu_shows_the_page_only_to_the_owner(self):
+    def test_the_profile_of_the_owner_leads_to_the_page_and_the_menu_does_not(self):
+        profile = reverse("SP:profile")
         self.client.force_login(self.owner_user)
-        self.assertContains(self.client.get(reverse("SP:solar_community")), self.url)
-        self.client.force_login(self.member_user)
-        self.assertNotContains(self.client.get(reverse("SP:solar_community")), self.url)
+
+        response = self.client.get(profile)
+
+        self.assertContains(response, "Notifiche Telegram")
+        self.assertContains(response, "Non collegato")
+        self.assertContains(response, f'href="{self.url}"')
+        self.assertContains(response, "Collega Telegram")
+        # Nel menu non c'è più: si arriva dal profilo
+        self.assertNotContains(self.client.get(reverse("SP:solar_community")), f'href="{self.url}"')
+        # E la pagina riporta al profilo
+        self.assertContains(self.client.get(self.url), f'href="{profile}"')
+
+        self.link_owner()
+        response = self.client.get(profile)
+        self.assertContains(response, "Collegato")
+        self.assertContains(response, "Gestisci le notifiche")
+
+    def test_other_users_have_no_telegram_in_the_profile(self):
+        for user in (self.member_user, create_technician()):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(reverse("SP:profile"))
+                self.assertNotContains(response, "Notifiche Telegram")
+                self.assertNotContains(response, f'href="{self.url}"')
 
     def test_other_users_of_the_community_cannot_link(self):
         self.client.force_login(self.member_user)
@@ -746,6 +768,7 @@ class TelegramPageTests(TelegramTestCase):
         self.assertContains(response, "non è ancora configurato")
         self.assertNotContains(response, "t.me")
         self.assertIsNone(customer_of(self.owner_user).telegram_code)
+        self.assertContains(self.client.get(reverse("SP:profile")), "Bot non disponibile")
 
 
 class TelegramBotCommandTests(TestCase):
