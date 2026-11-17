@@ -58,6 +58,7 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented, with the automatic check of each system (see [System monitoring](#system-monitoring)) |
 | ROI calculator with printable quote, for the consultants | Implemented |
 | Maintenance interventions: requests of the customers, dashboard of the technicians and printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
+| Telegram bot: alert to the owner of the community when a system has a fault and when a technician accepts a request of intervention; status of the systems, daily report of the community, last reading of a system and request of an intervention | Implemented (see [Telegram alerts](#telegram-alerts)) |
 | Smart relays of the appliances, 1. self-consumption optimization, 5. energy community simulation | Not implemented yet |
 
 ## Project structure
@@ -83,6 +84,8 @@ backend/src/
     benchmark.py          Measured yield per installed kW of every city, expected yield of the reference locations
     monitoring.py         Check of each system: production compared with the forecast and with nearby systems
     interventions.py      Maintenance interventions: request, technicians' dashboard, acceptance, execution, report
+    telegram.py           Telegram bot: link of the owner's account, commands and buttons, fault alerts, page Notifiche
+    reports.py            Daily report of a community and last reading of a system (used by the Telegram bot)
     mqtt.py               MQTT topics and messages: readings received, status and configuration published
     mqtt_auth.py          Who can connect to the broker and to which topics (asked by the broker)
     installations.py      Installation of the devices on the systems and deletion of the systems (technicians)
@@ -94,7 +97,7 @@ backend/src/
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
     api.py                REST API to read the measurements
     views.py              Home (showcase or dashboard), registration, city benchmark and production dashboards
-    management/commands/  import_cities, populate_db, check_systems, mqtt_worker, device_credentials
+    management/commands/  import_cities, populate_db, check_systems, mqtt_worker, telegram_bot, device_credentials
     tests/                Tests of the SP app
   forecast/               Production forecast
     predictor.py          Features, model loading, community forecast and past-year yield of a city
@@ -544,13 +547,15 @@ cd ArduinoBridge && python -m unittest discover -s tests -t .
 ## Maintenance interventions
 
 When the check finds a probable fault or a fault (confirmed after the washing), the page of the system shows the
-**Richiedi intervento** button to the users of its community: it opens a calendar to choose the day of the intervention (from tomorrow to two months ahead). A
+**Richiedi intervento** button to the users of its community: it opens a calendar to choose the day of the intervention (from tomorrow to two months ahead).
+The owner of the community can also request it from the Telegram bot (`/intervento`, see [Telegram alerts](#telegram-alerts)). A
 system can have one open request at a time; after an intervention a new one can be requested only if a later check
 finds the fault again. The users see the status of the requests on the page of the system:
 
 1. **Richiesta inoltrata**: the request waits for the technicians;
 2. **Richiesta accettata**: a technician chose the kind of intervention and accepted the request, taking charge of
-   it. Only that technician can record the execution;
+   it. Only that technician can record the execution. The owner of the community gets a message on Telegram (see
+   [Telegram alerts](#telegram-alerts));
 3. **Intervento eseguito**: the date of execution, the work done and the cost are recorded.
 
 The dashboard of the technicians (`/sp/interventions/`, menu **Interventi**, with the number of requests to accept) shows the
@@ -558,13 +563,110 @@ requests to accept, the interventions in progress and the executed ones, with th
 Every intervention has a printable report (or saved as PDF from the browser), available to the technicians and to the
 users of the community.
 
+## Telegram alerts
+
+The owner of a community can get an alert on Telegram when a system has a **fault**, that is when the washing
+did not help and the system still produces less than the nearby systems (`Guasto`, see
+[System monitoring](#system-monitoring)). The alert goes only to the owner, once, when the status becomes a fault:
+not at the following checks, and not for a probable fault, which the washing may solve in an hour. It has a link to
+the page of the system, where the owner can ask for an intervention. A fault set by hand sends the alert too: in the
+admin when the status changes to `Guasto`, and every time with **Imposta stato** of the page of the installation.
+
+The owner also gets a message when a technician **accepts a request of intervention** of the community (also
+one made on the site by another user): who took charge of it, the requested day, the kind of intervention and the
+link to the page of the system. It is sent once, when the request goes from `Richiesta inoltrata` to `Richiesta
+accettata`, from the page of the intervention or from the admin; not when the intervention is executed.
+
+**Linking the account.** Only the owner sees the page **Notifiche** (`/sp/community/telegram/`). Its button
+**Collega Telegram** opens the bot with a code of that owner (`https://t.me/<bot>?start=<code>`); when the owner
+presses **Avvia**, Telegram sends `/start <code>` to the bot and the server saves the chat of the owner. A bot
+cannot write first to a user, so this step is needed. The code works once. **Scollega Telegram** on the same page,
+the command `/stop` or blocking the bot unlinks the account. A Telegram account receives the alerts of one owner.
+
+**Commands** of the bot (also in the menu of the chat):
+
+| Command | Answer |
+|---|---|
+| `/stato` | Status of every system of the community, with the date of the last check |
+| `/report` | Report of today until now; `/report ieri`, `/report 15/11` or `/report 15/11/2026` for another day |
+| `/lettura` | Last reading of a system, chosen with the buttons |
+| `/intervento` | Request of an intervention for a system with a fault, and the open requests |
+| `/stop` | Unlinks the account: no more alerts |
+| `/aiuto` | The list of the commands |
+
+The **daily report** (`SP/reports.py`) has the energy of the community with the change from the day before (for
+today, from yesterday until the same time), the yield per installed kW, the peak of the community (the minute in
+which its systems produced the most together), the minimum and maximum temperature and the CO₂ saved; then, for
+each system, energy, yield and peak. The status of a system is shown only if it is not OK, since it is the status
+of now, not of that day. As in the [energy summaries](#energy-totals-and-summaries) the sums are made by the
+database, without interpolating the missing minutes: if less than 95% of the minutes have a reading, the report
+says so. The buttons under it show the day before and the day after.
+
+The **last reading** shows when it arrived (with a warning if it is older than 10 minutes), the power (also as a
+share of the installed power), temperature, light, the energy produced today, the status of the system and, if it
+has a device, whether the device is connected. With more than one system, `/lettura` first asks which one with a
+button per system; under the reading the same buttons show another system, or refresh the one shown (🔄).
+
+The **request of an intervention** follows the rules of the page of the site (see
+[Maintenance interventions](#maintenance-interventions)), with the same code and the same form
+(`request_unavailable` and `InterventionRequestForm` in `SP/forms.py`): only for a system with a probable fault or a fault
+not yet handled by an intervention, for a day from tomorrow to 60 days ahead, with optional notes for the
+technician. `/intervento` shows a button for each system that can have one (with only one, it goes straight to
+the day) and the open requests of the community. The day is chosen with a button, one week at a time. Then the
+owner either writes a note, which is sent with the request, or presses **Invia senza note**; **Annulla** or any
+command cancels the request. While the bot waits for the note (at most 30 minutes) it keeps system and day in the
+Django cache. The rules are checked again at each step, also for the buttons of old messages. The request is
+then handled by the technicians as one made from the site.
+
+A button pressed in the chat reaches the bot as a `callback_query` with its data (`report:2026-11-16`,
+`lettura:42`): the bot confirms it (`answerCallbackQuery`) and replaces the message with the new one
+(`editMessageText`), so the chat does not fill up with reports. The bot checks again that the system is of the
+owner's community, also for the buttons of old messages.
+
+**How it works.** The server talks to Telegram only with HTTPS requests to the
+[Bot API](https://core.telegram.org/bots/api) (`SP/telegram.py`, with `requests`):
+
+- `check_systems` (service `scheduler`), the admin, the page of the installation and the page of the intervention
+  send the alerts with `sendMessage`, after saving the new status. If Telegram does not answer, the alert is lost
+  but the status is saved: the fault or the accepted request is still on the site.
+- The service `telegram-bot` runs `python manage.py telegram_bot`, a process that runs forever like `mqtt-worker`.
+  It reads the messages sent to the bot with **long polling**: `getUpdates` keeps the request open up to 50 s,
+  until a message arrives, then the bot answers and asks again. Each request confirms the messages already read.
+  The messages sent while the service is stopped stay on Telegram for 24 hours and are answered when it starts
+  again. No open port or public address is needed (a webhook would need one). If Telegram is not reachable, the
+  service retries every 30 s. Like `mqtt-worker`, it is a long process: after changing `SP/telegram.py` or
+  `SP/reports.py` it must be restarted with `docker compose restart telegram-bot`.
+
+**Configuration.** Create the bot with [@BotFather](https://t.me/BotFather) (`/newbot`) and put its token and
+username in a `.env` file next to `docker-compose.yml` (it is not on git: the token gives full control of the bot):
+
+```bash
+TELEGRAM_BOT_TOKEN=123456789:AAH...
+TELEGRAM_BOT_USERNAME=SolarFamilyBot
+SITE_URL=http://localhost:8000      # optional, address of the site in the links of the messages
+```
+
+Then `docker compose up -d` recreates the services with the new variables. Without a token the alerts are off,
+the page says so and the `telegram-bot` service just waits. Only one process at a time can read the messages of a
+bot: if two people run docker compose with the same token, Telegram answers `Conflict` to one of them. Each one
+should create a bot for development.
+
+**Trying it.** With the demo data, log in as `user0` (owner of the first community), open **Notifiche** and link
+your account, then send `/stato` to the bot. To get an alert without waiting for a real fault, log in as
+`tecnico1`, open **Installazioni**, choose a system of that community and set its status to `Guasto` with
+**Imposta stato**. The messages and errors of the bot are in its log:
+
+```bash
+docker logs -f iot_telegram_bot
+```
+
 ## Tests
 
 ```bash
 docker exec iot_django_server python manage.py test
 ```
 
-The tests use a separate database and do not call Open-Meteo.
+The tests use a separate database and do not call Open-Meteo or Telegram.
 
 ## Forecast model
 

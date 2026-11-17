@@ -6,7 +6,7 @@ from django.contrib.auth.models import Group, User
 from django.db import transaction
 from django.utils import timezone
 
-from . import mqtt
+from . import mqtt, telegram
 from .models import City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem
 from .roles import ROLES, TECHNICIANS
 
@@ -113,6 +113,9 @@ class PhotovoltaicSystemAdmin(admin.ModelAdmin):
         # Il dispositivo dell'impianto riceve subito i dati aggiornati, come la potenza massima
         if change:
             transaction.on_commit(lambda: mqtt.publish_state([obj]))
+        # Come dopo il controllo automatico, un nuovo guasto arriva al titolare su Telegram
+        if change and "status" in form.changed_data and obj.status == PhotovoltaicSystem.Status.BROKEN:
+            transaction.on_commit(lambda: telegram.notify_broken([obj]))
 
 
 @admin.register(Device)
@@ -140,3 +143,10 @@ class InterventionAdmin(admin.ModelAdmin):
     list_display = ("id", "system", "status", "requested_at", "preferred_date", "staff", "code", "executed_on")
     list_select_related = ("system", "staff")
     list_filter = ("status", "code")
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Come quando il tecnico accetta la richiesta dalla sua pagina, il titolare riceve l'avviso su Telegram
+        accepted = obj.status == Intervention.Status.ACCEPTED
+        if change and accepted and form.initial.get("status") == Intervention.Status.REQUESTED:
+            transaction.on_commit(lambda: telegram.notify_accepted(obj.pk))

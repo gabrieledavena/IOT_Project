@@ -10,14 +10,19 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Count
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views import View
 
+from . import telegram
 from .access import AccessError, TechnicianRequiredMixin, visible_system
-from .forms import InterventionAcceptForm, InterventionCompletionForm, InterventionRequestForm, intervention_date_range
+from .forms import (
+    InterventionAcceptForm, InterventionCompletionForm, InterventionRequestForm, intervention_date_range,
+    request_unavailable,
+)
 from .models import Customer, Intervention
 
 Status = Intervention.Status
@@ -46,17 +51,13 @@ class InterventionRequestView(LoginRequiredMixin, View):
         except AccessError as error:
             return render(request, self.template_name, {"error": error.message}, status=error.status)
 
-        if not system.can_request_intervention:
-            if system.has_fault:
-                messages.info(request, "C'è già un intervento per il guasto di questo impianto.")
-            else:
-                messages.info(request, "L'impianto non ha un guasto: non serve richiedere un intervento.")
+        unavailable = request_unavailable(system)
+        if unavailable:
+            messages.info(request, unavailable)
             return redirect("SP:photovoltaic_system", system_id=system.id)
 
         if form.is_bound and form.is_valid():
-            intervention = form.save(commit=False)
-            intervention.system, intervention.requested_by = system, request.user
-            intervention.save()
+            intervention = form.save_request(system, request.user)
             messages.success(
                 request,
                 f"Richiesta di intervento inoltrata per il {intervention.preferred_date:%d/%m/%Y}: "
@@ -132,6 +133,8 @@ class InterventionDetailView(TechnicianRequiredMixin, View):
                 status=Status.ACCEPTED, staff=request.user, code=form.cleaned_data["code"]
             )
             if accepted:
+                # Il titolare della community riceve su Telegram l'avviso che la richiesta è stata accettata
+                transaction.on_commit(lambda: telegram.notify_accepted(pk))
                 messages.success(request, "Richiesta accettata: l'intervento è in carico a te.")
             else:
                 messages.warning(request, "Un altro membro dello staff ha appena accettato questa richiesta.")

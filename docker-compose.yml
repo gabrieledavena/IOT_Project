@@ -6,6 +6,12 @@ x-django-environment: &django-environment
   MQTT_PORT: "1883"
   MQTT_USERNAME: solarfamily-server
   MQTT_PASSWORD: ${MQTT_SERVER_PASSWORD:-solarfamily-dev}
+  # Bot Telegram degli avvisi dei guasti: token e nome utente dati da @BotFather, nel file .env (che non va su
+  # git: il token permette a chiunque di usare il bot). Senza token gli avvisi sono spenti
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+  # Indirizzo del sito nei link dei messaggi Telegram
+  SITE_URL: ${SITE_URL:-http://localhost:8000}
   # Se userai un DB vero in futuro (Postgres), le credenziali vanno qui
 
 services:
@@ -59,6 +65,19 @@ services:
     environment: *django-environment
     depends_on:
       - mosquitto
+    restart: always
+
+  # Bot Telegram: legge i messaggi ricevuti dal bot (collegamento del titolare, /stato, /stop) e risponde.
+  # Non serve una porta aperta: è il servizio a chiedere i messaggi a Telegram (long polling)
+  telegram-bot:
+    build: ./backend
+    container_name: iot_telegram_bot
+    command: python manage.py telegram_bot
+    volumes:
+      - ./backend/src:/app
+    environment: *django-environment
+    depends_on:
+      - django-server
     restart: always
 
 volumes:

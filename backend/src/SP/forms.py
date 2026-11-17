@@ -139,8 +139,26 @@ def intervention_date_range():
     return tomorrow, tomorrow + timedelta(days=INTERVENTION_MAX_DAYS_AHEAD - 1)
 
 
+NO_FAULT = "L'impianto non ha un guasto: non serve richiedere un intervento."
+ALREADY_HANDLED = "C'è già un intervento per il guasto di questo impianto."
+
+
+def request_unavailable(system):
+    """Perché il cliente non può chiedere un intervento per l'impianto, o None se può.
+
+    Regole uguali per il sito (SP/interventions.py) e per il bot Telegram (SP/telegram.py): serve un guasto,
+    probabile o confermato, non ancora affidato a un intervento (PhotovoltaicSystem.can_request_intervention).
+    """
+    if system.can_request_intervention:
+        return None
+    return ALREADY_HANDLED if system.has_fault else NO_FAULT
+
+
 class InterventionRequestForm(forms.ModelForm):
-    """Richiesta del cliente: il giorno in cui vorrebbe l'intervento e, se vuole, una descrizione del problema."""
+    """Richiesta del cliente: il giorno in cui vorrebbe l'intervento e, se vuole, una descrizione del problema.
+
+    La usano sia la pagina del sito sia il bot Telegram, così le regole sono le stesse.
+    """
 
     class Meta:
         model = Intervention
@@ -165,6 +183,13 @@ class InterventionRequestForm(forms.ModelForm):
         if not first <= day <= last:
             raise forms.ValidationError(f"Scegli un giorno tra il {first:%d/%m/%Y} e il {last:%d/%m/%Y}.")
         return day
+
+    def save_request(self, system, user):
+        """Salva la richiesta del form valido per l'impianto, a nome dell'utente."""
+        intervention = self.save(commit=False)
+        intervention.system, intervention.requested_by = system, user
+        intervention.save()
+        return intervention
 
 
 class InterventionAcceptForm(forms.ModelForm):

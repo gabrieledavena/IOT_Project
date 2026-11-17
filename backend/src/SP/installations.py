@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 
-from . import mqtt
+from . import mqtt, telegram
 from .access import TechnicianRequiredMixin
 from .forms import ForceStatusForm, InstallationForm
 from .models import Device, LoRaNode, PhotovoltaicSystem
@@ -72,12 +72,14 @@ def force_status(system, status):
     """Imposta lo stato come un controllo automatico e lo pubblica, anche se è uguale a quello attuale.
 
     Vale come un nuovo cambiamento, così si può riprovare la reazione del dispositivo (la pompa con DRT e FLT);
-    vale anche come controllo: il prossimo automatico arriva dopo due giorni.
+    vale anche come controllo: il prossimo automatico arriva dopo due giorni. Con un guasto (BRK) il titolare
+    riceve l'avviso su Telegram, anche questo ogni volta, così si può riprovare.
     """
     now = timezone.now()
     system.previous_status, system.status, system.status_changed_at, system.last_check = system.status, status, now, now
     system.save(update_fields=["previous_status", "status", "status_changed_at", "last_check"])
     transaction.on_commit(lambda: mqtt.publish_status([system]))
+    transaction.on_commit(lambda: telegram.notify_broken([system]))
 
 
 def bridge_commands(device, token):

@@ -1,7 +1,7 @@
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import path
 
-from . import api, customers, gateways, installations, interventions, mqtt_auth, pairing, views
+from . import api, customers, gateways, installations, interventions, mqtt_auth, pairing, telegram, views
 
 app_name = "SP"
 
@@ -12,6 +12,7 @@ urlpatterns = [
     path("cities/", views.CityBenchmarkView.as_view(), name="city_benchmark"),
     path("community/", views.SolarCommunityView.as_view(), name="solar_community"),
     path("community/energy/", views.EnergySummaryView.as_view(), name="community_energy"),
+    path("community/telegram/", telegram.TelegramView.as_view(), name="telegram"),
     path("system/", views.PhotovoltaicSystemListView.as_view(), name="photovoltaic_system_list"),
     path("system/<int:system_id>/", views.PhotovoltaicSystemView.as_view(), name="photovoltaic_system"),
     path("system/<int:system_id>/energy/", views.EnergySummaryView.as_view(), name="system_energy"),

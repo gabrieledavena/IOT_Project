@@ -163,11 +163,20 @@ MQTT_ENABLED = os.environ.get('MQTT_ENABLED', '1') == '1'
 MQTT_PUBLIC_HOST = os.environ.get('MQTT_PUBLIC_HOST', '')
 MQTT_PUBLIC_PORT = int(os.environ.get('MQTT_PUBLIC_PORT', '1883'))
 
+# Bot Telegram per gli avvisi dei guasti (SP/telegram.py), creato con @BotFather: senza token gli avvisi sono
+# spenti. Il nome utente del bot serve al link con cui il titolare lo collega; SITE_URL ai link nei messaggi
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_BOT_USERNAME = os.environ.get('TELEGRAM_BOT_USERNAME', '')
+SITE_URL = os.environ.get('SITE_URL', 'http://localhost:8000')
+
 TEST_RUNNER = 'config.test_runner.TestRunner'
 
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'handlers': {'console': {'class': 'logging.StreamHandler'}},
-    'loggers': {'SP.mqtt': {'handlers': ['console'], 'level': 'INFO'}},
+    'loggers': {
+        'SP.mqtt': {'handlers': ['console'], 'level': 'INFO'},
+        'SP.telegram': {'handlers': ['console'], 'level': 'INFO'},
+    },
 }

@@ -84,6 +84,10 @@ class Customer(models.Model):
     community = models.ForeignKey(
         Community, on_delete=models.SET_NULL, null=True, blank=True, related_name="customers",
     )
+    # Account Telegram collegato dal titolare per ricevere gli avvisi dei guasti (vedi SP/telegram.py). Il codice
+    # è quello del link che apre il bot: vale una volta sola e si cancella quando il collegamento riesce
+    telegram_chat_id = models.BigIntegerField("Chat Telegram", null=True, blank=True, unique=True)
+    telegram_code = models.CharField(max_length=32, null=True, blank=True, unique=True, editable=False)
 
     def __str__(self):
         return f"{self.name} {self.surname}"

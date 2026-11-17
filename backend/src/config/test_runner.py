@@ -3,8 +3,10 @@ from django.test.runner import DiscoverRunner
 
 
 class TestRunner(DiscoverRunner):
-    """Test runner del progetto: durante i test non si pubblica nulla sul broker MQTT vero."""
+    """Test runner del progetto: durante i test non si pubblica nulla sul broker MQTT vero e non si scrive al bot
+    Telegram vero, anche se il token è nell'ambiente (i test che servono attivano un bot finto)."""
 
     def setup_test_environment(self, **kwargs):
         super().setup_test_environment(**kwargs)
         settings.MQTT_ENABLED = False
+        settings.TELEGRAM_BOT_TOKEN = ""

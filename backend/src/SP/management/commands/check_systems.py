@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from forecast.predictor import ForecastError
-from SP import mqtt
+from SP import mqtt, telegram
 from SP.models import PhotovoltaicSystem
 from SP.monitoring import (
     ANOMALY_THRESHOLD, CHECK_DAYS, CleaningVerifier, SystemChecker, systems_to_check, systems_to_verify,
@@ -20,8 +20,8 @@ class Command(BaseCommand):
         f"is compared with the forecast model and, if more than {1 - ANOMALY_THRESHOLD:.0%} lower, with the nearby "
         f"systems. Only the systems not checked in the last {CHECK_DAYS} days are checked, unless --all is given. "
         "First it verifies the probable faults whose panels the device has washed: after an hour of production "
-        "they are OK again if they produce like the nearby systems, otherwise they are faults. "
-        "The scheduler service runs it every hour."
+        "they are OK again if they produce like the nearby systems, otherwise they are faults, and the owner of "
+        "the community gets an alert on Telegram. The scheduler service runs it every hour."
     )
 
     def add_arguments(self, parser):
@@ -44,6 +44,10 @@ class Command(BaseCommand):
         # I dispositivi degli impianti il cui stato è cambiato lo ricevono via MQTT (con DRT e FLT parte il lavaggio)
         if mqtt.publish_status(changed):
             self.stdout.write(f'Status change sent to the devices of {len(mqtt.installed(changed))} systems.')
+        # Il titolare della community riceve su Telegram l'avviso dei guasti confermati (BRK)
+        sent = telegram.notify_broken(changed)
+        if sent:
+            self.stdout.write(f'Fault alert sent on Telegram to the owners of {sent} systems.')
 
     def verify_cleanings(self, now, communities):
         """Probabili guasti lavati dal dispositivo: tornano OK o diventano guasti. Restituisce quelli cambiati."""
