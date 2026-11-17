@@ -5,8 +5,8 @@ from SP.roles import CONSULTANTS, TECHNICIANS
 from SP.tests.helpers import create_community, create_consultant, create_customer, create_system, create_technician
 
 # Pagine dei tecnici (impianti, dispositivi, interventi) e dei consulenti (preventivi)
-TECHNICIAN_PAGES = ["/sp/installations/", "/sp/installations/new/", "/sp/interventions/", "/sp/customers/",
-                    "/sp/customers/communities/new/"]
+TECHNICIAN_PAGES = ["/sp/communities/", "/sp/installations/new/", "/sp/interventions/", "/sp/customers/",
+                    "/sp/communities/new/"]
 CONSULTANT_PAGES = ["/roi/"]
 
 
@@ -34,7 +34,7 @@ class RoleAccessTests(TestCase):
         self.assertTemplateUsed(menu, "SP/landing.html")
         self.assertNotContains(menu, "Sei già cliente?")
         self.assertContains(menu, 'href="/roi/"')
-        for link in ('href="/sp/installations/"', 'href="/sp/interventions/"', 'href="/admin/"', 'href="/sp/community/"',
+        for link in ('href="/sp/communities/"', 'href="/sp/interventions/"', 'href="/admin/"', 'href="/sp/community/"',
                      'href="/sp/customers/"'):
             self.assertNotContains(menu, link)
 
@@ -45,7 +45,7 @@ class RoleAccessTests(TestCase):
         self.assert_status(CONSULTANT_PAGES, 403)
         home = self.client.get("/")
         self.assertContains(home, "Sede")  # la dashboard di tutti gli impianti
-        for link in ('href="/sp/installations/"', 'href="/sp/interventions/"', 'href="/admin/"'):
+        for link in ('href="/sp/communities/"', 'href="/sp/interventions/"', 'href="/admin/"'):
             self.assertContains(home, link)
         self.assertNotContains(home, 'href="/roi/"')
 

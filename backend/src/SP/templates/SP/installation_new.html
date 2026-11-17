@@ -11,7 +11,11 @@
                 <h2 class="fw-bold text-dark mb-0 mt-2">Nuova installazione</h2>
                 <p class="text-muted mb-0">Il nuovo impianto viene aggiunto alla community e il dispositivo <span class="badge rounded-pill bg-dark font-monospace">{{ pairing.display_code }}</span> ne riceve le credenziali appena lo salvi.</p>
             {% else %}
-                <a href="{% url 'SP:installation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le installazioni</a>
+                {% if community %}
+                    <a href="{% url 'SP:community_detail' community.id %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>{{ community.name }}</a>
+                {% else %}
+                    <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le community</a>
+                {% endif %}
                 <h2 class="fw-bold text-dark mb-0 mt-2">Nuova installazione</h2>
                 <p class="text-muted mb-0">Il nuovo impianto viene aggiunto alla community con il suo dispositivo: nella pagina seguente trovi le credenziali per avviare il bridge.</p>
             {% endif %}

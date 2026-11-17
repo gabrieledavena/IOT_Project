@@ -14,7 +14,6 @@ from SP.tests.helpers import (
     add_readings, create_community, create_customer, create_system, create_technician, install_device, utc,
 )
 
-LIST_URL = "/sp/installations/"
 NEW_URL = "/sp/installations/new/"
 
 
@@ -34,6 +33,9 @@ class InstallationTestCase(TestCase):
     def detail_url(self, system=None):
         return f"/sp/installations/{(system or self.system).id}/"
 
+    def community_url(self):
+        return f"/sp/communities/{self.community.id}/"
+
     def post_action(self, action, **data):
         with mock.patch("SP.mqtt.publish") as publish, self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(self.detail_url(), {"action": action, **data}, follow=True)
@@ -43,35 +45,16 @@ class InstallationTestCase(TestCase):
 class AccessTests(InstallationTestCase):
     def test_staff_only(self):
         self.client.force_login(self.customer)
-        for url in (LIST_URL, NEW_URL, self.detail_url()):
+        for url in (NEW_URL, self.detail_url()):
             self.assertEqual(self.client.get(url).status_code, 403)
 
         self.client.logout()
-        self.assertRedirects(self.client.get(LIST_URL), f"/sp/login/?next={LIST_URL}")
+        self.assertRedirects(self.client.get(NEW_URL), f"/sp/login/?next={NEW_URL}")
 
     def test_menu_link_for_staff(self):
-        self.assertContains(self.client.get("/"), LIST_URL)
+        self.assertContains(self.client.get("/"), 'href="/sp/communities/"')
         self.client.force_login(self.customer)
-        self.assertNotContains(self.client.get("/"), LIST_URL)
-
-
-class InstallationListTests(InstallationTestCase):
-    def test_lists_the_systems_with_the_state_of_their_device(self):
-        online = create_system(self.community, "Sede")
-        device, _ = install_device(online)
-        device.online = True
-        device.save()
-
-        response = self.client.get(LIST_URL)
-        self.assertContains(response, "Magazzino")
-        self.assertContains(response, "Non installato")
-        self.assertContains(response, f"pv-{online.id}")
-
-        response = self.client.get(LIST_URL, {"device": "online"})
-        self.assertContains(response, "Sede")
-        self.assertNotContains(response, "Magazzino")
-        self.assertContains(self.client.get(LIST_URL, {"device": "none"}), "Magazzino")
-        self.assertNotContains(self.client.get(LIST_URL, {"q": "sede"}), "Magazzino")
+        self.assertNotContains(self.client.get("/"), 'href="/sp/communities/"')
 
 
 class NewInstallationTests(InstallationTestCase):
@@ -95,6 +78,21 @@ class NewInstallationTests(InstallationTestCase):
 
         # Ricaricando la pagina il token non si vede più
         self.assertIsNone(shown_token(self.client.get(f"/sp/installations/{system.id}/")))
+
+    def test_from_the_page_of_a_community_the_community_is_already_chosen(self):
+        other = create_community("Bianchi Srl")
+        url = f"{NEW_URL}?community={other.id}"
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.context["form"]["community"].value(), other.id)
+        self.assertContains(response, f'href="/sp/communities/{other.id}/"')
+        # Senza community si torna alla lista
+        self.assertContains(self.client.get(NEW_URL), 'href="/sp/communities/"')
+        self.assertIsNone(self.client.get(f"{NEW_URL}?community=x").context["form"]["community"].value())
+        # Con un errore il modulo resta sulla stessa community
+        response = self.client.post(url, self.form(community=other.id, max_power="0"))
+        self.assertContains(response, f'href="/sp/communities/{other.id}/"')
 
     def test_invalid_power_is_rejected(self):
         response = self.client.post(NEW_URL, self.form(max_power="0"))
@@ -244,7 +242,7 @@ class DeleteSystemTests(InstallationTestCase):
 
         response, published = self.delete()
 
-        self.assertRedirects(response, LIST_URL, fetch_redirect_response=False)
+        self.assertRedirects(response, self.community_url(), fetch_redirect_response=False)
         self.assertFalse(PhotovoltaicSystem.objects.filter(pk=system_id).exists())
         self.assertFalse(PanelData.objects.exists())
         self.assertFalse(Device.objects.exists())
@@ -263,7 +261,7 @@ class DeleteSystemTests(InstallationTestCase):
         self.assertIsNone(node.system)
 
     def test_next_leads_back_only_to_this_site(self):
-        community_page = f"/sp/customers/communities/{self.community.id}/delete/"
+        community_page = f"/sp/communities/{self.community.id}/delete/"
         self.assertContains(self.client.get(community_page), f"{self.url}?next={community_page}")
 
         response, _ = self.delete(next=community_page)
@@ -272,7 +270,7 @@ class DeleteSystemTests(InstallationTestCase):
         other = create_system(self.community, "Sede")
         self.url = f"/sp/installations/{other.id}/delete/"
         response, _ = self.delete(next="https://example.com/")
-        self.assertRedirects(response, LIST_URL, fetch_redirect_response=False)
+        self.assertRedirects(response, self.community_url(), fetch_redirect_response=False)
 
     def test_only_technicians_delete_systems(self):
         self.client.force_login(self.customer)

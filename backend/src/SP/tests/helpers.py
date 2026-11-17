@@ -40,6 +40,12 @@ def create_customer(community, username="mario"):
     return user
 
 
+def create_pending_customer(username="anna", **fields):
+    """Utente appena registrato, in attesa che un tecnico lo associ a una community."""
+    user = User.objects.create_user(username=username, password="test-password", email=fields.pop("email", ""))
+    return Customer.objects.create(user=user, name=fields.pop("name", "Anna"), surname="Bianchi", **fields)
+
+
 def create_staff(username, role, **fields):
     """Utente del personale con il ruolo (gruppo) indicato, come lo crea un amministratore: solo i tecnici sono staff."""
     user = User.objects.create_user(username=username, password="test-password", is_staff=role == TECHNICIANS, **fields)

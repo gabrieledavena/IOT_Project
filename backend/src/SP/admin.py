@@ -117,7 +117,7 @@ class PhotovoltaicSystemAdmin(admin.ModelAdmin):
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
-    """Solo consultazione: installazione e credenziali si gestiscono dalla pagina Installazioni."""
+    """Solo consultazione: installazione e credenziali si gestiscono dalla pagina dell'impianto (Community)."""
 
     list_display = ("username", "system", "installed_by", "installed_at", "online", "last_seen", "last_cleaning")
     list_select_related = ("system", "installed_by")

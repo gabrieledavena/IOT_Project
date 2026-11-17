@@ -1,7 +1,7 @@
 from django.contrib.auth.views import LoginView, LogoutView
 from django.urls import path
 
-from . import api, customers, gateways, installations, interventions, mqtt_auth, pairing, views
+from . import api, communities, customers, installations, interventions, mqtt_auth, pairing, views
 
 app_name = "SP"
 
@@ -22,22 +22,19 @@ urlpatterns = [
     # Utenti appena registrati, che un tecnico associa a una community
     path("customers/", customers.PendingCustomerListView.as_view(), name="customer_assignment"),
     path("customers/<int:customer_id>/assign/", customers.AssignCommunityView.as_view(), name="customer_assign"),
-    path("customers/communities/", customers.ManageCommunitiesView.as_view(), name="community_manage_list"),
-    path("customers/communities/new/", customers.NewCommunityView.as_view(), name="community_new"),
-    path("customers/communities/<int:community_id>/", customers.EditCommunityView.as_view(), name="community_edit"),
-    path("customers/communities/<int:community_id>/delete/", customers.DeleteCommunityView.as_view(),
+    # Le community: anagrafica, master con i suoi nodi LoRa e impianti
+    path("communities/", communities.CommunityListView.as_view(), name="community_list"),
+    path("communities/new/", communities.NewCommunityView.as_view(), name="community_new"),
+    path("communities/<int:community_id>/", communities.CommunityDetailView.as_view(), name="community_detail"),
+    path("communities/<int:community_id>/edit/", communities.EditCommunityView.as_view(), name="community_edit"),
+    path("communities/<int:community_id>/delete/", communities.DeleteCommunityView.as_view(),
          name="community_delete"),
-    path("installations/", installations.InstallationListView.as_view(), name="installation_list"),
+    path("communities/<int:community_id>/pair/", pairing.CommunityPairingCodeView.as_view(), name="community_pair"),
+    # L'installazione di un impianto: il suo sensore (dispositivo con le credenziali o nodo LoRa) e il suo stato
     path("installations/new/", installations.NewInstallationView.as_view(), name="installation_new"),
     path("installations/<int:system_id>/", installations.InstallationDetailView.as_view(), name="installation_detail"),
     path("installations/<int:system_id>/pair/", pairing.PairingCodeView.as_view(), name="installation_pair"),
     path("installations/<int:system_id>/delete/", installations.DeleteSystemView.as_view(), name="installation_delete"),
-    # Master delle community e i loro nodi LoRa
-    path("installations/communities/", gateways.CommunityListView.as_view(), name="community_list"),
-    path("installations/communities/<int:community_id>/", gateways.CommunityInstallationView.as_view(),
-         name="community_installation"),
-    path("installations/communities/<int:community_id>/pair/", pairing.CommunityPairingCodeView.as_view(),
-         name="community_pair"),
     # Installazione con il QR del display: la pagina aperta dal QR (indirizzo corto, perché il QR resti piccolo)
     # e le richieste del dispositivo
     path("pair/<str:code>/", pairing.PairingView.as_view(), name="pair"),

@@ -1,18 +1,21 @@
 {% extends "base.html" %}
 {% load interventions %}
 
-{% block title %}Master di {{ community.name }}{% endblock %}
+{% block title %}{{ community.name }}{% endblock %}
 
 {% block content %}
 <div class="container mb-5" data-refresh="{{ signature }}">
     <div class="row mb-4">
         <div class="col-12 d-flex flex-wrap justify-content-between align-items-end gap-3">
             <div>
-                <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Master delle community</a>
+                <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le community</a>
                 <h2 class="fw-bold text-dark mb-1 mt-2">{{ community.name }}</h2>
-                <span class="text-muted">{{ community.city }} · {{ systems|length }} impiant{{ systems|length|pluralize:"o,i" }}</span>
+                <span class="text-muted">{{ community.city }} · {{ systems|length }} impiant{{ systems|length|pluralize:"o,i" }} · {{ users }} utent{{ users|pluralize:"e,i" }}{% if community.owner %} · titolare {{ community.owner }}{% endif %}</span>
             </div>
-            <a href="{% url 'SP:installation_list' %}?q={{ community.name|urlencode }}" class="btn btn-outline-secondary rounded-pill"><i class="fas fa-solar-panel me-2"></i>Impianti</a>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{% url 'SP:community_edit' community.id %}" class="btn btn-outline-secondary rounded-pill"><i class="fas fa-pen me-2"></i>Modifica</a>
+                <a href="{% url 'SP:installation_new' %}?community={{ community.id }}" class="btn btn-success rounded-pill fw-bold"><i class="fas fa-plus me-2"></i>Nuova installazione</a>
+            </div>
         </div>
     </div>
 
@@ -161,6 +164,48 @@
                         <p class="small text-muted mb-0 mt-2">Nessun nodo nella rete del master.</p>
                     {% endif %}
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4 mt-4">
+        <div class="card-body p-4">
+            <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-solar-panel me-1"></i>Impianti</h6>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr class="small text-muted"><th>Id</th><th>Impianto</th><th>Potenza</th><th>Stato</th><th>Sensore</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for system in systems %}
+                            <tr>
+                                <td class="text-muted small">{{ system.id }}</td>
+                                <td class="fw-bold">{{ system.name }}</td>
+                                <td class="text-nowrap">{{ system.max_power|floatformat:2 }} kW</td>
+                                <td>{{ system.get_status_display }}</td>
+                                <td>
+                                    {% if system.device %}
+                                        {% if system.device.online %}
+                                            <span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>
+                                        {% else %}
+                                            <span class="badge rounded-pill bg-secondary">Scollegato</span>
+                                        {% endif %}
+                                        <div class="small text-muted">{% if system.lora_node %}nodo LoRa <span class="font-monospace">{{ system.lora_node.node_id }}</span>{% else %}{{ system.device.username }}{% endif %}</div>
+                                    {% else %}
+                                        <span class="text-muted small">Non installato</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <a href="{% url 'SP:installation_detail' system.id %}" class="btn btn-sm {% if system.device %}btn-primary{% else %}btn-outline-primary{% endif %} rounded-pill text-nowrap">
+                                        {% if system.device %}Apri{% else %}Installa{% endif %} <i class="fas fa-arrow-right ms-1"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr><td colspan="6" class="text-muted text-center py-4">Nessun impianto: aggiungilo con <strong>Nuova installazione</strong>.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
