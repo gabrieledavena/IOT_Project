@@ -10,7 +10,6 @@
             <p class="text-muted mb-0">Chi si registra non ha ancora una community: associalo a quella della sua famiglia o della sua azienda, o creane una nuova. Il primo utente di una community ne diventa il titolare.</p>
         </div>
         <div class="col-lg-auto">
-            <a href="{% url 'SP:community_manage_list' %}" class="btn btn-outline-secondary rounded-pill"><i class="fas fa-users me-1"></i>Tutte le community</a>
             <a href="{% url 'SP:community_new' %}" class="btn btn-outline-primary rounded-pill"><i class="fas fa-plus me-1"></i>Nuova community</a>
         </div>
     </div>
@@ -26,10 +25,14 @@
 
     <div class="card border-0 shadow-sm rounded-4">
         <div class="card-body p-4">
-            <form method="get" class="d-flex flex-wrap gap-2 mb-3">
-                <input type="search" name="q" value="{{ query }}" class="form-control" style="max-width: 320px;" placeholder="Cerca nome, username, email o telefono" aria-label="Cerca nome, username, email o telefono">
-                <button type="submit" class="btn btn-outline-primary"><i class="fas fa-search me-1"></i>Cerca</button>
-            </form>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <form method="get" class="d-flex gap-2 flex-grow-1">
+                    <input type="hidden" name="sort" value="{{ ordering.key }}">
+                    <input type="search" name="q" value="{{ query }}" class="form-control" style="max-width: 320px;" placeholder="Cerca nome, username, email o telefono" aria-label="Cerca nome, username, email o telefono">
+                    <button type="submit" class="btn btn-outline-primary"><i class="fas fa-search me-1"></i>Cerca</button>
+                </form>
+                {% include "partials/sort_select.html" %}
+            </div>
             <div class="table-responsive">
                 <table class="table align-middle mb-0">
                     <thead>
@@ -49,6 +52,7 @@
                                     <form method="post" action="{% url 'SP:customer_assign' customer.id %}" class="d-flex gap-2">
                                         {% csrf_token %}
                                         <input type="hidden" name="q" value="{{ query }}">
+                                        <input type="hidden" name="sort" value="{{ ordering.key }}">
                                         <select name="community" class="form-select form-select-sm" style="min-width: 220px;" required aria-label="Community di {{ customer }}">
                                             <option value="">Scegli la community</option>
                                             {% for community in communities %}
@@ -69,9 +73,9 @@
             {% if page.has_other_pages %}
                 <nav class="mt-4" aria-label="Pagine">
                     <ul class="pagination justify-content-center mb-0">
-                        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>{% endif %}
+                        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;sort={{ ordering.key }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>{% endif %}
                         <li class="page-item disabled"><span class="page-link">Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span></li>
-                        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>{% endif %}
+                        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;sort={{ ordering.key }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>{% endif %}
                     </ul>
                 </nav>
             {% endif %}

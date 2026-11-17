@@ -68,6 +68,10 @@ class Community(models.Model):
         verbose_name_plural = "Communities"
 
 
+# Il telefono di clienti e personale, facoltativo come l'email (User.email)
+PHONE_VALIDATOR = RegexValidator(r"^\+?[0-9 ]{6,19}$", "Inserisci un numero di telefono valido, es. +39 333 1234567.")
+
+
 class Customer(models.Model):
     """Utente che si è registrato. Chi si registra non ha una community: lo associa un tecnico (SP/customers.py),
     e fino ad allora non vede impianti."""
@@ -76,10 +80,7 @@ class Customer(models.Model):
     name = models.CharField(max_length=100)
     surname = models.CharField(max_length=100)
     # Facoltativo, come l'email (User.email): servono al tecnico per contattare il cliente
-    phone = models.CharField(
-        "Telefono", max_length=20, blank=True,
-        validators=[RegexValidator(r"^\+?[0-9 ]{6,19}$", "Inserisci un numero di telefono valido, es. +39 333 1234567.")],
-    )
+    phone = models.CharField("Telefono", max_length=20, blank=True, validators=[PHONE_VALIDATOR])
     # SET_NULL: eliminata la community, i suoi utenti restano in attesa di un'altra
     community = models.ForeignKey(
         Community, on_delete=models.SET_NULL, null=True, blank=True, related_name="customers",
@@ -116,6 +117,23 @@ class Customer(models.Model):
     class Meta:
         verbose_name = "Customer"
         verbose_name_plural = "Customers"
+
+
+class StaffProfile(models.Model):
+    """Recapiti del personale (tecnici, consulenti, amministratori), che non è un cliente: il telefono.
+
+    Li cambiano solo gli amministratori, dall'admin; nel profilo il personale li legge soltanto.
+    """
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="staff_profile")
+    phone = models.CharField("Telefono", max_length=20, blank=True, validators=[PHONE_VALIDATOR])
+
+    def __str__(self):
+        return self.user.username
+
+    class Meta:
+        verbose_name = "Recapiti del personale"
+        verbose_name_plural = "Recapiti del personale"
 
 
 class PhotovoltaicSystem(models.Model):

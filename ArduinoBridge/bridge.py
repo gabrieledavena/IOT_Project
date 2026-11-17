@@ -1,7 +1,7 @@
 """Bridge tra Arduino (porta seriale) e il broker MQTT, per un impianto fotovoltaico.
 
-Il bridge si collega al broker con le credenziali del dispositivo dell'impianto (pagina Installazioni o comando
-device_credentials del server) e da quelle sa quale impianto è:
+Il bridge si collega al broker con le credenziali del dispositivo dell'impianto (pagina dell'impianto nella sua
+community, o comando device_credentials del server) e da quelle sa quale impianto è:
 
 - riceve dal topic config i dati dell'impianto e invia ad Arduino la potenza massima;
 - fa la media delle misure di Arduino su ogni minuto e la pubblica sul topic telemetry;
@@ -293,7 +293,7 @@ def parse_args(argv=None):
         return args
     if not args.device or not args.token:
         parser.error("servono --device e --token (o SOLAR_DEVICE e SOLAR_DEVICE_TOKEN): "
-                     "le dà la pagina Installazioni del sito o il comando device_credentials")
+                     "le dà la pagina dell'impianto nel sito (Community) o il comando device_credentials")
     try:
         system_id_from_username(args.device)
     except ValueError as error:

@@ -1,4 +1,4 @@
-"""Master delle community e nodi LoRa sui tetti, per i tecnici.
+"""Master delle community e nodi LoRa sui tetti, che i tecnici installano dalla pagina della community.
 
 Il master è l'unico dispositivo della community collegato a internet: si installa sulla community con il QR del
 suo display (SP/pairing.py). I nodi sui tetti, il sensore di un impianto ciascuno, non hanno display né internet:
@@ -10,20 +10,15 @@ entrano nella rete del master come i dispositivi Zigbee in quella della loro cen
 3. Il tecnico lo assegna a un impianto della community del master, dopo averlo riconosciuto con "Identifica" (il LED
    del nodo lampeggia). L'impianto riceve un dispositivo senza token: le sue misure le pubblica il master.
 
-Il protocollo LoRa tra master e nodi è descritto in ArduinoBridge/MasterNode/ProtocolloLora.h.
+La pagina con il master e i nodi è in SP/communities.py; il protocollo LoRa tra master e nodi è descritto in
+ArduinoBridge/MasterNode/ProtocolloLora.h.
 """
-from django.contrib import messages
-from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, Q
-from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.views import View
 
 from . import mqtt
-from .access import TechnicianRequiredMixin
-from .installations import awaited_pairing, detach_node, uninstall_device
-from .models import Community, Device, Gateway, LoRaNode
+from .installations import detach_node, uninstall_device
+from .models import Device, Gateway
 
 IDENTIFY_SECONDS = 10
 
@@ -106,97 +101,3 @@ def node_online(node):
     """True se il master sente il nodo (il dispositivo del suo impianto è collegato)."""
     device = getattr(node.system, "device", None) if node.system_id else None
     return bool(device and device.online)
-
-
-# --- Pagine del tecnico ---
-
-class CommunityListView(TechnicianRequiredMixin, View):
-    """Le community con il loro master: installato, collegato, quanti nodi."""
-
-    template_name = "SP/community_list.html"
-    per_page = 50
-
-    def get(self, request):
-        query = request.GET.get("q", "").strip()
-        communities = Community.objects.select_related("city", "gateway").annotate(
-            systems=Count("photovoltaic_systems", distinct=True), node_count=Count("gateway__nodes", distinct=True),
-        ).order_by("name")
-        if query:
-            communities = communities.filter(Q(name__icontains=query) | Q(city__name__icontains=query))
-        context = {
-            "page": Paginator(communities, self.per_page).get_page(request.GET.get("page")),
-            "query": query,
-            "counts": {"gateways": Gateway.objects.count(), "online": Gateway.objects.filter(online=True).count(),
-                       "nodes": LoRaNode.objects.count()},
-        }
-        return render(request, self.template_name, context)
-
-
-class CommunityInstallationView(TechnicianRequiredMixin, View):
-    """Master di una community e i suoi nodi: aggiunta, identificazione, assegnazione agli impianti, rimozione."""
-
-    template_name = "SP/community_installation.html"
-
-    def get(self, request, community_id):
-        community = get_object_or_404(Community.objects.select_related("city"), pk=community_id)
-        gateway = Gateway.objects.filter(community=community).select_related("installed_by").first()
-        nodes = list(gateway.nodes.select_related("system__device").order_by("system", "-joined_at")) if gateway else []
-        systems = community.photovoltaic_systems.select_related("device", "lora_node").order_by("name")
-        pairing, pairing_step = awaited_pairing(community.pairings, gateway)
-        # La pagina si ricarica quando cambia qualcosa: master, finestra, nodi e loro collegamento
-        signature = "|".join([
-            str(gateway.online if gateway else None), str(gateway.join_seconds_left > 0 if gateway else False),
-            str(pairing_step), *(f"{node.node_id}:{node.system_id}:{node_online(node)}" for node in nodes),
-        ])
-        context = {
-            "community": community,
-            "gateway": gateway,
-            "pending": [node for node in nodes if node.system_id is None],
-            "assigned": [node for node in nodes if node.system_id is not None],
-            "systems": systems,
-            "pairing": pairing,
-            "pairing_step": pairing_step,
-            "signature": signature,
-        }
-        return render(request, self.template_name, context)
-
-    def post(self, request, community_id):
-        community = get_object_or_404(Community, pk=community_id)
-        gateway = Gateway.objects.filter(community=community).first()
-        action = request.POST.get("action")
-        node = (LoRaNode.objects.select_related("gateway", "system").filter(
-            gateway=gateway, node_id=request.POST.get("node", "")).first() if gateway else None)
-
-        if gateway is None:
-            messages.error(request, "La community non ha un master.")
-        elif action == "permit_join":
-            if not gateway.online:
-                messages.error(request, "Il master è scollegato: i nodi si aggiungono solo con il master collegato.")
-            else:
-                with transaction.atomic():
-                    permit_join(gateway)
-                messages.success(request, "Il master accetta nodi nuovi per 3 minuti: accendi i nodi sui tetti.")
-        elif action == "uninstall":
-            with transaction.atomic():
-                uninstall_gateway(community)
-            messages.success(request, "Master disinstallato: le sue credenziali non funzionano più e i suoi nodi sono stati rimossi.")
-        elif node is None:
-            messages.error(request, "Nodo non trovato.")
-        elif action == "identify":
-            with transaction.atomic():
-                identify(node)
-            messages.info(request, f"Il LED del nodo {node.node_id} lampeggia per {IDENTIFY_SECONDS} secondi.")
-        elif action == "assign":
-            system_id = request.POST.get("system", "")
-            system = community.photovoltaic_systems.filter(pk=system_id).first() if system_id.isdigit() else None
-            if system is None:
-                messages.error(request, "Scegli un impianto della community.")
-            else:
-                with transaction.atomic():
-                    assign_node(node, system, request.user)
-                messages.success(request, f"Il nodo {node.node_id} è il sensore di {system.name}.")
-        elif action == "remove":
-            with transaction.atomic():
-                remove_node(node)
-            messages.success(request, f"Nodo {node.node_id} rimosso: esce dalla rete del master e torna come nuovo.")
-        return redirect("SP:community_installation", community_id=community.id)

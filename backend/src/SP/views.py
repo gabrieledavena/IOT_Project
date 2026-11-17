@@ -1,11 +1,14 @@
-"""Pagine web: home (vetrina o dashboard), registrazione, confronto tra città, elenco impianti e dashboard di produzione."""
+"""Pagine web: home (vetrina o dashboard), registrazione, profilo, confronto tra città, elenco impianti e dashboard di
+produzione."""
 from datetime import date
 from statistics import mean
 
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, IntegerField, Q, Sum, Value, When
+from django.db.models import Case, Count, F, FloatField, IntegerField, Q, Sum, Value, When
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -16,10 +19,11 @@ from forecast.reference_data import REFERENCE_YEARS
 from .access import NOT_A_CUSTOMER, AccessError, visible_system
 from .benchmark import measured_city_yields, reference_yields
 from .energy import period_summary, totalizer
-from .forms import CustomerRegistrationForm
-from .models import City, Community, Customer, PanelData, PhotovoltaicSystem
+from .forms import ContactForm, CustomerRegistrationForm
+from .models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem, StaffProfile
 from .production import energy_kwh, get_community_series, get_system_series
-from .roles import is_consultant, is_technician
+from .roles import ROLES, is_consultant, is_technician
+from .sorting import SYSTEM_STATES, Ordering, problems_first
 from .weather import get_day_weather
 
 # Come mostrare l'esito del controllo automatico (SP/monitoring.py) nella pagina dell'impianto
@@ -92,15 +96,16 @@ class UserDashboardView(LoginRequiredMixin, View):
 
     template_name = "SP/user_dashboard.html"
     per_page = 50
-    Status = PhotovoltaicSystem.Status
-    checked = Q(last_check__isnull=False)
     # Filtri per stato: mai controllati a parte, perché il loro stato è solo quello iniziale
-    FILTERS = {
-        "broken": checked & Q(status=Status.BROKEN),
-        "fault": checked & Q(status=Status.FAULT),
-        "dirty": checked & Q(status=Status.DIRTY),
-        "ok": checked & Q(status=Status.OK),
-        "new": Q(last_check__isnull=True),
+    FILTERS = SYSTEM_STATES
+    ORDERINGS = {
+        "status": ("Prima i problemi", (problems_first(), "community__name", "name")),
+        "name": ("Nome (A-Z)", ("name", "community__name")),
+        "community": ("Community (A-Z)", ("community__name", "name")),
+        "power_desc": ("Potenza più alta", ("-max_power", "name")),
+        "power": ("Potenza più bassa", ("max_power", "name")),
+        "checked_desc": ("Controllo più recente", (F("last_check").desc(nulls_last=True), "name")),
+        "checked": ("Controllo meno recente", (F("last_check").asc(nulls_first=True), "name")),
     }
 
     def get(self, request):
@@ -122,11 +127,10 @@ class UserDashboardView(LoginRequiredMixin, View):
         selected = request.GET.get("status") if request.GET.get("status") in self.FILTERS else ""
         if selected:
             systems = systems.filter(self.FILTERS[selected])
-        priority = Case(
-            *(When(self.FILTERS[name], then=Value(rank)) for rank, name in enumerate(self.FILTERS)),
-            output_field=IntegerField(),
-        )
-        systems = systems.order_by(priority, "community__name", "name")
+        # La community solo per i tecnici, che vedono gli impianti di tutte
+        orderings = self.ORDERINGS if staff else {k: v for k, v in self.ORDERINGS.items() if k != "community"}
+        ordering = Ordering(request, orderings)
+        systems = ordering.apply(systems)
 
         page = Paginator(systems, self.per_page).get_page(request.GET.get("page"))
         context = {
@@ -135,6 +139,7 @@ class UserDashboardView(LoginRequiredMixin, View):
             "is_owner": bool(community) and community.owner_id is not None and community.owner.user_id == request.user.id,
             "counts": counts,
             "selected": selected,
+            "ordering": ordering,
             "page": page,
             "rows": [(system, SYSTEM_STATUSES[system.status] if system.last_check else None) for system in page],
         }
@@ -172,11 +177,85 @@ class UserDashboardView(LoginRequiredMixin, View):
         }
 
 
+class ProfileView(LoginRequiredMixin, View):
+    """Il proprio account, dal nome nel menu: dati, ruoli e, per un cliente, la sua community; per un tecnico gli
+    interventi che ha in carico. Un cliente vi cambia i suoi recapiti, email e telefono; quelli del personale li
+    cambiano solo gli amministratori, dall'admin, e qui si leggono soltanto."""
+
+    template_name = "SP/profile.html"
+
+    def customer(self):
+        return (Customer.objects.select_related("community__city", "community__owner")
+                .filter(user=self.request.user).first())
+
+    def get(self, request):
+        customer = self.customer()
+        return self.render(request, customer, ContactForm(customer=customer) if customer else None)
+
+    def post(self, request):
+        customer = self.customer()
+        if customer is None:
+            raise PermissionDenied("I recapiti del personale li cambiano gli amministratori.")
+        form = ContactForm(request.POST, customer=customer)
+        if not form.is_valid():
+            return self.render(request, customer, form, status=400)
+        form.save()
+        messages.success(request, "Recapiti aggiornati.")
+        return redirect("SP:profile")
+
+    def render(self, request, customer, form, status=200):
+        user = request.user
+        community = customer.community if customer else None
+        technician = is_technician(user)
+        context = {
+            "profile_user": user,
+            "form": form,
+            "customer": customer,
+            # Il telefono del personale, che lo legge soltanto
+            "staff_phone": None if customer else StaffProfile.objects.filter(user=user).values_list("phone", flat=True).first(),
+            "community": community,
+            "roles": self.roles(user, customer),
+            "technician": technician,
+        }
+        if community:
+            context.update({
+                "members": community.customers.select_related("user").order_by("surname", "name"),
+                "systems": community.photovoltaic_systems.count(),
+                "installed_power": community.photovoltaic_systems.aggregate(total=Sum("max_power"))["total"],
+            })
+        if technician:
+            mine = Intervention.objects.filter(staff=user)
+            context["interventions"] = {
+                "open": mine.filter(status=Intervention.Status.ACCEPTED).count(),
+                "done": mine.filter(status=Intervention.Status.DONE).count(),
+            }
+        return render(request, self.template_name, context, status=status)
+
+    @staticmethod
+    def roles(user, customer):
+        """I ruoli da mostrare: amministratore, i ruoli del personale (i gruppi) e cliente."""
+        roles = ["Amministratore"] if user.is_superuser else []
+        roles += [ROLES[name] for name in user.groups.values_list("name", flat=True).order_by("name") if name in ROLES]
+        if customer:
+            roles.append("Titolare della community" if customer.is_owner else "Cliente")
+        return roles
+
+
 class CityBenchmarkView(View):
     """Pagina pubblica: resa media misurata (kWh per kW installato al giorno) di ogni città italiana."""
 
     template_name = "SP/city_benchmark.html"
     cities_per_page = 50
+    ORDERINGS = {
+        "data": ("Prima le città con dati", ("-has_data", "name", "province")),
+        "name": ("Nome (A-Z)", ("name", "province")),
+        "name_desc": ("Nome (Z-A)", ("-name", "-province")),
+        "province": ("Provincia (A-Z)", ("province", "name")),
+        "region": ("Regione (A-Z)", ("region", "province", "name")),
+        "yield_desc": ("Resa più alta", (F("specific_yield").desc(nulls_last=True), "name")),
+        "yield": ("Resa più bassa", (F("specific_yield").asc(nulls_last=True), "name")),
+        "systems": ("Più impianti", (F("measured_systems").desc(nulls_last=True), "name")),
+    }
 
     def get(self, request):
         stats = measured_city_yields()
@@ -191,9 +270,15 @@ class CityBenchmarkView(View):
             cities = cities.filter(region=region)
         if only_with_data:
             cities = cities.filter(id__in=stats)
-        # Prima le città con dati, poi le altre in ordine alfabetico
+        # Resa e impianti misurati, calcolati fuori dal database: per ordinare la tabella diventano annotazioni
         has_data = Case(When(id__in=list(stats), then=Value(1)), default=Value(0), output_field=IntegerField())
-        cities = cities.annotate(has_data=has_data if stats else Value(0)).order_by("-has_data", "name", "province")
+        cities = cities.annotate(
+            has_data=has_data if stats else Value(0),
+            specific_yield=self.by_city(stats, "specific_yield", FloatField()),
+            measured_systems=self.by_city(stats, "systems", IntegerField()),
+        )
+        ordering = Ordering(request, self.ORDERINGS)
+        cities = ordering.apply(cities)
 
         page = Paginator(cities, self.cities_per_page).get_page(request.GET.get("page"))
         filters = request.GET.copy()
@@ -206,12 +291,21 @@ class CityBenchmarkView(View):
             "query": query,
             "region": region,
             "only_with_data": only_with_data,
+            "ordering": ordering,
             "filters": filters.urlencode(),
             "cities_with_data": len(stats),
             "average_yield": mean(s["specific_yield"] for s in stats.values()) if stats else None,
             "heatmap": self.heatmap_data(stats),
         }
         return render(request, self.template_name, context)
+
+    @staticmethod
+    def by_city(stats, name, output_field):
+        """Il valore delle statistiche di ogni città, o NULL per le città senza dati."""
+        if not stats:
+            return Value(None, output_field=output_field)
+        return Case(*(When(id=city_id, then=Value(values[name])) for city_id, values in stats.items()),
+                    default=None, output_field=output_field)
 
     @staticmethod
     def heatmap_data(stats):

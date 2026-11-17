@@ -1,69 +1,97 @@
 {% extends "base.html" %}
 
-{% block title %}Master delle community{% endblock %}
+{% block title %}Community{% endblock %}
 
 {% block content %}
 <div class="container mb-5">
-    <div class="row mb-4">
-        <div class="col-12">
-            <a href="{% url 'SP:installation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le installazioni</a>
-            <h2 class="fw-bold text-dark mb-0 mt-2">Master delle community</h2>
-            <p class="text-muted mb-0">Il master è l'unico dispositivo della community collegato a internet: i nodi sui tetti, uno per impianto, gli inviano le misure via LoRa.</p>
+    <div class="row mb-4 align-items-end g-3">
+        <div class="col-lg">
+            <h2 class="fw-bold text-dark mb-0">Community</h2>
+            <p class="text-muted mb-0">Le community delle aziende e delle famiglie con i loro impianti. Il master è l'unico dispositivo della community collegato a internet: i nodi sui tetti, uno per impianto, gli inviano le misure via LoRa.</p>
+        </div>
+        <div class="col-lg-auto d-flex flex-wrap gap-2">
+            <a href="{% url 'SP:community_new' %}" class="btn btn-outline-primary rounded-pill"><i class="fas fa-plus me-1"></i>Nuova community</a>
+            <a href="{% url 'SP:installation_new' %}" class="btn btn-success rounded-pill fw-bold"><i class="fas fa-plus me-2"></i>Nuova installazione</a>
         </div>
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-4">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100"><div class="card-body p-3">
+                <div class="text-muted fw-bold text-uppercase small"><i class="fas fa-users me-1"></i>Community</div>
+                <div class="fs-2 fw-bold text-dark">{{ counts.communities }}</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100"><div class="card-body p-3">
+                <div class="text-muted fw-bold text-uppercase small"><i class="fas fa-solar-panel me-1"></i>Impianti</div>
+                <div class="fs-2 fw-bold text-dark">{{ counts.systems }}</div>
+                <div class="small text-muted"><i class="fas fa-circle text-success me-1"></i>{{ counts.online }} con il sensore collegato</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
             <div class="card border-0 shadow-sm rounded-4 h-100"><div class="card-body p-3">
                 <div class="text-muted fw-bold text-uppercase small"><i class="fas fa-broadcast-tower me-1"></i>Master</div>
                 <div class="fs-2 fw-bold text-dark">{{ counts.gateways }}</div>
+                <div class="small text-muted"><i class="fas fa-circle text-success me-1"></i>{{ counts.gateways_online }} collegat{{ counts.gateways_online|pluralize:"o,i" }}</div>
             </div></div>
         </div>
-        <div class="col-4">
-            <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5"><div class="card-body p-3">
-                <div class="text-muted fw-bold text-uppercase small"><i class="fas fa-circle text-success me-1"></i>Collegati</div>
-                <div class="fs-2 fw-bold text-dark">{{ counts.online }}</div>
-            </div></div>
-        </div>
-        <div class="col-4">
-            <div class="card border-0 shadow-sm rounded-4 h-100"><div class="card-body p-3">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100 {% if counts.pending_nodes %}border-start border-warning border-5{% endif %}"><div class="card-body p-3">
                 <div class="text-muted fw-bold text-uppercase small"><i class="fas fa-satellite-dish me-1"></i>Nodi</div>
                 <div class="fs-2 fw-bold text-dark">{{ counts.nodes }}</div>
+                <div class="small text-muted">{{ counts.pending_nodes }} da assegnare</div>
             </div></div>
         </div>
     </div>
 
     <div class="card border-0 shadow-sm rounded-4">
         <div class="card-body p-4">
-            <form method="get" class="d-flex flex-wrap gap-2 mb-3">
-                <input type="search" name="q" value="{{ query }}" class="form-control" style="max-width: 320px;" placeholder="Cerca community o città" aria-label="Cerca community o città">
-                <button type="submit" class="btn btn-outline-primary"><i class="fas fa-search me-1"></i>Cerca</button>
-            </form>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <form method="get" class="d-flex gap-2 flex-grow-1">
+                    <input type="hidden" name="sort" value="{{ ordering.key }}">
+                    <input type="search" name="q" value="{{ query }}" class="form-control" style="max-width: 320px;" placeholder="Cerca community, città o impianto" aria-label="Cerca community, città o impianto">
+                    <button type="submit" class="btn btn-outline-primary"><i class="fas fa-search me-1"></i>Cerca</button>
+                </form>
+                {% include "partials/sort_select.html" %}
+            </div>
             <div class="table-responsive">
                 <table class="table align-middle mb-0">
                     <thead>
-                        <tr class="small text-muted"><th>Community</th><th>Impianti</th><th>Master</th><th>Nodi</th><th></th></tr>
+                        <tr class="small text-muted"><th>Community</th><th>Titolare</th><th>Utenti</th><th>Impianti</th><th>Master</th><th>Nodi</th><th></th></tr>
                     </thead>
                     <tbody>
                         {% for community in page %}
                             <tr>
                                 <td class="fw-bold">{{ community.name }}<div class="small text-muted fw-normal">{{ community.city }}</div></td>
-                                <td>{{ community.systems }}</td>
+                                <td>{% if community.owner %}{{ community.owner }}{% else %}<span class="text-muted small">Nessuno</span>{% endif %}</td>
+                                <td>{{ community.users }}</td>
+                                <td>
+                                    <span class="fw-bold">{{ community.systems }}</span>
+                                    {% if community.systems %}
+                                        <div class="small text-nowrap">
+                                            {% if community.online %}<span class="text-success me-1"><i class="fas fa-circle me-1"></i>{{ community.online }} collegat{{ community.online|pluralize:"o,i" }}</span>{% endif %}
+                                            {% if community.offline %}<span class="text-secondary fw-bold me-1">{{ community.offline }} scollegat{{ community.offline|pluralize:"o,i" }}</span>{% endif %}
+                                            {% if community.without_sensor %}<span class="text-muted">{{ community.without_sensor }} senza sensore</span>{% endif %}
+                                        </div>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     {% if community.gateway %}
                                         {% if community.gateway.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>
                                         {% else %}<span class="badge rounded-pill bg-secondary">Scollegato</span>{% endif %}
                                     {% else %}<span class="text-muted small">Non installato</span>{% endif %}
                                 </td>
-                                <td>{{ community.node_count }}</td>
+                                <td>
+                                    {{ community.node_count }}
+                                    {% if community.pending_nodes %}<div class="small text-warning-emphasis text-nowrap">{{ community.pending_nodes }} da assegnare</div>{% endif %}
+                                </td>
                                 <td class="text-end">
-                                    <a href="{% url 'SP:community_installation' community.id %}" class="btn btn-sm {% if community.gateway %}btn-primary{% else %}btn-outline-primary{% endif %} rounded-pill text-nowrap">
-                                        {% if community.gateway %}Apri{% else %}Installa{% endif %} <i class="fas fa-arrow-right ms-1"></i>
-                                    </a>
+                                    <a href="{% url 'SP:community_detail' community.id %}" class="btn btn-sm btn-primary rounded-pill text-nowrap">Apri <i class="fas fa-arrow-right ms-1"></i></a>
                                 </td>
                             </tr>
                         {% empty %}
-                            <tr><td colspan="5" class="text-muted text-center py-4">Nessuna community trovata.</td></tr>
+                            <tr><td colspan="7" class="text-muted text-center py-4">Nessuna community trovata.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -71,9 +99,9 @@
             {% if page.has_other_pages %}
                 <nav class="mt-4" aria-label="Pagine">
                     <ul class="pagination justify-content-center mb-0">
-                        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>{% endif %}
+                        {% if page.has_previous %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;sort={{ ordering.key }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>{% endif %}
                         <li class="page-item disabled"><span class="page-link">Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span></li>
-                        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>{% endif %}
+                        {% if page.has_next %}<li class="page-item"><a class="page-link" href="?q={{ query|urlencode }}&amp;sort={{ ordering.key }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>{% endif %}
                     </ul>
                 </nav>
             {% endif %}

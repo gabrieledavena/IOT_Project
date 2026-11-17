@@ -8,7 +8,7 @@
     <div class="row mb-4">
         <div class="col-12 d-flex flex-wrap justify-content-between align-items-end gap-3">
             <div>
-                <a href="{% url 'SP:installation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le installazioni</a>
+                <a href="{% url 'SP:community_detail' system.community_id %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>{{ system.community.name }}</a>
                 <h2 class="fw-bold text-dark mb-1 mt-2">{{ system.name }}</h2>
                 <span class="text-muted">{{ system.community.name }} · {{ system.community.city }} · {{ system.max_power|floatformat:2 }} kW</span>
             </div>
@@ -59,7 +59,7 @@
                         <dl class="row mb-3">
                             {% if system.lora_node %}
                                 <dt class="col-sm-5 text-muted fw-normal">Sensore</dt>
-                                <dd class="col-sm-7">nodo LoRa <code>{{ system.lora_node.node_id }}</code>, tramite il <a href="{% url 'SP:community_installation' system.community_id %}">master della community</a></dd>
+                                <dd class="col-sm-7">nodo LoRa <code>{{ system.lora_node.node_id }}</code>, tramite il <a href="{% url 'SP:community_detail' system.community_id %}">master della community</a></dd>
                             {% else %}
                                 <dt class="col-sm-5 text-muted fw-normal">Username MQTT</dt>
                                 <dd class="col-sm-7"><code>{{ device.username }}</code></dd>

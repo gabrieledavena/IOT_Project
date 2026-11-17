@@ -99,7 +99,7 @@ def broker_address(request):
 
 def target_page(target):
     if isinstance(target, Community):
-        return redirect("SP:community_installation", community_id=target.id)
+        return redirect("SP:community_detail", community_id=target.id)
     return redirect("SP:installation_detail", system_id=target.id)
 
 

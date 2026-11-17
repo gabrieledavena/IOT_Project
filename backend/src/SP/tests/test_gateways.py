@@ -1,4 +1,4 @@
-"""Master delle community e nodi LoRa (SP/gateways.py, SP/mqtt.py, SP/pairing.py)."""
+"""Master delle community e nodi LoRa (SP/gateways.py, SP/communities.py, SP/mqtt.py, SP/pairing.py)."""
 import json
 from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest import mock
@@ -36,7 +36,7 @@ class GatewayTestCase(TestCase):
         self.client.force_login(self.staff)
 
     def page_url(self, community=None):
-        return f"/sp/installations/communities/{(community or self.community).id}/"
+        return f"/sp/communities/{(community or self.community).id}/"
 
     def install(self, online=True):
         with mock.patch("SP.mqtt.publish"), self.captureOnCommitCallbacks(execute=True):
@@ -252,7 +252,7 @@ class GatewayMessageTests(GatewayTestCase):
 
 class CommunityPageTests(GatewayTestCase):
     def test_technicians_only(self):
-        for url in ("/sp/installations/communities/", self.page_url(), f"{self.page_url()}pair/"):
+        for url in ("/sp/communities/", self.page_url(), f"{self.page_url()}pair/"):
             self.client.force_login(create_customer(self.community, username=f"cliente{len(url)}"))
             self.assertEqual(self.client.get(url).status_code if not url.endswith("pair/") else
                              self.client.post(url, {"code": "X"}).status_code, 403)
@@ -260,11 +260,11 @@ class CommunityPageTests(GatewayTestCase):
     def test_list_of_the_communities(self):
         self.install()
         create_community("Bianchi Srl")
-        response = self.client.get("/sp/installations/communities/")
+        response = self.client.get("/sp/communities/")
         self.assertContains(response, "Rossi Trasporti")
         self.assertContains(response, "Collegato")
         self.assertContains(response, "Non installato")
-        self.assertContains(self.client.get("/sp/installations/"), "/sp/installations/communities/")
+        self.assertContains(response, f'href="{self.page_url()}"')
 
     def test_add_nodes(self):
         gateway, _ = self.install(online=False)

@@ -128,11 +128,11 @@ The web app is at http://localhost:8000. A community is a company or a family: i
 and its users access it with their own accounts (each user belongs to at most one community). Users register with
 name, surname and, optionally, email and phone, but without a community: until a technician assigns them to one
 (**Nuovi utenti**, `/sp/customers/`), their home says that the registration succeeded and that the assignment is
-waiting for a technician. Only technicians and administrators create, edit and delete communities: from the same page
-(**Nuova community**, with name and city, optionally for a waiting user who becomes its owner; **Tutte le
-community**, `/sp/customers/communities/`, to change name, city and owner or to delete one) or, administrators,
-from the admin. A community with systems cannot be deleted from there (its readings and interventions would go
-with it): its systems must be deleted or moved first; deleting it uninstalls its master.
+waiting for a technician. Only technicians and administrators create, edit and delete communities: from the page
+**Community** of the menu (`/sp/communities/`, with **Nuova community**, also from **Nuovi utenti** for a waiting
+user who becomes its owner; in the page of a community, **Modifica** changes name, city and owner or deletes it) or,
+administrators, from the admin. A community with systems cannot be deleted from there (its readings and
+interventions would go with it): its systems must be deleted or moved first; deleting it uninstalls its master.
 
 Technicians delete a system from its installation page (**Elimina l'impianto**, `/sp/installations/<id>/delete/`),
 also from the list of the systems shown when deleting its community. A confirmation page shows how many readings and
@@ -165,8 +165,9 @@ docker exec iot_django_server python manage.py train_forecast_model             
 docker exec iot_django_server python manage.py train_forecast_model --refresh-data   # downloads the dataset again (a few minutes)
 ```
 
-To connect a bridge, install a device on a system (page **Installazioni** of the technicians, or the command below,
-which works for any system, also those of the demo data) and start the bridge with its credentials:
+To connect a bridge, install a device on a system (page **Community** of the technicians → community → system, or
+the command below, which works for any system, also those of the demo data) and start the bridge with its
+credentials:
 
 ```bash
 docker exec iot_django_server python manage.py device_credentials 42      # prints username (pv-42) and token
@@ -348,7 +349,7 @@ The Arduino of the project runs in SimulIDE; a real board on USB works the same 
    GND: pump (a LED) on D7, green on D8 (OK), yellow on D9 (dirty panels), red on D10 (blinking with a probable
    fault, on with a fault). The circuit has a thermistor on A4 while the
    sketch reads a DHT11 on D4: until they match, the temperature is always 25 °C.
-4. Get the credentials of the device: page **Installazioni** → system → *Installa dispositivo* (or *Nuove
+4. Get the credentials of the device: page **Community** → community → system → *Installa dispositivo* (or *Nuove
    credenziali*), or `docker exec iot_django_server python manage.py device_credentials <id>`.
 
 **Windows**
@@ -372,7 +373,7 @@ The Arduino of the project runs in SimulIDE; a real board on USB works the same 
 
    `--list-ports` should show `COM1: occupata da un altro programma` (SimulIDE keeps it) and
    `COM2: SolarNode, protocollo 2`. The bridge then logs `Arduino SolarNode sulla porta COM2` and
-   `Arduino configurato: CFG|…`, and the page **Installazioni** shows the device as connected.
+   `Arduino configurato: CFG|…`, and the page of its community shows the device as connected.
 
 With a real board: original boards install their driver by themselves, clones with the CH340 chip need the
 CH341SER driver of WCH; the board appears as `COMx` in Device Manager. Upload the sketch from Arduino IDE, **close
@@ -439,10 +440,14 @@ pins (GPIO 2–7, 19, 38–42, 45, 46).
 
 ## Devices and installations
 
-The page **Installazioni** of the technicians (`/sp/installations/`) lists the systems with the state of their device
-(not installed, connected, disconnected, last message, last cleaning). From there the technicians can:
+The page **Community** of the technicians (`/sp/communities/`) lists the communities with owner, users, master,
+nodes and systems (how many with the sensor connected, disconnected or without sensor); the search finds a community
+also by the name of one of its systems. The page of a community (`/sp/communities/<id>/`) has its master, its LoRa
+nodes and its systems with the state of their sensor; each system opens its installation page
+(`/sp/installations/<id>/`: device, last message, last cleaning). From there the technicians can:
 
-- **create a new system** of a community with its device, as a technician installing it would do;
+- **create a new system** of a community with its device (**Nuova installazione**, from the page of the community
+  it is already chosen), as a technician installing it would do;
 - **install a device** on an existing system (for example to test the bridge as a system of the demo data),
   **generate new credentials** (the old token stops working) or **uninstall** it;
 - **set the status** of the system, saved as if the automatic check had found it and sent to the device: with
@@ -490,8 +495,8 @@ LoRa, and the master publishes for it on the broker.
 
 The nodes join the network of the master as Zigbee devices join the one of their hub:
 
-1. in the page of the community (**Installazioni → Master delle community**) the technician presses **Aggiungi
-   nodi**: for 3 minutes the master accepts the new nodes it hears (*permit join*); its display shows the countdown;
+1. in the page of the community (**Community** → community) the technician presses **Aggiungi nodi**: for 3
+   minutes the master accepts the new nodes it hears (*permit join*); its display shows the countdown;
 2. a node that never joined asks to enter every 15 seconds (LED: one flash per second). The master and the node agree
    on an AES-128 key with X25519 (ECDH): only the public keys go over the radio, so whoever listens cannot compute
    it. The master tells the server, and the node appears under **Da assegnare** (LED: two flashes every 3 seconds);
@@ -653,7 +658,7 @@ should create a bot for development.
 
 **Trying it.** With the demo data, log in as `user0` (owner of the first community), open **Notifiche** and link
 your account, then send `/stato` to the bot. To get an alert without waiting for a real fault, log in as
-`tecnico1`, open **Installazioni**, choose a system of that community and set its status to `Guasto` with
+`tecnico1`, open **Community**, choose that community and one of its systems and set its status to `Guasto` with
 **Imposta stato**. The messages and errors of the bot are in its log:
 
 ```bash

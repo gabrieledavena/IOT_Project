@@ -4,21 +4,22 @@ Installare un dispositivo genera le credenziali con cui il bridge si collega al 
 (username pv-<id> e un token mostrato una volta sola). Le stesse pagine servono per i test: si può installare un
 dispositivo su un impianto qualsiasi, anche dei dati demo, e impostarne lo stato per provare la pompa di lavaggio.
 Un dispositivo con il display si installa invece con il suo QR, senza copiare il token (SP/pairing.py); i nodi
-LoRa sui tetti, tramite il master della community (SP/gateways.py).
+LoRa sui tetti, tramite il master della community (SP/gateways.py). Gli impianti si trovano nella pagina della
+loro community (SP/communities.py).
 """
 from django.contrib import messages
-from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.functional import cached_property
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 
 from . import mqtt, telegram
 from .access import TechnicianRequiredMixin
 from .forms import ForceStatusForm, InstallationForm
-from .models import Device, LoRaNode, PhotovoltaicSystem
+from .models import Community, Device, LoRaNode, PhotovoltaicSystem
 
 # Il token appena generato resta nella sessione fino alla pagina successiva, che lo mostra una volta sola
 NEW_TOKEN_SESSION_KEY = "new_device_token"
@@ -120,44 +121,22 @@ def awaited_pairing(pairings, device):
     return pairing, "broker"
 
 
-class InstallationListView(TechnicianRequiredMixin, View):
-    """Tutti gli impianti con lo stato del loro dispositivo: installato, collegato o no."""
-
-    template_name = "SP/installation_list.html"
-    per_page = 50
-    FILTERS = {
-        "online": Q(device__online=True),
-        "offline": Q(device__isnull=False, device__online=False),
-        "none": Q(device__isnull=True),
-    }
-
-    def get(self, request):
-        query = request.GET.get("q", "").strip()
-        systems = search(systems_with_devices(), query)
-        selected = request.GET.get("device") if request.GET.get("device") in self.FILTERS else ""
-        if selected:
-            systems = systems.filter(self.FILTERS[selected])
-        systems = systems.order_by("community__name", "name")
-        context = {
-            "page": Paginator(systems, self.per_page).get_page(request.GET.get("page")),
-            "query": query,
-            "selected": selected,
-            "counts": {
-                "installed": Device.objects.count(),
-                "online": Device.objects.filter(online=True).count(),
-                "systems": PhotovoltaicSystem.objects.count(),
-            },
-        }
-        return render(request, self.template_name, context)
-
-
 class NewInstallationView(TechnicianRequiredMixin, View):
-    """Nuovo impianto di una community, installato insieme al suo dispositivo."""
+    """Nuovo impianto di una community, installato insieme al suo dispositivo.
+
+    Con ?community=<id>, dalla pagina della community, la community è già scelta e la pagina vi riporta.
+    """
 
     template_name = "SP/installation_new.html"
 
+    @cached_property
+    def community(self):
+        community_id = self.request.GET.get("community", "")
+        return Community.objects.filter(pk=community_id).first() if community_id.isdigit() else None
+
     def get(self, request, **kwargs):
-        return render(request, self.template_name, self.context(InstallationForm()))
+        form = InstallationForm(initial={"community": self.community.id} if self.community else None)
+        return render(request, self.template_name, self.context(form))
 
     def post(self, request, **kwargs):
         form = InstallationForm(request.POST)
@@ -169,7 +148,7 @@ class NewInstallationView(TechnicianRequiredMixin, View):
         return redirect("SP:installation_detail", system_id=system.id)
 
     def context(self, form):
-        return {"form": form}
+        return {"form": form, "community": self.community}
 
     def install(self, system):
         """Installa il dispositivo sul nuovo impianto: il token compare una volta sola nella pagina seguente."""
@@ -262,8 +241,9 @@ class DeleteSystemView(TechnicianRequiredMixin, View):
 
     def post(self, request, system_id):
         system = get_object_or_404(systems_with_devices(), pk=system_id)
-        name, community = system.name, system.community.name
+        name, community = system.name, system.community
         with transaction.atomic():
             delete_system(system)
-        messages.success(request, f"Impianto {name} di {community} eliminato.")
-        return redirect(self.next_url(request) or "SP:installation_list")
+        messages.success(request, f"Impianto {name} di {community.name} eliminato.")
+        next_url = self.next_url(request)
+        return redirect(next_url) if next_url else redirect("SP:community_detail", community_id=community.id)

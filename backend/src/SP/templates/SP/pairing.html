@@ -11,7 +11,7 @@
                 <i class="fas fa-qrcode fa-3x text-muted mb-3"></i>
                 <h4 class="fw-bold">Codice non valido o scaduto</h4>
                 <p class="text-muted mb-3">Ogni codice dura 10 minuti e installa un solo dispositivo: se il dispositivo non è installato, sul suo display compare un nuovo QR da scansionare.</p>
-                <a href="{% url 'SP:installation_list' %}" class="btn btn-outline-primary rounded-pill">Tutte le installazioni</a>
+                <a href="{% url 'SP:community_list' %}" class="btn btn-outline-primary rounded-pill">Tutte le community</a>
             </div>
         </div>
     {% elif pairing.target %}
@@ -20,7 +20,7 @@
                 <h4 class="fw-bold">{% if pairing.is_gateway %}Master{% else %}Dispositivo{% endif %} {{ pairing.display_code }} già abbinato</h4>
                 <p class="text-muted">Abbinato a <strong>{{ pairing.target.name }}</strong>{% if pairing.claimed_by %} da {{ pairing.claimed_by|person }}{% endif %}: riceverà le credenziali entro pochi secondi.</p>
                 {% if pairing.is_gateway %}
-                    <a href="{% url 'SP:community_installation' pairing.community.id %}" class="btn btn-primary rounded-pill">Apri la community <i class="fas fa-arrow-right ms-1"></i></a>
+                    <a href="{% url 'SP:community_detail' pairing.community.id %}" class="btn btn-primary rounded-pill">Apri la community <i class="fas fa-arrow-right ms-1"></i></a>
                 {% else %}
                     <a href="{% url 'SP:installation_detail' pairing.system.id %}" class="btn btn-primary rounded-pill">Apri l'impianto <i class="fas fa-arrow-right ms-1"></i></a>
                 {% endif %}
@@ -28,7 +28,7 @@
         </div>
     {% elif pairing.is_gateway %}
         <div class="mb-4">
-            <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Master delle community</a>
+            <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le community</a>
             <h2 class="fw-bold text-dark mb-1 mt-2">Installa il master</h2>
             <div class="d-flex flex-wrap align-items-center gap-2 text-muted">
                 <span class="badge rounded-pill bg-dark font-monospace fs-6"><i class="fas fa-qrcode me-1"></i>{{ pairing.display_code }}</span>
@@ -64,7 +64,7 @@
         </div>
     {% else %}
         <div class="mb-4">
-            <a href="{% url 'SP:installation_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le installazioni</a>
+            <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le community</a>
             <h2 class="fw-bold text-dark mb-1 mt-2">Installa il dispositivo</h2>
             <div class="d-flex flex-wrap align-items-center gap-2 text-muted">
                 <span class="badge rounded-pill bg-dark font-monospace fs-6"><i class="fas fa-qrcode me-1"></i>{{ pairing.display_code }}</span>

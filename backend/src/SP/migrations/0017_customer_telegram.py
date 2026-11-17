@@ -4,7 +4,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("SP", "0015_customer_phone_and_pending_community"),
+        ("SP", "0016_staff_profile"),
     ]
 
     operations = [

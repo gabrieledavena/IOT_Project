@@ -60,12 +60,15 @@
                         </li>
                     {% endfor %}
                 </ul>
-                {% if tab != "pending" %}
-                    <div class="btn-group btn-group-sm" role="group" aria-label="Responsabile">
-                        <a href="?tab={{ tab }}" class="btn btn-outline-primary{% if not mine %} active{% endif %}">Tutti</a>
-                        <a href="?tab={{ tab }}&amp;mine=1" class="btn btn-outline-primary{% if mine %} active{% endif %}">Solo i miei</a>
-                    </div>
-                {% endif %}
+                <div class="d-flex flex-wrap align-items-center gap-3 ms-auto">
+                    {% if tab != "pending" %}
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Responsabile">
+                            <a href="?tab={{ tab }}&amp;sort={{ ordering.key }}" class="btn btn-outline-primary{% if not mine %} active{% endif %}">Tutti</a>
+                            <a href="?tab={{ tab }}&amp;mine=1&amp;sort={{ ordering.key }}" class="btn btn-outline-primary{% if mine %} active{% endif %}">Solo i miei</a>
+                        </div>
+                    {% endif %}
+                    {% include "partials/sort_select.html" %}
+                </div>
             </div>
 
             <div class="table-responsive">
@@ -136,11 +139,11 @@
                 <nav class="mt-4" aria-label="Pagine">
                     <ul class="pagination justify-content-center mb-0">
                         {% if page.has_previous %}
-                            <li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if mine %}&amp;mine=1{% endif %}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>
+                            <li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if mine %}&amp;mine=1{% endif %}&amp;sort={{ ordering.key }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>
                         {% endif %}
                         <li class="page-item disabled"><span class="page-link">Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span></li>
                         {% if page.has_next %}
-                            <li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if mine %}&amp;mine=1{% endif %}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>
+                            <li class="page-item"><a class="page-link" href="?tab={{ tab }}{% if mine %}&amp;mine=1{% endif %}&amp;sort={{ ordering.key }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>
                         {% endif %}
                     </ul>
                 </nav>

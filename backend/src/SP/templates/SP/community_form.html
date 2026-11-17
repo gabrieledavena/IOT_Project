@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}{% if community %}{{ community.name }}{% else %}Nuova community{% endif %}{% endblock %}
+{% block title %}{% if community %}Modifica {{ community.name }}{% else %}Nuova community{% endif %}{% endblock %}
 
 {% block content %}
 <!-- Nuova community, o modifica di una esistente (community) -->
@@ -9,11 +9,15 @@
     <div class="row mb-4">
         <div class="col-12">
             {% if community %}
-                <a href="{% url 'SP:community_manage_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le community</a>
-                <h2 class="fw-bold text-dark mb-0 mt-2">{{ community.name }}</h2>
+                <a href="{% url 'SP:community_detail' community.id %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>{{ community.name }}</a>
+                <h2 class="fw-bold text-dark mb-0 mt-2">Modifica la community</h2>
                 <p class="text-muted mb-0">Nome, comune e titolare della community. Il comune serve per il meteo e le previsioni dei suoi impianti.</p>
             {% else %}
-                <a href="{% url 'SP:customer_assignment' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Nuovi utenti</a>
+                {% if customer %}
+                    <a href="{% url 'SP:customer_assignment' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Nuovi utenti</a>
+                {% else %}
+                    <a href="{% url 'SP:community_list' %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>Tutte le community</a>
+                {% endif %}
                 <h2 class="fw-bold text-dark mb-0 mt-2">Nuova community</h2>
                 <p class="text-muted mb-0">La community di un'azienda o di una famiglia: possiede gli impianti e vi accedono i suoi utenti. Il comune serve per il meteo e le previsioni dei suoi impianti.</p>
             {% endif %}

@@ -95,6 +95,7 @@
     {% endif %}
 
     <form method="get" class="card border-0 shadow-sm rounded-4 mb-4">
+        <input type="hidden" name="sort" value="{{ ordering.key }}">
         <div class="card-body p-4 row g-3 align-items-end">
             <div class="col-md-5">
                 <label for="q" class="form-label fw-bold text-muted">Città o provincia</label>
@@ -123,7 +124,10 @@
 
     <div class="card border-0 shadow-sm rounded-4">
         <div class="card-body p-4">
-            <p class="text-muted small">{{ page.paginator.count }} città trovate</p>
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <p class="text-muted small mb-0">{{ page.paginator.count }} città trovate</p>
+                {% include "partials/sort_select.html" %}
+            </div>
             <div class="table-responsive">
                 <table class="table align-middle mb-0">
                     <thead>
