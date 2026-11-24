@@ -295,6 +295,7 @@ code { font-size: .92em; }
 .head--page > :first-child { flex: 1 1 520px; }
 .head--tall { padding-bottom: 48px; }
 .head--tight { padding-bottom: 28px; }
+.head--top { align-items: start; }
 
 .back {
     display: inline-flex;
@@ -877,6 +878,8 @@ textarea.form-control { min-height: 120px; }
 .form-check-input { width: 1.2em; height: 1.2em; margin-top: .2em; border-color: rgba(19, 34, 26, .35); }
 .form-check-input:checked { background-color: var(--green); border-color: var(--green); }
 .form-check-input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(25, 135, 84, .18); }
+.form-range::-webkit-slider-runnable-track { background: rgba(19, 34, 26, .14); }
+.form-range::-moz-range-track { background: rgba(19, 34, 26, .14); }
 .form-range::-webkit-slider-thumb { background: var(--green); }
 .form-range::-moz-range-thumb { background: var(--green); }
 .form-range:focus::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(25, 135, 84, .25); }
@@ -1047,9 +1050,17 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var
 #intervention-calendar .flatpickr-day.selected, #intervention-calendar .flatpickr-day.selected:hover { background: var(--green); border-color: var(--green); }
 #intervention-calendar .flatpickr-day.today { border-color: var(--mint); }
 
-/* Simulazione */
-.sim-card { padding: 24px 0; border-top: 1px solid var(--line); }
+/* Simulazione: un impianto simulato per riquadro, separati da righe sottili */
+.sim-grid { border-top: 1px solid var(--line); }
+.sim-card { height: 100%; padding: 24px 0; border-bottom: 1px solid var(--line); }
+@media (min-width: 1200px) {
+    .sim-grid > .col-xl-6:nth-child(odd) .sim-card { padding-right: 32px; }
+    .sim-grid > .col-xl-6:nth-child(even) .sim-card { padding-left: 32px; border-left: 1px solid var(--line); }
+}
 .sim-row { display: grid; grid-template-columns: minmax(0, 1fr) 9rem; align-items: center; gap: 16px; }
+.sim-foot { border-top: 1px dashed var(--line); }
+.server-address { font-family: var(--mono); font-size: 22px; font-weight: 600; }
+.form-wide { max-width: 880px; }
 .saved { font-size: 14px; }
 .saved.ok { color: var(--green-deep); }
 .saved.error { color: var(--s-broken); }

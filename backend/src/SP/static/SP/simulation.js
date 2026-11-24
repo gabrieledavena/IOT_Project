@@ -14,14 +14,14 @@
     const number = (value, digits) => Number(value).toLocaleString("it-IT", {
         minimumFractionDigits: digits, maximumFractionDigits: digits,
     });
-    const badge = (color, text, icon) =>
-        `<span class="badge rounded-pill ${color}">${icon ? `<i class="fas ${icon} me-1"></i>` : ""}${text}</span>`;
+    // Stato con il pallino colorato (app.css, .status): online, offline, wash
+    const badge = (kind, text) => `<span class="status ${kind}">${text}</span>`;
+    // Icona del disegno delle icone del sito (templates/partials/icons.html)
+    const icon = name => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 
     function showSaved(element, state, text) {
-        const styles = {pending: "text-muted", ok: "text-success", error: "text-danger"};
-        const icons = {pending: "fa-spinner fa-spin", ok: "fa-check", error: "fa-exclamation-triangle"};
-        element.className = `text-nowrap ${styles[state]}`;
-        element.innerHTML = `<i class="fas ${icons[state]} me-1"></i>`;
+        element.className = `saved nb ${state}`;
+        element.innerHTML = state === "pending" ? '<span class="spin" aria-hidden="true"></span>' : icon(state === "ok" ? "check" : "alert");
         element.append(text);
     }
 
@@ -109,9 +109,9 @@
             }
         };
         set("online", state.online
-            ? badge("bg-success", simulated ? "Sentito dal master" : "Collegato", "fa-circle")
-            : badge("bg-secondary", simulated ? "Non ancora sentito" : "Scollegato"));
-        set("pump", state.pump_running ? badge("bg-info text-dark", "Lavaggio", "fa-tint") : "");
+            ? badge("online", simulated ? "Sentito dal master" : "Collegato")
+            : badge("offline", simulated ? "Non ancora sentito" : "Scollegato"));
+        set("pump", state.pump_running ? badge("wash", "Lavaggio") : "");
         const status = element.querySelector("[data-field=status]");
         if (status) {
             status.textContent = state.status_label;
@@ -132,10 +132,10 @@
         if (!data) {
             return;
         }
-        const gateway = root.querySelector("[data-gateway]");
+        // Lo stato del master è nella banda in cima alla pagina, fuori dal contenitore della simulazione
+        const gateway = document.querySelector("[data-gateway]");
         if (gateway) {
-            gateway.innerHTML = data.gateway.online
-                ? badge("bg-success", "Collegato", "fa-circle") : badge("bg-secondary", "Scollegato");
+            gateway.innerHTML = data.gateway.online ? badge("online", "Collegato") : badge("offline", "Scollegato");
         }
         for (const state of data.systems) {
             for (const element of root.querySelectorAll(`[data-state="${state.id}"]`)) {

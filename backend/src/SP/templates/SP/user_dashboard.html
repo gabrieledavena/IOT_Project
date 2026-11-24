@@ -8,7 +8,7 @@
     {% if error %}
         <section class="head--page"><div><h1 class="title title--big">Dashboard</h1></div></section>
     {% else %}
-        <section class="head{% if not chart_data %} head--tall{% endif %}" aria-label="Oggi">
+        <section class="head{% if not chart_data %} head--tall{% endif %}{% if staff %} head--top{% endif %}" aria-label="Oggi">
             <div>
                 {% if staff %}
                     <p class="context">Stato degli impianti di tutte le community, aggiornato dal controllo automatico ogni due giorni.</p>
