@@ -293,7 +293,7 @@ code { font-size: .92em; }
 }
 
 .head--page > :first-child { flex: 1 1 520px; }
-.head--tall { padding-bottom: 8px; }
+.head--tall { padding-bottom: 48px; }
 
 .back {
     display: inline-flex;
@@ -976,6 +976,17 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var
 .footer-b .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; border-top: 1px solid var(--line); padding-top: 24px; }
 
 /* ---------------------------------------------------------------- Parti di singole pagine */
+
+/* Home: lo stato degli impianti nella banda, il totalizzatore */
+.state-line { margin: 4px 0 16px; font-size: clamp(28px, 3.2vw, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -.03em; }
+.state-bar { display: flex; height: 12px; gap: 3px; margin-bottom: 16px; }
+.state-bar i { flex: var(--n) 1 0; border-radius: 99px; background: var(--c); }
+.state-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 24px; margin: 0 0 20px; padding: 0; list-style: none; }
+.state-list a { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--band-line); color: var(--band-muted) !important; text-decoration: none; transition: color 150ms var(--ease); }
+.state-list a:hover { color: var(--band-ink) !important; }
+.state-list b { color: var(--band-ink); font-weight: 600; }
+.eco { display: flex; gap: 12px; align-items: flex-start; }
+.eco > .icon { width: 26px; height: 26px; margin-top: 2px; color: var(--green); }
 
 /* Pagina dell'impianto: nome e stato in cima alla banda */
 .sys-head { border-bottom: 1px solid var(--band-line); padding-bottom: 36px; }

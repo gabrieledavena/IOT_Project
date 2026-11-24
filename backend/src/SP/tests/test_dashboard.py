@@ -66,7 +66,8 @@ class UserDashboardTests(TestCase):
 
         self.assertEqual(response.context["rows"][0][0].name, "Tettoia")
         self.assertEqual(response.context["counts"]["broken"], 1)
-        self.assertContains(response, "fa-times-circle me-1\"></i>Guasto")
+        # Il pallino rosso del guasto: nella riga dell'impianto, oltre che nello stato in alto e nel filtro
+        self.assertContains(response, '<span class="status broken">Guasto</span>', count=3)
         self.assertEqual([system.name for system, _ in self.client.get("/?status=broken").context["rows"]], ["Tettoia"])
 
     def test_staff_sees_every_system_with_its_community(self):
