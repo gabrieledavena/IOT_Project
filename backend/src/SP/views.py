@@ -1,6 +1,6 @@
 """Pagine web: home (vetrina o dashboard), registrazione, profilo, confronto tra città, elenco impianti e dashboard di
 produzione."""
-from datetime import date
+from datetime import date, timedelta
 from statistics import mean
 
 from django.contrib import messages
@@ -12,13 +12,14 @@ from django.db.models import Case, Count, F, FloatField, IntegerField, Q, Sum, V
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import dateformat
 from django.views import View
 
 from forecast.reference_data import REFERENCE_YEARS
 
 from .access import NOT_A_CUSTOMER, AccessError, visible_system
 from .benchmark import measured_city_yields, reference_yields
-from .energy import period_summary, totalizer
+from .energy import daily_energy, period_summary, totalizer
 from .forms import ContactForm, CustomerRegistrationForm
 from .models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem, StaffProfile
 from .production import energy_kwh, get_community_series, get_system_series
@@ -348,6 +349,11 @@ class PhotovoltaicSystemListView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
+def day_label(day):
+    """Giorno della scelta del giorno nelle dashboard, per esteso: "Lun 23 Nov 2026"."""
+    return dateformat.format(date.fromisoformat(day), "D j M Y")
+
+
 class ProductionDashboardView(LoginRequiredMixin, View):
     """Parte comune delle dashboard: giorno selezionato, energia prodotta, grafici, meteo e mappa.
 
@@ -388,14 +394,38 @@ class ProductionDashboardView(LoginRequiredMixin, View):
         today = date.today().isoformat()
         context = {
             "community": self.community,
-            "available_days": [{"value": day, "label": "Oggi" if day == today else day} for day in days],
+            "available_days": [{"value": day, "label": "Oggi" if day == today else day_label(day)} for day in days],
             "selected_day": selected_day,
             "total_energy": round(energy_kwh(series), 2),
             "chart_data": chart_data,
             "weather": get_day_weather(self.community.city, selected_day) if chart_data else None,
+            **self.day_overview(days, selected_day, series),
             **self.get_extra_context(),
         }
         return render(request, self.template_name, context)
+
+    def day_overview(self, days, selected_day, series):
+        """Ciò che la banda della pagina mostra del giorno scelto: i 7 giorni con misure attorno a lui, ognuno con
+        l'energia prodotta (come nel sommario per mese), i giorni prima e dopo, il picco e l'ultima misura."""
+        if not days:
+            return {}
+        index = days.index(selected_day)
+        start = min(max(index - 3, 0), max(len(days) - 7, 0))
+        week = [date.fromisoformat(day) for day in reversed(days[start:start + 7])]
+        energies = daily_energy(self.get_readings(), week[0], week[-1] + timedelta(days=1))
+        today = date.today()
+        peak = max(series, key=lambda point: point["value"]) if series else None
+        return {
+            "day": date.fromisoformat(selected_day),
+            "week": [{"value": day.isoformat(), "day": day, "energy": energies.get(day), "today": day == today}
+                     for day in week],
+            "week_is_latest": start == 0,
+            "previous_day": days[index + 1] if index + 1 < len(days) else None,
+            "next_day": days[index - 1] if index > 0 else None,
+            "is_today": selected_day == today.isoformat(),
+            "peak": {"kw": peak["value"], "time": peak["timestamp"][11:16]} if peak else None,
+            "last_reading": series[-1]["timestamp"][11:16] if series else None,
+        }
 
 
 class SolarCommunityView(ProductionDashboardView):

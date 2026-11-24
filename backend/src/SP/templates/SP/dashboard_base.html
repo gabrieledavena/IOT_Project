@@ -1,162 +1,147 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static ui %}
 
 {% comment %}
-Struttura comune delle dashboard di produzione (community e impianto).
-Blocchi: heading, subheading, status, production_row_margin, extra_charts, page_end (in fondo alla pagina).
+Struttura comune delle dashboard di produzione (community e impianto). Nella banda: il giorno scelto con l'energia
+prodotta, i 7 giorni con misure attorno a lui e il grafico della potenza; sotto, sul fondo chiaro, il meteo.
+Blocchi: band_top (in cima alla banda), context, day_heading, extra_charts (sotto la banda), page_end (in fondo).
 {% endcomment %}
 
-{% block content %}
-<div class="container mb-5">
-    <!-- Header Section -->
-    <div class="row mb-4">
-        <div class="col-12 d-flex justify-content-between align-items-end">
-            <div>
-                <h2 class="fw-bold text-dark mb-0">{% block heading %}{% endblock %}</h2>
-                <p class="text-muted">{% block subheading %}{% endblock %}</p>
-            </div>
-            <!-- Day Selector Dropdown -->
-            <div class="day-selector">
-                <form method="get" action="" class="d-flex align-items-center m-0">
-                    <label for="day" class="form-label me-2 mb-0 fw-bold text-muted">Seleziona Giorno:</label>
-                    <select name="day" id="day" class="form-select form-select-sm me-2 shadow-sm border-0" onchange="this.form.submit()">
-                        {% for day_obj in available_days %}
-                            <option value="{{ day_obj.value }}" {% if day_obj.value == selected_day %}selected{% endif %}>
-                                {{ day_obj.label }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                    <noscript><button type="submit" class="btn btn-primary btn-sm">Vai</button></noscript>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    {% block status %}{% endblock %}
+{% block band %}
+<div class="wrap">
+    {% block band_top %}{% endblock %}
 
     {% if error %}
-        {% include "partials/error_alert.html" %}
+        <section class="head--page"><div><h1 class="title title--big">{% block error_heading %}Produzione{% endblock %}</h1></div></section>
     {% elif chart_data %}
-        <!-- Main Stats and Weather -->
-        <div class="row g-4 mb-5">
-            <div class="col-md-5 col-lg-4">
-                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5 hover-lift">
-                    <div class="card-body p-4">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h6 class="text-muted fw-bold text-uppercase mb-0">Energia Totale Prodotta</h6>
-                            <div class="bg-success bg-opacity-10 text-success p-2 rounded-circle">
-                                <span class="fs-5">⚡</span>
-                            </div>
-                        </div>
-                        <h2 class="display-5 fw-bold text-dark mb-0">{{ total_energy }} <span class="fs-4 text-muted">kWh</span></h2>
-                        <p class="text-muted small mt-2 mb-0">Dati aggregati per il giorno: <strong>{{ selected_day }}</strong></p>
-                    </div>
-                </div>
+        <section class="head" aria-labelledby="day-title">
+            <div>
+                {% block context %}{% endblock %}
+                {% block day_heading %}
+                    <h1 class="title" id="day-title">Energia prodotta {% if is_today %}oggi{% else %}{{ day|date:"l j F"|lower }}{% endif %}</h1>
+                {% endblock %}
+                <p class="figure">{{ total_energy|floatformat:"1g" }} <small>kWh</small></p>
+                <dl class="facts">
+                    {% if peak %}<div><dt>Picco</dt><dd><span class="nb">{{ peak.kw|floatformat:1 }} kW</span> alle {{ peak.time }}</dd></div>{% endif %}
+                    <div><dt>Stato</dt><dd>{% if is_today %}In corso, ultima misura alle {{ last_reading }}{% else %}Giornata conclusa{% endif %}</dd></div>
+                </dl>
             </div>
 
-            <div class="col-md-7 col-lg-8">
-                <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-info border-5 overflow-hidden">
-                    <div class="card-body p-4">
-                        <div class="row g-4 h-100">
-                            <div class="{% if community.city.has_coordinates %}col-lg-6{% else %}col-12{% endif %}">
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <div>
-                                        <h6 class="text-muted fw-bold text-uppercase mb-0">Previsioni Meteo</h6>
-                                        <h4 class="fw-bold text-dark mb-0 mt-1"><i class="fas fa-map-marker-alt text-danger me-2"></i>{{ community.city.name }}</h4>
-                                    </div>
-                                    <div class="bg-info bg-opacity-25 text-info p-3 rounded-circle shadow-sm">
-                                        <span class="fs-4">☁️</span>
-                                    </div>
-                                </div>
-
-                                {% if weather %}
-                                    <div class="row text-center mb-3 mt-4">
-                                        <div class="col-6">
-                                            <div class="small text-muted fw-bold text-uppercase">Max</div>
-                                            <div class="fs-3 fw-bold text-danger">{{ weather.temp_max|default:"-" }}°C</div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="small text-muted fw-bold text-uppercase">Min</div>
-                                            <div class="fs-3 fw-bold text-primary">{{ weather.temp_min|default:"-" }}°C</div>
-                                        </div>
-                                    </div>
-
-                                    <hr class="text-muted opacity-25">
-
-                                    <div class="row text-center mt-3">
-                                        <div class="col-6">
-                                            <div class="small text-muted fw-bold text-uppercase"><i class="fas fa-cloud me-1"></i>Nuvole</div>
-                                            <div class="fw-bold fs-5 text-dark">{{ weather.cloud_cover|default:"-" }}%</div>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="small text-muted fw-bold text-uppercase"><i class="fas fa-sun me-1 text-warning"></i>Solare</div>
-                                            <div class="fw-bold fs-5 text-dark">{{ weather.solar_radiation|default:"-" }} <span class="fs-6 small">MJ/m²</span></div>
-                                        </div>
-                                    </div>
-                                {% else %}
-                                    <div class="alert alert-light border shadow-sm mt-4 text-center">
-                                        <p class="text-muted mb-0 small">Dati meteo non disponibili per la data selezionata.</p>
-                                    </div>
-                                {% endif %}
-                            </div>
-
-                            {% if community.city.has_coordinates %}
-                                <div class="col-lg-6">
-                                    <iframe
-                                        class="dashboard-map rounded-3"
-                                        title="Mappa di {{ community.city.name }}"
-                                        loading="lazy"
-                                        referrerpolicy="no-referrer-when-downgrade"
-                                        src="https://maps.google.com/maps?q={{ community.city.latitude|stringformat:'f' }},{{ community.city.longitude|stringformat:'f' }}&hl=it&z=13&amp;output=embed&disableDefaultUI=true">
-                                    </iframe>
-                                </div>
-                            {% endif %}
-                        </div>
+            <!-- I giorni con misure attorno a quello scelto, ognuno con la sua energia; gli altri dal menu -->
+            <div>
+                <div class="block-head">
+                    <h2>{% if week_is_latest %}Ultimi giorni{% else %}Giorni con misure{% endif %}</h2>
+                    <div class="steps">
+                        {% if previous_day %}
+                            <a class="step-btn" href="?day={{ previous_day }}" aria-label="Giorno precedente">{% icon "chevron-left" %}</a>
+                        {% else %}
+                            <span class="step-btn" aria-disabled="true">{% icon "chevron-left" %}</span>
+                        {% endif %}
+                        {% if next_day %}
+                            <a class="step-btn" href="?day={{ next_day }}" aria-label="Giorno successivo">{% icon "chevron-right" %}</a>
+                        {% else %}
+                            <span class="step-btn" aria-disabled="true">{% icon "chevron-right" %}</span>
+                        {% endif %}
                     </div>
                 </div>
+                <ul class="pills">
+                    {% for item in week %}
+                        <li>
+                            <a class="pill" href="?day={{ item.value }}"{% if item.value == selected_day %} aria-current="date"{% endif %}
+                               aria-label="{{ item.day|date:'l j F'|lower }}{% if item.energy is not None %}, {{ item.energy|floatformat:1 }} kWh{% endif %}">
+                                <span class="pill-dow">{% if item.today %}oggi{% else %}{{ item.day|date:"D"|lower }}{% endif %}</span>
+                                <span class="pill-num">{{ item.day|date:"j" }}</span>
+                                <span class="pill-kwh">{% if item.energy is not None %}{{ item.energy|floatformat:0 }} kWh{% else %}-{% endif %}</span>
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+                <form method="get" action="" class="day-picker">
+                    <label for="day" class="m-0">Altro giorno</label>
+                    <select name="day" id="day" class="form-select form-select-sm" onchange="this.form.submit()">
+                        {% for day_obj in available_days %}
+                            <option value="{{ day_obj.value }}" {% if day_obj.value == selected_day %}selected{% endif %}>{{ day_obj.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <noscript><button type="submit" class="btn btn-sm btn-outline-light">Vai</button></noscript>
+                </form>
             </div>
-        </div>
+        </section>
 
-        <!-- Production Chart -->
-        <div class="row {% block production_row_margin %}mb-5{% endblock %}">
-            <div class="col-12">
-                <div class="card border-0 shadow-sm rounded-4">
-                    <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4 d-flex justify-content-between align-items-center">
-                        <h4 class="fw-bold text-dark mb-0"><span class="me-2">📊</span>Andamento Produzione Solare</h4>
-                        <div class="btn-group shadow-sm" role="group" aria-label="Risoluzione grafico">
-                            <input type="radio" class="btn-check" name="btnradio" id="btn1m" autocomplete="off" data-resolution="1">
-                            <label class="btn btn-outline-primary btn-sm" for="btn1m">1 Min</label>
-
-                            <input type="radio" class="btn-check" name="btnradio" id="btn15m" autocomplete="off" checked data-resolution="15">
-                            <label class="btn btn-outline-primary btn-sm" for="btn15m">15 Min</label>
-
-                            <input type="radio" class="btn-check" name="btnradio" id="btn1h" autocomplete="off" data-resolution="60">
-                            <label class="btn btn-outline-primary btn-sm" for="btn1h">1 Ora</label>
-                        </div>
-                    </div>
-                    <div class="card-body p-4">
-                        <div style="height: 350px; width: 100%;">
-                            <canvas id="productionChart"></canvas>
-                        </div>
-                    </div>
+        <section class="power" aria-labelledby="power-title">
+            <div class="power-head">
+                <h2 id="power-title">Potenza durante la giornata</h2>
+                <div class="seg" role="group" aria-label="Dettaglio del grafico">
+                    <input type="radio" class="btn-check" name="btnradio" id="btn1m" autocomplete="off" checked data-resolution="1">
+                    <label class="btn" for="btn1m">1 min</label>
+                    <input type="radio" class="btn-check" name="btnradio" id="btn15m" autocomplete="off" data-resolution="15">
+                    <label class="btn" for="btn15m">15 min</label>
+                    <input type="radio" class="btn-check" name="btnradio" id="btn1h" autocomplete="off" data-resolution="60">
+                    <label class="btn" for="btn1h">1 ora</label>
                 </div>
             </div>
-        </div>
-
-        {% block extra_charts %}{% endblock %}
+            <div class="chart" style="height: 340px">
+                <canvas id="productionChart" role="img" aria-label="Potenza prodotta {% if is_today %}oggi{% else %}{{ day|date:'l j F'|lower }}{% endif %}"{% if is_today %} data-live{% endif %}></canvas>
+            </div>
+        </section>
     {% else %}
-        <div class="alert alert-info shadow-sm rounded-4">
-            <i class="fas fa-info-circle me-2"></i>Nessun dato disponibile per la selezione corrente.
-        </div>
+        <section class="head--page">
+            <div>
+                {% block empty_heading %}<h1 class="title title--big">Produzione</h1>{% endblock %}
+                <p class="lead-b">Nessun dato disponibile per la selezione corrente.</p>
+            </div>
+        </section>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+    {% if error %}
+        <div class="section">{% include "partials/error_alert.html" %}</div>
+    {% elif chart_data %}
+        {% block extra_charts %}{% endblock %}
+
+        <!-- Il meteo della giornata: spiega la produzione, quindi viene dopo e più piccolo -->
+        <section class="section" aria-labelledby="weather-title">
+            {% if weather %}
+                <div class="metrics">
+                    <div>
+                        <h2 class="h2" id="weather-title">Meteo {{ community.city.name|to_city }}</h2>
+                        <p class="muted mt-1 mb-0">{{ weather.cloud_cover|sky }}</p>
+                    </div>
+                    <div>
+                        <div class="m-label">Temperatura</div>
+                        <div class="m-value">{{ weather.temp_min|floatformat:1 }}–{{ weather.temp_max|floatformat:1 }} <small>°C</small></div>
+                        <div class="track track--range" style="--from: {{ weather.temp_min|scale:'-10,40' }}%; --to: {{ weather.temp_max|scale:'-10,40' }}%"><i></i></div>
+                        <div class="scale"><span>−10</span><span>40 °C</span></div>
+                    </div>
+                    <div>
+                        <div class="m-label">Nuvole</div>
+                        <div class="m-value">{{ weather.cloud_cover|floatformat:0 }} <small>%</small></div>
+                        <div class="track track--fill" style="--v: {{ weather.cloud_cover|scale:'0,100' }}%"><i></i></div>
+                        <div class="scale"><span>sereno</span><span>coperto</span></div>
+                    </div>
+                    <div>
+                        <div class="m-label">Radiazione solare</div>
+                        <div class="m-value">{{ weather.solar_radiation|floatformat:2 }} <small>MJ/m²</small></div>
+                        <div class="track track--fill" style="--v: {{ weather.solar_radiation|scale:'0,30' }}%"><i></i></div>
+                        <div class="scale"><span>0</span><span>30 MJ/m²</span></div>
+                    </div>
+                </div>
+            {% else %}
+                <h2 class="h2" id="weather-title">Meteo {{ community.city.name|to_city }}</h2>
+                <p class="muted mt-2 mb-0">Dati meteo non disponibili per la data selezionata.</p>
+            {% endif %}
+        </section>
     {% endif %}
 
     {% if not error %}{% block page_end %}{% endblock %}{% endif %}
-</div>
 {% endblock %}
 
 {% block extra_js %}
 {% if chart_data or energy_summary_url %}
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="{% static 'SP/chart_theme.js' %}"></script>
 {% endif %}
 {% if chart_data %}
     {{ chart_data|json_script:"chart-data" }}

@@ -34,14 +34,14 @@ class CommunityDashboardTests(TestCase):
         self.assertRedirects(response, "/sp/community/?day=2026-09-28", fetch_redirect_response=False)
 
     @WEATHER
-    def test_shows_energy_chart_weather_and_map(self, get_day_weather):
+    def test_shows_energy_chart_and_weather(self, get_day_weather):
         response = self.client.get("/sp/community/?day=2026-09-28")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["total_energy"], 6.0)
         self.assertEqual(len(response.context["chart_data"]), 30)  # 60 minuti, un punto ogni 2
         self.assertContains(response, '<script id="chart-data" type="application/json">')
-        self.assertContains(response, "maps.google.com")
+        self.assertNotContains(response, "maps.google.com")  # la mappa della città non c'è più
         get_day_weather.assert_called_once_with(self.community.city, "2026-09-28")
 
     @mock.patch("SP.weather.requests.get")
