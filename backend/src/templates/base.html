@@ -1,29 +1,28 @@
-{% load static %}<!DOCTYPE html>
+{% load static ui %}<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Home{% endblock %} · Solar Family</title>
+    <meta name="theme-color" content="#0f3d28">
+    <link rel="icon" href="{% static 'SP/favicon.svg' %}" type="image/svg+xml">
 
-    <!-- Bootstrap CSS for Modern UI -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400..700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- AOS CSS for Animations -->
-    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
-
-    <!-- FontAwesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
     <link rel="stylesheet" href="{% static 'SP/app.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
-<body class="d-flex flex-column min-vh-100">
+<body>
+    {% include "partials/icons.html" %}
+    <a class="skip-link" href="#main">Vai al contenuto</a>
 
-    <!-- Global container for Django flash messages -->
+    <!-- Messaggi dopo un'azione (salvataggi, errori), in alto sopra la pagina -->
     {% if messages %}
-    <div class="container mt-3 fixed-top" style="z-index: 1050; max-width: 600px;">
+    <div class="toasts">
         {% for message in messages %}
-            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show shadow-sm rounded-4 py-2" role="alert" data-aos="fade-down">
+            <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
                 {{ message }}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Chiudi"></button>
             </div>
@@ -31,117 +30,79 @@
     </div>
     {% endif %}
 
-    <nav class="navbar navbar-expand-xl navbar-light shadow-sm sticky-top">
-        <div class="container">
-            <a class="navbar-brand d-flex align-items-center py-0" href="{% url 'home' %}">
-                <i class="fas fa-solar-panel me-2"></i> Solar Family
-            </a>
-            <button class="navbar-toggler border-0 py-0 px-2" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Mostra il menu">
-                <span class="navbar-toggler-icon" style="width: 1.0em; height: 1.0em;"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto mb-2 mb-xl-0 align-items-center">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'home' %}"><i class="fas fa-home me-1"></i>Home</a>
-                    </li>
-                    {% if is_customer %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'SP:solar_community' %}"><i class="fas fa-chart-area me-1"></i>Produzione</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'forecast:index' %}"><i class="fas fa-cloud-sun me-1"></i>Previsioni</a>
-                    </li>
-                    {% endif %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'SP:city_benchmark' %}"><i class="fas fa-map-marked-alt me-1"></i>Confronto città</a>
-                    </li>
-                    {% if is_technician %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'SP:intervention_dashboard' %}"><i class="fas fa-tools me-1"></i>Interventi
-                            {% if pending_interventions %}<span class="badge rounded-pill bg-danger ms-1" title="Richieste da accettare">{{ pending_interventions }}</span>{% endif %}
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'SP:community_list' %}"><i class="fas fa-users me-1"></i>Community</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'SP:customer_assignment' %}"><i class="fas fa-user-plus me-1"></i>Nuovi utenti
-                            {% if pending_customers %}<span class="badge rounded-pill bg-danger ms-1" title="Utenti da associare a una community">{{ pending_customers }}</span>{% endif %}
-                        </a>
-                    </li>
-                    {% endif %}
-                    {% if is_consultant %}
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'roi:calculator' %}"><i class="fas fa-calculator me-1"></i>ROI</a>
-                    </li>
-                    {% endif %}
-                    {% if user.is_superuser %}
-                    <!-- Simulazione degli impianti senza sensore, eseguita dal master della community (demo) -->
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'SP:simulation_list' %}"><i class="fas fa-sliders-h me-1"></i>Simulazione</a>
-                    </li>
-                    {% endif %}
-                    {% if user.is_staff %}
-                    <!-- Admin: amministratori e tecnici (impianti, dispositivi e interventi) -->
-                    <li class="nav-item">
-                        <a class="nav-link" href="{% url 'admin:index' %}"><i class="fas fa-cog me-1"></i>Admin</a>
-                    </li>
-                    {% endif %}
-                </ul>
-                <ul class="navbar-nav ms-auto mb-2 mb-xl-0 align-items-center">
-                    {% if user.is_authenticated %}
-                        <li class="nav-item text-muted">
-                            <a href="{% url 'SP:profile' %}" class="badge bg-light text-dark border rounded-pill text-decoration-none" title="Il tuo profilo">
-                                <i class="fas fa-user-circle me-1"></i> {{ user.username }}
+    <!-- La banda verde: il menu e la testata della pagina, con il suo dato principale (blocco band) -->
+    <div class="band{% block band_class %}{% endblock %}">
+        <nav class="navbar navbar-expand-xl nav-b" aria-label="Menu principale">
+            <div class="wrap">
+                <a class="brand" href="{% url 'home' %}">
+                    <svg class="mark" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="8" fill="#7ddca8"/><path d="M6 19h16M9 19a5 5 0 0 1 10 0" fill="none" stroke="#0f3d28" stroke-width="2.2" stroke-linecap="round"/><path d="M14 8v2.5M7.6 10.6l1.7 1.7M20.4 10.6l-1.7 1.7" stroke="#0f3d28" stroke-width="2.2" stroke-linecap="round"/></svg>
+                    Solar Family
+                </a>
+                <button class="navbar-toggler burger" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Mostra il menu">
+                    {% icon "menu" %}
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="menu">
+                        <li><a href="{% url 'home' %}"{% current "home" %}>Home</a></li>
+                        {% if is_customer %}
+                            <li><a href="{% url 'SP:solar_community' %}"{% current "SP:solar_community" %}>Produzione</a></li>
+                            <li><a href="{% url 'forecast:index' %}"{% current "forecast:index" %}>Previsioni</a></li>
+                        {% endif %}
+                        <li><a href="{% url 'SP:city_benchmark' %}"{% current "SP:city_benchmark" %}>Confronto città</a></li>
+                        {% if is_technician %}
+                            <li><a href="{% url 'SP:intervention_dashboard' %}"{% current "SP:intervention_dashboard" "SP:intervention_detail" %}>Interventi{% if pending_interventions %} <span class="badge" title="Richieste da accettare">{{ pending_interventions }}</span>{% endif %}</a></li>
+                            <li><a href="{% url 'SP:community_list' %}"{% current "SP:community_" "SP:installation_" "SP:pair" "SP:pair_new" %}>Community</a></li>
+                            <li><a href="{% url 'SP:customer_assignment' %}"{% current "SP:customer_assignment" %}>Nuovi utenti{% if pending_customers %} <span class="badge" title="Utenti da associare a una community">{{ pending_customers }}</span>{% endif %}</a></li>
+                        {% endif %}
+                        {% if is_consultant %}
+                            <li><a href="{% url 'roi:calculator' %}"{% current "roi:calculator" "roi:quote" %}>ROI</a></li>
+                        {% endif %}
+                        {% if user.is_superuser %}
+                            <!-- Simulazione degli impianti senza sensore, eseguita dal master della community (demo) -->
+                            <li><a href="{% url 'SP:simulation_list' %}"{% current "SP:simulation_" %}>Simulazione</a></li>
+                        {% endif %}
+                        {% if user.is_staff %}
+                            <!-- Admin: amministratori e tecnici (impianti, dispositivi e interventi) -->
+                            <li><a href="{% url 'admin:index' %}">Admin</a></li>
+                        {% endif %}
+                    </ul>
+                    <div class="account">
+                        {% if user.is_authenticated %}
+                            <a href="{% url 'SP:profile' %}" title="Il tuo profilo"{% current "SP:profile" "SP:telegram" %}>
+                                <span class="avatar" aria-hidden="true">{{ user.first_name|default:user.username|first }}</span>{{ user.first_name|default:user.username }}
                             </a>
-                        </li>
-                        <li class="nav-item">
-                            <form action="{% url 'SP:logout' %}" method="post" class="m-0 d-flex align-items-center">
+                            <form action="{% url 'SP:logout' %}" method="post" class="m-0">
                                 {% csrf_token %}
-                                <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill">
-                                    <i class="fas fa-sign-out-alt me-1"></i>Esci
-                                </button>
+                                <button type="submit" class="quiet">Esci</button>
                             </form>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{% url 'SP:login' %}"><i class="fas fa-sign-in-alt me-1"></i>Accedi</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="btn btn-success btn-sm rounded-pill shadow-sm" href="{% url 'SP:register' %}">
-                                <i class="fas fa-user-plus me-1"></i>Registrati
-                            </a>
-                        </li>
-                    {% endif %}
-                </ul>
+                        {% else %}
+                            <a href="{% url 'SP:login' %}"{% current "SP:login" %}>Accedi</a>
+                            <a class="btn btn-primary btn-sm" href="{% url 'SP:register' %}">Registrati</a>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
-        </div>
-    </nav>
+        </nav>
+        {% block band %}{% endblock %}
+    </div>
 
-    <main class="flex-shrink-0">
+    <main id="main" class="page">
         {% block main %}
-        <div class="container" data-aos="fade-up">
+        <div class="wrap">
             {% block content %}{% endblock %}
         </div>
         {% endblock %}
     </main>
 
-    <footer class="py-2 text-center bg-white mt-auto border-top">
-        <p class="mb-0 text-muted small">&copy; {% now "Y" %} Solar Family - Creato con Django <i class="fab fa-python ms-1"></i></p>
+    <footer class="footer-b">
+        <div class="wrap">
+            <span>&copy; {% now "Y" %} Solar Family</span>
+            <span>Creato con Django</span>
+        </div>
     </footer>
 
-    <!-- Bootstrap Bundle with Popper -->
+    <!-- Bootstrap: menu a scomparsa sui telefoni e chiusura dei messaggi -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- AOS Library -->
-    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
-    <script>
-        AOS.init({
-            duration: 600,
-            once: true,
-            offset: 20
-        });
-    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>
