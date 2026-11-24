@@ -1,154 +1,138 @@
 {% extends "base.html" %}
+{% load ui %}
 
 {% block title %}Il tuo profilo{% endblock %}
 
-{% block content %}
+{% block band %}
 <!-- Il proprio account, dal nome nel menu -->
-<div class="container mb-5">
-    <div class="row mb-4">
-        <div class="col-12 d-flex flex-wrap align-items-center gap-3">
-            <div class="landing-icon flex-shrink-0"><i class="fas fa-user"></i></div>
+<div class="wrap">
+    <section class="head--page" aria-labelledby="profile-title">
+        <div class="who">
+            <span class="avatar avatar--big" aria-hidden="true">{% if customer %}{{ customer.name|first }}{% else %}{{ profile_user.get_full_name|default:profile_user.username|first }}{% endif %}</span>
             <div>
-                <h2 class="fw-bold text-dark mb-1">{% if customer %}{{ customer }}{% else %}{{ profile_user.get_full_name|default:profile_user.username }}{% endif %}</h2>
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <span class="text-muted"><i class="fas fa-user-circle me-1"></i>{{ profile_user.username }}</span>
-                    {% for role in roles %}
-                        <span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success">{{ role }}</span>
-                    {% endfor %}
+                <h1 class="title title--big" id="profile-title">{% if customer %}{{ customer }}{% else %}{{ profile_user.get_full_name|default:profile_user.username }}{% endif %}</h1>
+                <div class="who-meta">
+                    <span>{{ profile_user.username }}</span>
+                    {% for role in roles %}<span class="tag">{{ role }}</span>{% endfor %}
                 </div>
             </div>
         </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="split">
+    <div class="stack">
+        {% if form %}
+            <section class="section" aria-labelledby="contacts-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="contacts-title">Recapiti</h2>
+                        <p>Servono ai tecnici per contattarti, per esempio per un intervento sui tuoi impianti. Lascia vuoto un campo per toglierlo.</p>
+                    </div>
+                </div>
+                <form method="post" class="form-b form-narrow" novalidate>
+                    {% csrf_token %}
+                    {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+                    {% for field in form %}
+                        <div class="field">
+                            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                            {{ field }}
+                            {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
+                        </div>
+                    {% endfor %}
+                    <div class="form-actions"><button type="submit" class="btn btn-primary">Salva i recapiti</button></div>
+                </form>
+            </section>
+        {% endif %}
+
+        <section class="section" aria-labelledby="account-title">
+            <div class="section-head"><h2 id="account-title">Account</h2></div>
+            <dl class="pairs">
+                <div><dt>Username</dt><dd>{{ profile_user.username }}</dd></div>
+                <div><dt>Nome e cognome</dt><dd>{% if customer %}{{ customer }}{% else %}{{ profile_user.get_full_name|default:"-" }}{% endif %}</dd></div>
+                {% if not customer %}
+                    <div><dt>Email</dt><dd>{{ profile_user.email|default:"Non indicata" }}</dd></div>
+                    <div><dt>Telefono</dt><dd>{{ staff_phone|default:"Non indicato" }}</dd></div>
+                {% endif %}
+                <div><dt>Registrato il</dt><dd>{{ profile_user.date_joined|date:"d/m/Y H:i" }}</dd></div>
+                <div><dt>Ultimo accesso</dt><dd>{{ profile_user.last_login|date:"d/m/Y H:i"|default:"-" }}</dd></div>
+            </dl>
+            {% if not customer %}
+                <p class="note">
+                    I recapiti del personale li aggiorna un amministratore.
+                    {% if profile_user.is_superuser %}<a class="link" href="{% url 'admin:auth_user_change' profile_user.id %}">Modificali nell'admin</a>{% endif %}
+                </p>
+            {% endif %}
+        </section>
     </div>
 
-    <div class="row g-4">
-        <div class="col-lg-6 d-flex flex-column gap-4">
-            <div class="card border-0 shadow-sm rounded-4">
-                <div class="card-body p-4">
-                    <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-id-card me-1"></i>Account</h6>
-                    <dl class="row mb-0">
-                        <dt class="col-sm-5 text-muted fw-normal">Username</dt>
-                        <dd class="col-sm-7">{{ profile_user.username }}</dd>
-                        <dt class="col-sm-5 text-muted fw-normal">Nome e cognome</dt>
-                        <dd class="col-sm-7">{% if customer %}{{ customer }}{% else %}{{ profile_user.get_full_name|default:"-" }}{% endif %}</dd>
-                        {% if not customer %}
-                            <dt class="col-sm-5 text-muted fw-normal">Email</dt>
-                            <dd class="col-sm-7">{{ profile_user.email|default:"Non indicata" }}</dd>
-                            <dt class="col-sm-5 text-muted fw-normal">Telefono</dt>
-                            <dd class="col-sm-7">{{ staff_phone|default:"Non indicato" }}</dd>
-                        {% endif %}
-                        <dt class="col-sm-5 text-muted fw-normal">Registrato il</dt>
-                        <dd class="col-sm-7">{{ profile_user.date_joined|date:"d/m/Y H:i" }}</dd>
-                        <dt class="col-sm-5 text-muted fw-normal">Ultimo accesso</dt>
-                        <dd class="col-sm-7 mb-0">{{ profile_user.last_login|date:"d/m/Y H:i"|default:"-" }}</dd>
-                    </dl>
-                    {% if not customer %}
-                        <p class="small text-muted mb-0 mt-3"><i class="fas fa-lock me-1"></i>I recapiti del personale li aggiorna un amministratore.
-                            {% if profile_user.is_superuser %}<a href="{% url 'admin:auth_user_change' profile_user.id %}">Modificali nell'admin</a>{% endif %}</p>
-                    {% endif %}
-                </div>
-            </div>
-
-            {% if form %}
-            <form method="post" class="card border-0 shadow-sm rounded-4" novalidate>
-                {% csrf_token %}
-                <div class="card-body p-4">
-                    <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-address-book me-1"></i>Recapiti</h6>
-                    <p class="small text-muted">Servono ai tecnici per contattarti, per esempio per un intervento sui tuoi impianti. Lascia vuoto un campo per toglierlo.</p>
-                    {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
-                    {% for field in form %}
-                        <div class="mb-3">
-                            <label for="{{ field.id_for_label }}" class="form-label fw-bold small text-muted">{{ field.label }}</label>
-                            {{ field }}
-                            {% for error in field.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
-                        </div>
-                    {% endfor %}
-                    <button type="submit" class="btn btn-primary rounded-pill"><i class="fas fa-save me-1"></i>Salva i recapiti</button>
-                </div>
-            </form>
-            {% endif %}
-        </div>
-
-        <div class="col-lg-6 d-flex flex-column gap-4">
-            {% if customer %}
-                <div class="card border-0 shadow-sm rounded-4">
-                    <div class="card-body p-4">
-                        <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-users me-1"></i>La tua community</h6>
-                        {% if community %}
-                            <h5 class="fw-bold mb-1">{{ community.name }}</h5>
-                            <p class="text-muted mb-3">{{ community.city }} · {{ systems }} impiant{{ systems|pluralize:"o,i" }}{% if installed_power %} · {{ installed_power|floatformat:2 }} kWp installati{% endif %}</p>
-                            <div class="small fw-bold text-uppercase text-muted mb-2">Utenti</div>
-                            <ul class="list-unstyled mb-3">
-                                {% for member in members %}
-                                    <li class="d-flex justify-content-between align-items-center py-2 {% if not forloop.first %}border-top{% endif %}">
-                                        <span><span class="fw-bold">{{ member }}</span>{% if member.pk == customer.pk %} <span class="small text-muted">(tu)</span>{% endif %}</span>
-                                        {% if member.pk == community.owner_id %}<span class="badge rounded-pill bg-success bg-opacity-10 text-success border border-success"><i class="fas fa-user-tie me-1"></i>Titolare</span>{% endif %}
-                                    </li>
-                                {% endfor %}
-                            </ul>
-                            <a href="{% url 'home' %}" class="btn btn-outline-primary rounded-pill"><i class="fas fa-solar-panel me-2"></i>I tuoi impianti</a>
-                        {% else %}
-                            <div class="alert alert-warning rounded-4 mb-0" role="status">
-                                <i class="fas fa-hourglass-half me-1"></i>Non fai ancora parte di una community: un tecnico deve associarti a quella del tuo impianto.
-                            </div>
-                        {% endif %}
+    <div class="stack">
+        {% if customer %}
+            <section class="section" aria-labelledby="community-title">
+                <div class="section-head"><h2 id="community-title">La tua community</h2></div>
+                {% if community %}
+                    <p class="h3 mb-1">{{ community.name }}</p>
+                    <p class="muted mb-3">{{ community.city }} · {{ systems }} impiant{{ systems|pluralize:"o,i" }}{% if installed_power %} · {{ installed_power|floatformat:2 }} kWp installati{% endif %}</p>
+                    <ul class="list" aria-label="Utenti della community">
+                        {% for member in members %}
+                            <li>
+                                <span><b>{{ member }}</b>{% if member.pk == customer.pk %} <span class="muted">(tu)</span>{% endif %}</span>
+                                {% if member.pk == community.owner_id %}<span class="tag">Titolare</span>{% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                    <p class="mt-4 mb-0"><a href="{% url 'home' %}" class="btn btn-outline-secondary">I tuoi impianti</a></p>
+                {% else %}
+                    <div class="callout callout--warn" role="status">
+                        Non fai ancora parte di una community: un tecnico deve associarti a quella del tuo impianto.
                     </div>
-                </div>
-            {% endif %}
+                {% endif %}
+            </section>
+        {% endif %}
 
-            {% if telegram %}
-                <div class="card border-0 shadow-sm rounded-4">
-                    <div class="card-body p-4">
-                        <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fab fa-telegram me-1"></i>Notifiche Telegram</h6>
-                        {% if not telegram.enabled %}
-                            <span class="badge rounded-pill bg-secondary mb-2">Bot non disponibile</span>
-                            <p class="text-muted small mb-3">Il bot Telegram non è ancora configurato su questo server: gli avvisi sono spenti.</p>
-                        {% elif telegram.linked %}
-                            <span class="badge rounded-pill bg-success mb-2"><i class="fas fa-check-circle me-1"></i>Collegato</span>
-                            <p class="text-muted small mb-3">Ricevi su Telegram un avviso quando un impianto di {{ community.name }} ha un guasto.</p>
-                        {% else %}
-                            <span class="badge rounded-pill bg-secondary mb-2"><i class="fas fa-times-circle me-1"></i>Non collegato</span>
-                            <p class="text-muted small mb-3">Come titolare puoi ricevere su Telegram un avviso quando un impianto di {{ community.name }} ha un guasto, e chiedere al bot lo stato degli impianti.</p>
-                        {% endif %}
-                        <a href="{% url 'SP:telegram' %}" class="btn {% if telegram.enabled and not telegram.linked %}btn-primary fw-bold{% else %}btn-outline-primary{% endif %} rounded-pill">
-                            <i class="fab fa-telegram me-2"></i>{% if telegram.enabled and not telegram.linked %}Collega Telegram{% else %}Gestisci le notifiche{% endif %}
-                        </a>
-                    </div>
-                </div>
-            {% endif %}
+        {% if telegram %}
+            <section class="section" aria-labelledby="telegram-title">
+                <div class="section-head"><h2 id="telegram-title">Notifiche Telegram</h2></div>
+                {% if not telegram.enabled %}
+                    <span class="status new">Bot non disponibile</span>
+                    <p class="muted mt-2">Il bot Telegram non è ancora configurato su questo server: gli avvisi sono spenti.</p>
+                {% elif telegram.linked %}
+                    <span class="status ok">Collegato</span>
+                    <p class="muted mt-2">Ricevi su Telegram un avviso quando un impianto di {{ community.name }} ha un guasto.</p>
+                {% else %}
+                    <span class="status new">Non collegato</span>
+                    <p class="muted mt-2">Come titolare puoi ricevere su Telegram un avviso quando un impianto di {{ community.name }} ha un guasto, e chiedere al bot lo stato degli impianti.</p>
+                {% endif %}
+                <a href="{% url 'SP:telegram' %}" class="btn {% if telegram.enabled and not telegram.linked %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    {% if telegram.enabled and not telegram.linked %}Collega Telegram{% else %}Gestisci le notifiche{% endif %}
+                </a>
+            </section>
+        {% endif %}
 
-            {% if technician %}
-                <div class="card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body p-4">
-                        <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-tools me-1"></i>I tuoi interventi</h6>
-                        <div class="row g-3 mb-3">
-                            <div class="col-6">
-                                <div class="text-muted small">In carico a te</div>
-                                <div class="fs-2 fw-bold text-dark">{{ interventions.open }}</div>
-                            </div>
-                            <div class="col-6">
-                                <div class="text-muted small">Eseguiti</div>
-                                <div class="fs-2 fw-bold text-dark">{{ interventions.done }}</div>
-                            </div>
-                        </div>
-                        <a href="{% url 'SP:intervention_dashboard' %}?tab=accepted&amp;mine=1" class="btn btn-outline-primary rounded-pill"><i class="fas fa-tools me-2"></i>Vai agli interventi</a>
-                    </div>
+        {% if technician %}
+            <section class="section" aria-labelledby="work-title">
+                <div class="section-head"><h2 id="work-title">I tuoi interventi</h2></div>
+                <div class="metrics mb-4" style="--n: 2">
+                    <div><div class="m-label">In carico a te</div><div class="m-value">{{ interventions.open }}</div></div>
+                    <div><div class="m-label">Eseguiti</div><div class="m-value">{{ interventions.done }}</div></div>
                 </div>
-            {% endif %}
+                <a href="{% url 'SP:intervention_dashboard' %}?tab=accepted&amp;mine=1" class="btn btn-outline-secondary">Vai agli interventi</a>
+            </section>
+        {% endif %}
 
-            {% if not customer and not technician %}
-                <div class="card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body p-4">
-                        <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-briefcase me-1"></i>Il tuo lavoro</h6>
-                        {% if roles %}
-                            <p class="text-muted">Prepari i preventivi per i nuovi clienti con il calcolo del ritorno dell'investimento.</p>
-                            <a href="{% url 'roi:calculator' %}" class="btn btn-outline-primary rounded-pill"><i class="fas fa-calculator me-2"></i>Calcolo del ROI</a>
-                        {% else %}
-                            <p class="text-muted mb-0">Il tuo account non ha ancora un ruolo: chiedilo a un amministratore.</p>
-                        {% endif %}
-                    </div>
-                </div>
-            {% endif %}
-        </div>
+        {% if not customer and not technician %}
+            <section class="section" aria-labelledby="work-title">
+                <div class="section-head"><h2 id="work-title">Il tuo lavoro</h2></div>
+                {% if roles %}
+                    <p class="muted">Prepari i preventivi per i nuovi clienti con il calcolo del ritorno dell'investimento.</p>
+                    <a href="{% url 'roi:calculator' %}" class="btn btn-outline-secondary">Calcolo del ROI</a>
+                {% else %}
+                    <p class="muted mb-0">Il tuo account non ha ancora un ruolo: chiedilo a un amministratore.</p>
+                {% endif %}
+            </section>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

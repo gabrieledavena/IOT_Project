@@ -228,7 +228,7 @@ code { font-size: .92em; }
     font-weight: 500;
 }
 
-.account a { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--band-ink) !important; }
+.account a:not(.btn) { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--band-ink) !important; }
 .account a[aria-current] .avatar { box-shadow: 0 0 0 2px var(--mint); }
 
 .avatar {
@@ -999,6 +999,20 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var
 .weather-cell .icon { width: 28px; height: 28px; }
 .yield-bar { display: inline-block; width: 96px; height: 6px; margin-right: 12px; border-radius: 99px; background: var(--line); overflow: hidden; vertical-align: middle; }
 .yield-bar i { display: block; width: var(--v); height: 100%; border-radius: inherit; background: var(--green); }
+
+/* Profilo, moduli e registrazione in attesa */
+.who { display: flex; align-items: center; gap: 20px; }
+.avatar--big { width: 72px; height: 72px; font-size: 30px; }
+.who-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 10px; color: var(--band-muted); }
+.form-narrow { max-width: 560px; }
+.path { margin: 0; padding: 0; list-style: none; }
+.path li { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+.path li:first-child { border-top: 1px solid var(--line); }
+.path .dot { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--tint); }
+.path .done { color: var(--ink); }
+.path .done .dot { background: var(--green); color: #fff; }
+.path .now { color: var(--ink); }
+.path .now .dot { background: var(--yellow-pale); color: #5e4500; }
 
 /* Pagina dell'impianto: nome e stato in cima alla banda */
 .sys-head { border-bottom: 1px solid var(--band-line); padding-bottom: 36px; }

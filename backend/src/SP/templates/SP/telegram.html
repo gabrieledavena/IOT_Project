@@ -1,83 +1,75 @@
 {% extends "base.html" %}
+{% load ui %}
 
 {% block title %}Notifiche Telegram{% endblock %}
 
-{% block content %}
-<div class="container mb-5">
-    {% if error %}
-        {% include "partials/error_alert.html" with extra_class="mt-4" %}
-    {% else %}
-        <div class="row mb-4">
-            <div class="col-12">
-                <a href="{% url 'SP:profile' %}" class="text-decoration-none small d-inline-block mt-4"><i class="fas fa-arrow-left me-1"></i>Il tuo profilo</a>
-                <h2 class="fw-bold text-dark mb-0 mt-2"><i class="fab fa-telegram text-primary me-2"></i>Notifiche Telegram</h2>
-                <p class="text-muted">
+{% block band %}
+<div class="wrap">
+    <section class="head--page" aria-labelledby="telegram-title">
+        <div>
+            {% if not error %}<a href="{% url 'SP:profile' %}" class="back">{% icon "arrow-left" %}Il tuo profilo</a>{% endif %}
+            <h1 class="title title--big" id="telegram-title">Notifiche Telegram</h1>
+            {% if not error %}
+                <p class="lead-b">
                     Come titolare di <strong>{{ customer.community.name }}</strong> puoi ricevere su Telegram un avviso
                     quando un impianto della community ha un guasto, e chiedere al bot lo stato degli impianti.
                 </p>
-            </div>
+            {% endif %}
         </div>
-
-        <div class="row g-4">
-            <div class="col-lg-7">
-                <div class="card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body p-4">
-                        {% if not enabled %}
-                            <h5 class="fw-bold text-dark mb-3">Bot non disponibile</h5>
-                            <p class="text-muted mb-0">
-                                Il bot Telegram non è ancora configurato su questo server: gli avvisi sono spenti.
-                                I guasti restano comunque visibili nella pagina di ogni impianto.
-                            </p>
-                        {% elif customer.telegram_chat_id %}
-                            <span class="badge rounded-pill bg-success fs-6 mb-3"><i class="fas fa-check-circle me-1"></i>Collegato</span>
-                            <p class="text-muted">
-                                Il tuo account Telegram è collegato{% if bot_username %} al bot <strong>@{{ bot_username }}</strong>{% endif %}:
-                                riceverai un messaggio quando un impianto di {{ customer.community.name }} ha un guasto.
-                            </p>
-                            <form method="post" class="m-0">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-outline-danger rounded-pill">
-                                    <i class="fas fa-unlink me-2"></i>Scollega Telegram
-                                </button>
-                            </form>
-                        {% else %}
-                            <span class="badge rounded-pill bg-secondary fs-6 mb-3"><i class="fas fa-times-circle me-1"></i>Non collegato</span>
-                            <ol class="text-muted ps-3">
-                                <li class="mb-2">Premi <strong>Collega Telegram</strong>: si apre la chat con il bot
-                                    <strong>@{{ bot_username }}</strong>, sul telefono o su Telegram Desktop.</li>
-                                <li class="mb-2">Nella chat premi <strong>Avvia</strong>: il bot ti risponde che il collegamento è riuscito.</li>
-                                <li>Ricarica questa pagina per vedere lo stato aggiornato.</li>
-                            </ol>
-                            <a href="{{ link_url }}" target="_blank" rel="noopener" class="btn btn-primary rounded-pill fw-bold">
-                                <i class="fab fa-telegram me-2"></i>Collega Telegram
-                            </a>
-                            <p class="small text-muted mt-3 mb-0">
-                                Il link vale solo per il tuo account e una volta sola: non condividerlo.
-                            </p>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-lg-5">
-                <div class="card border-0 shadow-sm rounded-4 h-100">
-                    <div class="card-body p-4">
-                        <h6 class="text-muted fw-bold text-uppercase mb-3">Cosa fa il bot</h6>
-                        <p class="small text-muted">
-                            <i class="fas fa-bell text-danger me-1"></i>Ti avvisa quando un impianto risulta
-                            <strong>guasto</strong>: anche dopo il lavaggio dei pannelli produce meno degli impianti vicini.
-                            Dalla pagina dell'impianto puoi poi chiedere l'intervento di un tecnico.
-                        </p>
-                        <h6 class="text-muted fw-bold text-uppercase mb-2 mt-4">Comandi</h6>
-                        <ul class="list-unstyled small text-muted mb-0">
-                            {% for name, description in commands.items %}
-                                <li class="mb-1"><code>/{{ name }}</code> · {{ description }}</li>
-                            {% endfor %}
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-    {% endif %}
+    </section>
 </div>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+    <div class="section">{% include "partials/error_alert.html" %}</div>
+{% else %}
+    <div class="split split--wide">
+        <section class="section" aria-labelledby="state-title">
+            {% if not enabled %}
+                <div class="section-head"><h2 id="state-title">Bot non disponibile</h2></div>
+                <p class="muted mb-0">
+                    Il bot Telegram non è ancora configurato su questo server: gli avvisi sono spenti.
+                    I guasti restano comunque visibili nella pagina di ogni impianto.
+                </p>
+            {% elif customer.telegram_chat_id %}
+                <div class="section-head"><h2 id="state-title">Il tuo account</h2></div>
+                <span class="status ok status--big">Collegato</span>
+                <p class="muted mt-3">
+                    Il tuo account Telegram è collegato{% if bot_username %} al bot <strong>@{{ bot_username }}</strong>{% endif %}:
+                    riceverai un messaggio quando un impianto di {{ customer.community.name }} ha un guasto.
+                </p>
+                <form method="post" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger">Scollega Telegram</button>
+                </form>
+            {% else %}
+                <div class="section-head"><h2 id="state-title">Il tuo account</h2></div>
+                <span class="status new status--big">Non collegato</span>
+                <ol class="numbered numbered--column my-4">
+                    <li>Premi <strong>Collega Telegram</strong>: si apre la chat con il bot
+                        <strong>@{{ bot_username }}</strong>, sul telefono o su Telegram Desktop.</li>
+                    <li>Nella chat premi <strong>Avvia</strong>: il bot ti risponde che il collegamento è riuscito.</li>
+                    <li>Ricarica questa pagina per vedere lo stato aggiornato.</li>
+                </ol>
+                <a href="{{ link_url }}" target="_blank" rel="noopener" class="btn btn-primary">Collega Telegram</a>
+                <p class="note">Il link vale solo per il tuo account e una volta sola: non condividerlo.</p>
+            {% endif %}
+        </section>
+
+        <section class="section" aria-labelledby="bot-title">
+            <div class="section-head"><h2 id="bot-title">Cosa fa il bot</h2></div>
+            <p class="muted">
+                Ti avvisa quando un impianto risulta <strong>guasto</strong>: anche dopo il lavaggio dei pannelli produce
+                meno degli impianti vicini. Dalla pagina dell'impianto puoi poi chiedere l'intervento di un tecnico.
+            </p>
+            <h3 class="h3 mt-4">Comandi</h3>
+            <ul class="list">
+                {% for name, description in commands.items %}
+                    <li><span><code>/{{ name }}</code></span><span class="muted text-end">{{ description }}</span></li>
+                {% endfor %}
+            </ul>
+        </section>
+    </div>
+{% endif %}
 {% endblock %}
