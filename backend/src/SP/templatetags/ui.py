@@ -82,3 +82,12 @@ def to_city(name):
     """"a Modena", ma "ad Aosta": la preposizione davanti al nome di una città."""
     name = str(name)
     return f"ad {name}" if name[:1].lower() == "a" else f"a {name}"
+
+
+# Il meteo previsto in parole, per ogni icona di forecast/views.py (weather_icon)
+WEATHER_LABELS = {"sun": "Sereno", "partly": "Poco nuvoloso", "cloud": "Nuvoloso", "rain": "Pioggia", "snow": "Neve"}
+
+
+@register.filter
+def weather_label(icon_name):
+    return WEATHER_LABELS.get(icon_name, "")

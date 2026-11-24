@@ -988,6 +988,18 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var
 .eco { display: flex; gap: 12px; align-items: flex-start; }
 .eco > .icon { width: 26px; height: 26px; margin-top: 2px; color: var(--green); }
 
+/* Previsioni: oggi e i totali accanto al numero di domani, il meteo dei 7 giorni */
+.ahead { display: grid; margin: 0; }
+.ahead > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--band-line); }
+.ahead > div:first-child { border-top: 1px solid var(--band-line); }
+.ahead dt { font-weight: 400; color: var(--band-muted); }
+.ahead dt small { display: block; font-size: 14px; }
+.ahead dd { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; }
+.ahead dd small { font-size: 15px; font-weight: 500; color: var(--band-muted); letter-spacing: 0; }
+.weather-cell .icon { width: 28px; height: 28px; }
+.yield-bar { display: inline-block; width: 96px; height: 6px; margin-right: 12px; border-radius: 99px; background: var(--line); overflow: hidden; vertical-align: middle; }
+.yield-bar i { display: block; width: var(--v); height: 100%; border-radius: inherit; background: var(--green); }
+
 /* Pagina dell'impianto: nome e stato in cima alla banda */
 .sys-head { border-bottom: 1px solid var(--band-line); padding-bottom: 36px; }
 .sys-state { display: grid; gap: 6px; justify-items: start; max-width: 560px; }
@@ -1090,6 +1102,7 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var
     .metrics--2up > :nth-child(n+3) { border-top: 1px solid var(--line); padding-top: 16px; }
     .band .metrics--2up > :nth-child(n+3) { border-color: var(--band-line); }
     .hide-phone { display: none !important; }
+    .yield-bar { display: none; }
     .table > :not(caption) > * > * { padding-right: 10px; }
     .features, .features--two, .numbered, .timeline { grid-template-columns: minmax(0, 1fr); }
     .timeline li::before { display: none; }
