@@ -1,19 +1,29 @@
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Preventivo {{ quote_number }} · Solar Family</title>
+    <link rel="icon" href="{% static 'SP/favicon.svg' %}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400..700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Il preventivo da stampare: lo stesso linguaggio del sito, su un foglio bianco -->
     <style>
-        body { font-family: 'Segoe UI', sans-serif; color: #212529; background: #f4f6f9; }
-        .sheet { max-width: 210mm; margin: 2rem auto; padding: 15mm; background: #fff; box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, .08); }
-        .brand { color: #198754; font-weight: 700; }
-        h2 { font-size: 1.05rem; font-weight: 700; text-transform: uppercase; color: #198754; margin: 1.5rem 0 0.6rem; }
-        table { font-size: 0.85rem; }
-        .kpi { border-left: 4px solid #198754; padding: 0.4rem 0.8rem; }
-        .kpi strong { display: block; font-size: 1.3rem; }
-        .notes { font-size: 0.75rem; color: #6c757d; }
+        body { font-family: "Urbanist", system-ui, sans-serif; color: #13221a; background: #f3f6f1; font-variant-numeric: tabular-nums; }
+        .sheet { max-width: 210mm; margin: 2rem auto; padding: 15mm; background: #fff; border-radius: 16px; }
+        .brand { display: flex; align-items: center; gap: 10px; color: #0f3d28; font-weight: 700; }
+        h1 { letter-spacing: -.02em; }
+        h2 { font-size: 1.05rem; font-weight: 700; color: #0f3d28; margin: 1.6rem 0 0.5rem; padding-top: 0.8rem; border-top: 2px solid #198754; }
+        table { font-size: 0.85rem; --bs-table-border-color: rgba(19, 34, 26, .13); --bs-table-striped-bg: rgba(19, 34, 26, .04); }
+        .kpi { padding: 0.6rem 0.9rem; border-radius: 10px; background: #e0eee4; color: #0f5132; }
+        .kpi strong { display: block; font-size: 1.3rem; color: #13221a; }
+        .notes { font-size: 0.75rem; color: #56645b; }
+        .text-danger { color: #c92a2a !important; }
+        .text-success { color: #198754 !important; }
+        .btn { border-radius: 999px; font-weight: 600; padding: 0.55rem 1.3rem; }
+        .btn-success { background: #198754; border-color: #198754; }
         @page { size: A4; margin: 12mm; }
         @media print {
             body { background: #fff; }
@@ -37,7 +47,10 @@
 <div class="sheet">
     <div class="d-flex justify-content-between align-items-start">
         <div>
-            <div class="brand fs-4">Solar Family</div>
+            <div class="brand fs-4">
+                <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="8" fill="#198754"/><path d="M6 19h16M9 19a5 5 0 0 1 10 0" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M14 8v2.5M7.6 10.6l1.7 1.7M20.4 10.6l-1.7 1.7" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+                Solar Family
+            </div>
             <div class="text-muted small">Comunità energetiche e impianti fotovoltaici</div>
         </div>
         <div class="text-end">

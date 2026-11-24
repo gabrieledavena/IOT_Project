@@ -1042,7 +1042,11 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var
 .heatmap-legend-bar { height: 12px; border-radius: 99px; }
 .heatmap-legend-ticks { position: relative; height: 1.4em; margin-top: 6px; }
 .heatmap-legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.split--map { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 32px 48px; }
 .readout { padding: 16px 18px; border-radius: var(--r-md); background: var(--tint); }
+.filters-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 24px; margin-bottom: 24px; }
+.filters-form .field { flex: 1 1 220px; max-width: 360px; }
+.filters-form .form-check { padding-bottom: 12px; }
 .readout b { display: block; font-size: 22px; }
 
 /* Calendario della richiesta di intervento (flatpickr) */
@@ -1073,8 +1077,13 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var
 .hero h1 { margin: 0; font-size: clamp(40px, 5vw, 64px); line-height: 1.02; font-weight: 600; letter-spacing: -.035em; }
 .hero p { max-width: 56ch; margin: 20px 0 32px; color: var(--band-muted); font-size: 19px; }
 .preview { padding: 28px; border-radius: 24px; background: var(--band-tint); }
+.preview-figure { font-size: 44px; line-height: 1.1; font-weight: 600; letter-spacing: -.03em; }
+.preview-figure small { font-size: 18px; color: var(--mint); font-weight: 500; }
 .preview-bars { display: flex; align-items: flex-end; gap: 5px; height: 110px; margin: 20px 0; }
 .preview-bars span { flex: 1; border-radius: 4px 4px 2px 2px; background: var(--mint); }
+.preview-list { margin: 0; padding: 0; list-style: none; }
+.preview-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--band-line); }
+.preview-list .status { color: var(--band-muted); font-size: 15px; }
 .features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px 48px; margin: 0; padding: 0; list-style: none; }
 .features--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .feature-icon { width: 48px; height: 48px; display: grid; place-items: center; margin-bottom: 16px; border-radius: 14px; background: var(--green-pale); color: var(--green-deep); }
@@ -1103,7 +1112,7 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var
 
 @media (max-width: 1023.98px) {
     :root { --gut: 48px; }
-    .head, .split, .split--wide, .split--narrow, .hero { grid-template-columns: minmax(0, 1fr); }
+    .head, .split, .split--wide, .split--narrow, .split--map, .hero { grid-template-columns: minmax(0, 1fr); }
     .split > div + div { margin-top: 40px; padding-top: 8px; border-top: 1px solid var(--line); }
     .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .metrics > :nth-child(odd) { border-left: 0; padding-left: 0; }

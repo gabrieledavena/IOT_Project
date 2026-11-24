@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static ui %}
 
 {% block title %}Confronto tra città{% endblock %}
 
@@ -8,178 +8,159 @@
           integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 {% endblock %}
 
-{% block content %}
-<div class="container mb-5">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2 class="fw-bold text-dark mb-0">Confronto tra Città</h2>
-            <p class="text-muted">
+{% block band %}
+<div class="wrap">
+    <section class="head--page head--tight" aria-labelledby="cities-title">
+        <div>
+            <h1 class="title title--big" id="cities-title">Confronto tra città</h1>
+            <p class="lead-b">
                 Produzione media degli impianti delle community, rapportata alla loro grandezza:
                 kWh prodotti in un giorno per ogni kW installato (kWh/kWp).
             </p>
         </div>
-    </div>
-
-    <div class="row g-4 mb-4">
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-success border-5">
-                <div class="card-body p-4">
-                    <h6 class="text-muted fw-bold text-uppercase mb-2">Città con dati</h6>
-                    <h2 class="fw-bold text-dark mb-0">{{ cities_with_data }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card border-0 shadow-sm rounded-4 h-100 border-start border-warning border-5">
-                <div class="card-body p-4">
-                    <h6 class="text-muted fw-bold text-uppercase mb-2">Resa media delle città con dati</h6>
-                    <h2 class="fw-bold text-dark mb-0">
-                        {% if average_yield is not None %}{{ average_yield|floatformat:2 }} <span class="fs-5 text-muted">kWh/kWp al giorno</span>{% else %}-{% endif %}
-                    </h2>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    {% if heatmap.measured or heatmap.reference %}
-    <div class="card border-0 shadow-sm rounded-4 mb-4">
-        <div class="card-body p-4">
-            <div class="row g-4">
-                <div class="col-lg-8">
-                    <div id="city-heatmap" class="heatmap-map rounded-4"
-                         data-regions-url="{% static 'SP/italy_regions.geojson' %}"
-                         role="region" aria-label="Mappa dell'Italia colorata in base alla resa in kWh/kWp"></div>
-                </div>
-                <div class="col-lg-4 d-flex flex-column gap-3">
-                    <div>
-                        <h5 class="fw-bold text-dark mb-1">Mappa della resa</h5>
-                        <p class="text-muted small mb-0">
-                            Il colore indica i kWh prodotti in un giorno per ogni kW installato sul tetto (kWh/kWp):
-                            più è scuro, più un impianto di quella zona produce a parità di potenza.
-                        </p>
-                    </div>
-
-                    <div class="btn-group btn-group-sm w-100" role="group" aria-label="Dati mostrati sulla mappa">
-                        <input type="radio" class="btn-check" name="heatmap-layer" id="heatmap-measured" value="measured" autocomplete="off" {% if not heatmap.measured %}disabled{% endif %}>
-                        <label class="btn btn-outline-success" for="heatmap-measured">Misurata</label>
-                        <input type="radio" class="btn-check" name="heatmap-layer" id="heatmap-reference" value="reference" autocomplete="off" {% if not heatmap.reference %}disabled{% endif %}>
-                        <label class="btn btn-outline-success" for="heatmap-reference">Attesa (PVGIS)</label>
-                    </div>
-
-                    <div>
-                        <div class="small fw-bold text-muted mb-1">kWh/kWp al giorno</div>
-                        <div class="heatmap-legend-bar rounded-2" id="heatmap-legend-bar"></div>
-                        <div class="heatmap-legend-ticks small text-muted" id="heatmap-legend-ticks"></div>
-                    </div>
-
-                    <div class="bg-light rounded-3 p-3">
-                        <div class="small text-muted">Resa nel punto indicato sulla mappa</div>
-                        <div class="fw-bold text-dark fs-5" id="heatmap-readout" aria-live="polite">-</div>
-                    </div>
-
-                    <p class="small text-muted mb-0" data-heatmap-caption="measured">
-                        Resa misurata dagli impianti delle community: media delle giornate complete registrate
-                        in ogni città ({{ heatmap.measured|length }} città sulla mappa). Il colore si estende solo
-                        attorno alle città con dati: le zone senza colore non hanno impianti monitorati.
-                    </p>
-                    <p class="small text-muted mb-0 d-none" data-heatmap-caption="reference">
-                        Resa attesa di un impianto da 1 kWp orientato in modo ottimale: media annua
-                        {{ heatmap.reference_years.0 }}–{{ heatmap.reference_years.1 }} calcolata da PVGIS
-                        (Commissione Europea, JRC) con l'irraggiamento misurato dai satelliti in
-                        {{ heatmap.reference|length }} località, interpolata sul resto d'Italia.
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <form method="get" class="card border-0 shadow-sm rounded-4 mb-4">
-        <input type="hidden" name="sort" value="{{ ordering.key }}">
-        <div class="card-body p-4 row g-3 align-items-end">
-            <div class="col-md-5">
-                <label for="q" class="form-label fw-bold text-muted">Città o provincia</label>
-                <input type="search" name="q" id="q" value="{{ query }}" class="form-control" placeholder="Es. Modena">
-            </div>
-            <div class="col-md-3">
-                <label for="region" class="form-label fw-bold text-muted">Regione</label>
-                <select name="region" id="region" class="form-select">
-                    <option value="">Tutte</option>
-                    {% for name in regions %}
-                        <option value="{{ name }}" {% if name == region %}selected{% endif %}>{{ name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="only_with_data" value="1" id="only_with_data" {% if only_with_data %}checked{% endif %}>
-                    <label class="form-check-label" for="only_with_data">Solo città con dati</label>
-                </div>
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-primary w-100">Filtra</button>
-            </div>
-        </div>
-    </form>
-
-    <div class="card border-0 shadow-sm rounded-4">
-        <div class="card-body p-4">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                <p class="text-muted small mb-0">{{ page.paginator.count }} città trovate</p>
-                {% include "partials/sort_select.html" %}
-            </div>
-            <div class="table-responsive">
-                <table class="table align-middle mb-0">
-                    <thead>
-                        <tr>
-                            <th>Città</th>
-                            <th>Provincia</th>
-                            <th>Regione</th>
-                            <th class="text-end">Resa media (kWh/kWp al giorno)</th>
-                            <th class="text-end">Impianti</th>
-                            <th>Periodo misurato</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for city, stats in rows %}
-                            <tr>
-                                <td class="fw-bold">{{ city.name }}</td>
-                                <td>{{ city.province|default:"-" }}</td>
-                                <td>{{ city.region|default:"-" }}</td>
-                                {% if stats %}
-                                    <td class="text-end fw-bold text-success">{{ stats.specific_yield|floatformat:2 }}</td>
-                                    <td class="text-end">{{ stats.systems }}</td>
-                                    <td>
-                                        <span class="text-nowrap">{{ stats.first_day|date:"d/m/Y" }} - {{ stats.last_day|date:"d/m/Y" }}</span>
-                                        <span class="text-muted small text-nowrap">({{ stats.days }} giorni)</span>
-                                    </td>
-                                {% else %}
-                                    <td colspan="3" class="text-muted fst-italic">Nessuna informazione disponibile</td>
-                                {% endif %}
-                            </tr>
-                        {% empty %}
-                            <tr><td colspan="6" class="text-muted">Nessuna città corrisponde alla ricerca.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            {% if page.has_other_pages %}
-                <nav class="mt-4" aria-label="Pagine">
-                    <ul class="pagination justify-content-center mb-0">
-                        {% if page.has_previous %}
-                            <li class="page-item"><a class="page-link" href="?{{ filters }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>
-                        {% endif %}
-                        <li class="page-item disabled"><span class="page-link">Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span></li>
-                        {% if page.has_next %}
-                            <li class="page-item"><a class="page-link" href="?{{ filters }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>
-                        {% endif %}
-                    </ul>
-                </nav>
-            {% endif %}
+    </section>
+    <div class="metrics" style="--n: 2">
+        <div><div class="m-label">Città con dati</div><div class="m-value">{{ cities_with_data }}</div></div>
+        <div>
+            <div class="m-label">Resa media delle città con dati</div>
+            <div class="m-value">{% if average_yield is not None %}{{ average_yield|floatformat:2 }} <small>kWh/kWp al giorno</small>{% else %}-{% endif %}</div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block content %}
+{% if heatmap.measured or heatmap.reference %}
+    <!-- La mappa della resa: il dato principale della pagina, grande -->
+    <section class="section" aria-labelledby="map-title">
+        <div class="split split--map">
+            <div id="city-heatmap" class="heatmap-map"
+                 data-regions-url="{% static 'SP/italy_regions.geojson' %}"
+                 role="region" aria-label="Mappa dell'Italia colorata in base alla resa in kWh/kWp"></div>
+            <div class="d-flex flex-column gap-4">
+                <div>
+                    <h2 class="h2" id="map-title">Mappa della resa</h2>
+                    <p class="muted mt-2 mb-0">
+                        Il colore indica i kWh prodotti in un giorno per ogni kW installato sul tetto (kWh/kWp):
+                        più è scuro, più un impianto di quella zona produce a parità di potenza.
+                    </p>
+                </div>
+
+                <div class="seg" role="group" aria-label="Dati mostrati sulla mappa">
+                    <input type="radio" class="btn-check" name="heatmap-layer" id="heatmap-measured" value="measured" autocomplete="off" {% if not heatmap.measured %}disabled{% endif %}>
+                    <label class="btn" for="heatmap-measured">Misurata</label>
+                    <input type="radio" class="btn-check" name="heatmap-layer" id="heatmap-reference" value="reference" autocomplete="off" {% if not heatmap.reference %}disabled{% endif %}>
+                    <label class="btn" for="heatmap-reference">Attesa (PVGIS)</label>
+                </div>
+
+                <div>
+                    <div class="m-label mb-2">kWh/kWp al giorno</div>
+                    <div class="heatmap-legend-bar" id="heatmap-legend-bar"></div>
+                    <div class="heatmap-legend-ticks small muted" id="heatmap-legend-ticks"></div>
+                </div>
+
+                <div class="readout">
+                    <span class="muted">Resa nel punto indicato sulla mappa</span>
+                    <b id="heatmap-readout" aria-live="polite">-</b>
+                </div>
+
+                <p class="note mt-0" data-heatmap-caption="measured">
+                    Resa misurata dagli impianti delle community: media delle giornate complete registrate
+                    in ogni città ({{ heatmap.measured|length }} città sulla mappa). Il colore si estende solo
+                    attorno alle città con dati: le zone senza colore non hanno impianti monitorati.
+                </p>
+                <p class="note mt-0 d-none" data-heatmap-caption="reference">
+                    Resa attesa di un impianto da 1 kWp orientato in modo ottimale: media annua
+                    {{ heatmap.reference_years.0 }}–{{ heatmap.reference_years.1 }} calcolata da PVGIS
+                    (Commissione Europea, JRC) con l'irraggiamento misurato dai satelliti in
+                    {{ heatmap.reference|length }} località, interpolata sul resto d'Italia.
+                </p>
+            </div>
+        </div>
+    </section>
+{% endif %}
+
+<!-- Le città: filtri e tabella -->
+<section class="section" aria-labelledby="table-title">
+    <div class="section-head">
+        <div>
+            <h2 id="table-title">Le città</h2>
+            <p>{{ page.paginator.count }} città trovate</p>
+        </div>
+        {% include "partials/sort_select.html" %}
+    </div>
+    <form method="get" class="filters-form">
+        <input type="hidden" name="sort" value="{{ ordering.key }}">
+        <div class="field">
+            <label for="q" class="form-label">Città o provincia</label>
+            <input type="search" name="q" id="q" value="{{ query }}" class="form-control" placeholder="Es. Modena">
+        </div>
+        <div class="field">
+            <label for="region" class="form-label">Regione</label>
+            <select name="region" id="region" class="form-select">
+                <option value="">Tutte</option>
+                {% for name in regions %}
+                    <option value="{{ name }}" {% if name == region %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="only_with_data" value="1" id="only_with_data" {% if only_with_data %}checked{% endif %}>
+            <label class="form-check-label" for="only_with_data">Solo città con dati</label>
+        </div>
+        <button type="submit" class="btn btn-outline-secondary">Filtra</button>
+    </form>
+
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Città</th>
+                    <th class="hide-phone">Provincia</th>
+                    <th class="hide-phone">Regione</th>
+                    <th class="num">Resa media (kWh/kWp al giorno)</th>
+                    <th class="num hide-phone">Impianti</th>
+                    <th class="hide-phone">Periodo misurato</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for city, stats in rows %}
+                    <tr>
+                        <td class="fw-semibold">{{ city.name }}</td>
+                        <td class="hide-phone">{{ city.province|default:"-" }}</td>
+                        <td class="hide-phone">{{ city.region|default:"-" }}</td>
+                        {% if stats %}
+                            <td class="num"><b>{{ stats.specific_yield|floatformat:2 }}</b></td>
+                            <td class="num hide-phone">{{ stats.systems }}</td>
+                            <td class="hide-phone">
+                                <span class="nb">{{ stats.first_day|date:"d/m/Y" }} - {{ stats.last_day|date:"d/m/Y" }}</span>
+                                <span class="muted small nb">({{ stats.days }} giorni)</span>
+                            </td>
+                        {% else %}
+                            <td colspan="3" class="muted">Nessuna informazione disponibile</td>
+                        {% endif %}
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6" class="empty">Nessuna città corrisponde alla ricerca.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if page.has_other_pages %}
+        <nav aria-label="Pagine">
+            <ul class="pagination justify-content-center">
+                {% if page.has_previous %}
+                    <li class="page-item"><a class="page-link" href="?{{ filters }}&amp;page={{ page.previous_page_number }}">&laquo; Precedente</a></li>
+                {% endif %}
+                <li class="page-item disabled"><span class="page-link">Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span></li>
+                {% if page.has_next %}
+                    <li class="page-item"><a class="page-link" href="?{{ filters }}&amp;page={{ page.next_page_number }}">Successiva &raquo;</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    {% endif %}
+</section>
 {% endblock %}
 
 {% block extra_js %}
