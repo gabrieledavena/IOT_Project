@@ -169,7 +169,7 @@ code { font-size: .92em; }
     text-decoration: none;
 }
 
-.mark { width: 28px; height: 28px; flex: none; }
+.brand-mark { width: 28px; height: 28px; flex: none; }
 
 .nav-b .navbar-collapse { gap: 28px; }
 
@@ -336,6 +336,7 @@ code { font-size: .92em; }
 .head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 
 .figure {
+    display: block;
     margin: 0 0 24px;
     font-size: clamp(64px, 8.4vw, 124px);
     line-height: .95;

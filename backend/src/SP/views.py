@@ -28,25 +28,22 @@ from .sorting import SYSTEM_STATES, Ordering, problems_first
 from .telegram import enabled as telegram_enabled
 from .weather import get_day_weather
 
-# Come mostrare l'esito del controllo automatico (SP/monitoring.py) nella pagina dell'impianto
+# Come spiegare l'esito del controllo automatico (SP/monitoring.py) nella pagina dell'impianto; il colore del suo
+# pallino lo dà il filtro status_class (SP/templatetags/ui.py)
 SYSTEM_STATUSES = {
     PhotovoltaicSystem.Status.OK: {
-        "color": "success", "icon": "fa-check-circle",
         "description": "Nei due giorni controllati l'impianto ha prodotto quanto previsto dal modello per il meteo di quei giorni.",
     },
     PhotovoltaicSystem.Status.DIRTY: {
-        "color": "warning", "icon": "fa-broom",
         "description": "Ha prodotto oltre il 10% in meno del previsto, come gli impianti vicini: probabilmente i pannelli "
                        "sono sporchi (polvere, pollini). Si consiglia una pulizia.",
     },
     PhotovoltaicSystem.Status.FAULT: {
-        "color": "danger", "icon": "fa-exclamation-triangle",
         "description": "Ha prodotto oltre il 10% in meno del previsto, mentre gli impianti vicini producono regolarmente: "
                        "probabile guasto. Il dispositivo lava comunque i pannelli: se dopo un'ora di produzione l'impianto "
                        "non produce come i vicini, viene segnalato come guasto.",
     },
     PhotovoltaicSystem.Status.BROKEN: {
-        "color": "dark", "icon": "fa-times-circle",
         "description": "Anche dopo il lavaggio dei pannelli produce meno degli impianti vicini: guasto di pannelli o "
                        "inverter. Si consiglia un intervento tecnico.",
     },

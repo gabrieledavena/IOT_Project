@@ -52,7 +52,7 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | Installation of the devices on the systems, for the technicians (and to test the bridge as any system) | Implemented (see [Devices and installations](#devices-and-installations)) |
 | REST API to read the measurements (per-community read access) | Implemented |
 | Home page: for visitors a showcase of the services (with the link to the city comparison); after login a dashboard with today's production of the community and the status of each system | Implemented |
-| Web dashboards for communities and single systems, with weather and map | Implemented |
+| Web dashboards for communities and single systems, with the last 7 days and the weather | Implemented (see [Interface](#interface)) |
 | Community totalizer on the home and energy summaries by month and year (communities and systems), with 2. CO₂ savings | Implemented (see [Energy totals and summaries](#energy-totals-and-summaries)) |
 | 3. Production forecasting: today, tomorrow, next 7 and 30 days, in one page | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
 | 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented, with the automatic check of each system (see [System monitoring](#system-monitoring)) |
@@ -97,6 +97,8 @@ backend/src/
     simulation.py         Systems without a sensor simulated by the master, with the values chosen by an administrator
     roles.py              Roles of the staff: technicians and consultants
     access.py             Who can see which systems, pages of technicians and consultants
+    static/SP/app.css     The look of the site, language "Banda verde" (see [Interface](#interface))
+    templatetags/ui.py    Icons, current entry of the menu, colours of the states and other helpers of the pages
     weather.py            Daily weather from Open-Meteo (forecast and historical archive)
     api.py                REST API to read the measurements
     views.py              Home (showcase or dashboard), registration, city benchmark and production dashboards
@@ -112,7 +114,7 @@ backend/src/
     ml_models/            Trained models (.joblib)
   roi/                    ROI calculator and printable quote (consultants only)
     calculator.py         Yearly cash flows, payback and ROI
-  templates/              Base layout (menu) and shared partials
+  templates/              Base layout (the green band with the menu), shared partials and the icons
 ```
 
 ## Getting started
@@ -204,6 +206,24 @@ Only the administrators create technicians and consultants: in the admin, **Uten
 (`is_staff`) follows it by itself: technicians and administrators yes, consultants no. The groups and the permissions
 of the technicians are created by the migration `SP/0012_staff_roles`; the staff users existing before it get no
 role until an administrator gives them one.
+
+## Interface
+
+The site follows one design language, "Banda verde", written in `SP/static/SP/app.css`, which is loaded after Bootstrap
+and redraws its components:
+
+- every page opens with a dark green band with rounded bottom corners: the menu, the title and the main figure of the
+  page, with its chart where there is one (the day's energy and power, tomorrow's forecast, the state of the systems);
+  the rest of the page sits on the light ground without cards, its groups separated by space and thin lines;
+- green is the only accent colour; the states are coloured dots: OK green, dirty panels yellow, probable fault orange,
+  fault red, not yet checked grey;
+- the size of an element follows its importance: one large figure per page, the other values smaller, labels in
+  sentence case;
+- the font is Urbanist (Google Fonts); the icons are our own SVGs in `templates/partials/icons.html`, used with
+  `{% icon "name" %}` (`SP/templatetags/ui.py`);
+- the Chart.js charts take font, colours and tooltip from `SP/static/SP/chart_theme.js`: mint on the band, green on
+  the light ground. The production chart shows one point every 2 minutes ("1 min", the default), or the averages of
+  15 minutes and of one hour.
 
 ## Energy totals and summaries
 
