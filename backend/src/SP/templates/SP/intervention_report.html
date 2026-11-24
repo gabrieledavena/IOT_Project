@@ -1,22 +1,31 @@
-{% load interventions %}<!DOCTYPE html>
+{% load interventions static %}<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Report intervento {{ intervention.number }} · Solar Family</title>
+    <link rel="icon" href="{% static 'SP/favicon.svg' %}" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@400..700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Il rapporto da stampare: lo stesso linguaggio del sito, su un foglio bianco -->
     <style>
-        body { font-family: 'Segoe UI', sans-serif; color: #212529; background: #f4f6f9; }
-        .sheet { max-width: 210mm; margin: 2rem auto; padding: 15mm; background: #fff; box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, .08); }
-        .brand { color: #198754; font-weight: 700; }
-        h2 { font-size: 1.05rem; font-weight: 700; text-transform: uppercase; color: #198754; margin: 1.5rem 0 0.6rem; }
-        table { font-size: 0.9rem; }
-        table td:first-child { width: 40%; color: #6c757d; }
-        .status { display: inline-block; padding: 0.15rem 0.6rem; border: 2px solid #198754; border-radius: 1rem; font-weight: 700; color: #198754; }
-        .status.open { border-color: #6c757d; color: #6c757d; }
-        .work { white-space: pre-line; border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 0.8rem; min-height: 5rem; font-size: 0.9rem; }
-        .signature { border-top: 1px solid #212529; padding-top: 0.3rem; margin-top: 3.5rem; font-size: 0.8rem; color: #6c757d; }
-        .notes { font-size: 0.75rem; color: #6c757d; }
+        body { font-family: "Urbanist", system-ui, sans-serif; color: #13221a; background: #f3f6f1; font-variant-numeric: tabular-nums; }
+        .sheet { max-width: 210mm; margin: 2rem auto; padding: 15mm; background: #fff; border-radius: 16px; }
+        .brand { display: flex; align-items: center; gap: 10px; color: #0f3d28; font-weight: 700; }
+        h1 { letter-spacing: -.02em; }
+        h2 { font-size: 1.05rem; font-weight: 700; color: #0f3d28; margin: 1.6rem 0 0.5rem; padding-top: 0.8rem; border-top: 2px solid #198754; }
+        table { font-size: 0.9rem; --bs-table-border-color: rgba(19, 34, 26, .13); }
+        table td:first-child { width: 40%; color: #56645b; }
+        .status { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+        .status::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: #198754; }
+        .status.open::before { background: #e0a800; }
+        .work { white-space: pre-line; border: 1px solid rgba(19, 34, 26, .2); border-radius: 10px; padding: 0.8rem; min-height: 5rem; font-size: 0.9rem; }
+        .signature { border-top: 1px solid #13221a; padding-top: 0.3rem; margin-top: 3.5rem; font-size: 0.8rem; color: #56645b; }
+        .notes { font-size: 0.75rem; color: #56645b; }
+        .btn { border-radius: 999px; font-weight: 600; padding: 0.55rem 1.3rem; }
+        .btn-success { background: #198754; border-color: #198754; }
         @page { size: A4; margin: 12mm; }
         @media print {
             body { background: #fff; }
@@ -40,7 +49,10 @@
 <div class="sheet">
     <div class="d-flex justify-content-between align-items-start">
         <div>
-            <div class="brand fs-4">Solar Family</div>
+            <div class="brand fs-4">
+                <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect width="28" height="28" rx="8" fill="#198754"/><path d="M6 19h16M9 19a5 5 0 0 1 10 0" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M14 8v2.5M7.6 10.6l1.7 1.7M20.4 10.6l-1.7 1.7" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>
+                Solar Family
+            </div>
             <div class="text-muted small">Comunità energetiche e impianti fotovoltaici</div>
         </div>
         <div class="text-end">

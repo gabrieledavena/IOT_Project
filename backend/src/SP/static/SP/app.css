@@ -294,6 +294,7 @@ code { font-size: .92em; }
 
 .head--page > :first-child { flex: 1 1 520px; }
 .head--tall { padding-bottom: 48px; }
+.head--tight { padding-bottom: 28px; }
 
 .back {
     display: inline-flex;
@@ -437,6 +438,7 @@ code { font-size: .92em; }
 .seg .btn-check:disabled + .btn, .seg .btn-check:disabled + label { opacity: .4; pointer-events: none; }
 .seg .btn-check:focus-visible + .btn, .seg .btn-check:focus-visible + label { outline: 2px solid var(--green); outline-offset: 2px; }
 
+.seg .count { margin-left: 2px; font-weight: 700; opacity: .7; }
 .band .seg { background: var(--band-tint); }
 .band .seg button, .band .seg .btn, .band .seg > a, .band .seg > label { color: var(--band-muted); }
 .band .seg button:hover, .band .seg .btn:hover, .band .seg > a:hover, .band .seg > label:hover { color: var(--band-ink); }
@@ -699,6 +701,7 @@ tr:hover .arrow, .arrow:hover { background: var(--green-pale); transform: transl
 .timeline .dot { position: absolute; top: 0; left: 0; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; background: var(--band-tint); color: var(--band-muted); }
 .timeline .done .dot { background: var(--mint); color: var(--band); }
 .timeline .done::before { background: var(--mint); }
+.band .timeline { padding-bottom: 48px; }
 .timeline b { display: block; font-size: 16px; }
 .timeline span { color: var(--band-muted); font-size: 15px; }
 
