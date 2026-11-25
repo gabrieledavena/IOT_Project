@@ -10,7 +10,7 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.utils import timezone
 
-from SP.management.commands.import_cities import NAME_COLUMN, PROVINCE_COLUMN, REGION_COLUMN
+from SP.management.commands.import_cities import CODE_COLUMN, NAME_COLUMN, PROVINCE_COLUMN, REGION_COLUMN
 from SP.management.commands.populate_db import FALLBACK_CITIES, PERFORMANCE_RATIO
 from SP.models import City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem
 from SP.production import daily_energy_kwh, get_system_series
@@ -192,55 +192,50 @@ class PopulateDbCommandTests(TestCase):
                 call_command("populate_db", option, value, stdout=StringIO())
 
 
-def geonames_place(name, admin1code, latitude, population=10000):
-    return {"name": name, "countrycode": "IT", "admin1code": admin1code, "latitude": latitude, "longitude": 10.0,
-            "population": population}
-
-
 class ImportCitiesCommandTests(TestCase):
     MUNICIPALITIES = [
-        ("Modena", "Modena", "Emilia-Romagna"),
-        ("Bari", "Bari", "Puglia"),
-        ("Bergamo", "Bergamo", "Lombardia"),
-        ("Castro", "Lecce", "Puglia"),
-        ("Castro", "Bergamo", "Lombardia"),
-        ("Inesistente", "Roma", "Lazio"),
+        ("036023", "Modena", "Modena", "Emilia-Romagna"),
+        ("072006", "Bari", "Bari", "Puglia"),
+        ("016024", "Bergamo", "Bergamo", "Lombardia"),
+        # Due comuni omonimi: li distingue il codice ISTAT
+        ("075096", "Castro", "Lecce", "Puglia"),
+        ("016065", "Castro", "Bergamo", "Lombardia"),
+        ("058999", "Senza coordinate", "Roma", "Lazio"),
     ]
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.file = Path(self.tmp.name) / "comuni.xlsx"
-        pd.DataFrame(self.MUNICIPALITIES, columns=[NAME_COLUMN, PROVINCE_COLUMN, REGION_COLUMN]).to_excel(self.file, index=False)
-        self.places = [
-            geonames_place("Modena", "05", 44.6),
-            geonames_place("Bari", "13", 41.1),
-            geonames_place("Bergamo", "09", 45.7),
-            # Due comuni omonimi in regioni diverse
-            geonames_place("Castro", "13", 40.0),
-            geonames_place("Castro", "09", 45.8),
-        ]
+        self.coordinates = Path(self.tmp.name) / "coordinate.csv"
+        columns = [CODE_COLUMN, NAME_COLUMN, PROVINCE_COLUMN, REGION_COLUMN]
+        pd.DataFrame(self.MUNICIPALITIES, columns=columns).to_excel(self.file, index=False)
+        self.write_coordinates({"036023": 44.6, "072006": 41.1, "016024": 45.7, "075096": 40.0, "016065": 45.8})
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def import_cities(self):
-        geonames = mock.Mock()
-        geonames.get_cities.return_value = {i: place for i, place in enumerate(self.places)}
-        with mock.patch("SP.management.commands.import_cities.geonamescache.GeonamesCache", return_value=geonames):
-            return run("import_cities", "--file", str(self.file))
+    def write_coordinates(self, latitudes):
+        lines = ["codice_istat,comune,latitudine,longitudine"]
+        lines += [f"{code},Comune,{latitude},10.0" for code, latitude in latitudes.items()]
+        self.coordinates.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    def test_homonyms_are_told_apart_by_region(self):
+    def import_cities(self):
+        return run("import_cities", "--file", str(self.file), "--coordinates", str(self.coordinates))
+
+    def test_every_municipality_gets_the_coordinates_of_its_istat_code(self):
         self.import_cities()
 
+        # Oltre alla città creata dalla migrazione 0004 (Default City)
+        self.assertEqual(City.objects.exclude(name="Default City").count(), len(self.MUNICIPALITIES))
         self.assertEqual(City.objects.get(name="Castro", province="Lecce").latitude, 40.0)
         self.assertEqual(City.objects.get(name="Castro", province="Bergamo").latitude, 45.8)
-        self.assertFalse(City.objects.get(name="Inesistente").has_coordinates)
+        self.assertFalse(City.objects.get(name="Senza coordinate").has_coordinates)
 
     def test_running_again_updates_cities_without_deleting_communities(self):
         self.import_cities()
         cities = City.objects.count()
         community = create_community(city=City.objects.get(name="Modena"))
-        self.places[0] = geonames_place("Modena", "05", 44.7)
+        self.write_coordinates({"036023": 44.7, "072006": 41.1, "016024": 45.7, "075096": 40.0, "016065": 45.8})
 
         output = self.import_cities()
 
@@ -248,6 +243,14 @@ class ImportCitiesCommandTests(TestCase):
         self.assertEqual(City.objects.count(), cities)
         community.refresh_from_db()
         self.assertEqual(community.city.latitude, 44.7)
+
+    def test_the_coordinates_file_covers_every_municipality(self):
+        output = run("import_cities")
+
+        self.assertIn("7894 created", output)
+        self.assertNotIn("without coordinates", output)
+        self.assertFalse(City.objects.exclude(name="Default City").filter(latitude__isnull=True).exists())
+        self.assertTrue(City.objects.get(name="Torino").has_coordinates)
 
     def test_missing_file_is_a_command_error(self):
         with self.assertRaisesMessage(CommandError, "File not found"):

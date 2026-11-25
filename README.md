@@ -124,10 +124,16 @@ The backend runs in Docker (`backend/src` is mounted in the container, so code c
 ```bash
 docker compose up -d --build
 docker exec iot_django_server python manage.py migrate
-docker exec iot_django_server python manage.py import_cities       # Italian municipalities with coordinates
+docker exec iot_django_server python manage.py import_cities       # all the 7,894 Italian municipalities with coordinates
 docker exec iot_django_server python manage.py populate_db         # realistic demo communities, users and readings
 docker exec iot_django_server python manage.py createsuperuser
 ```
+
+`import_cities` reads the municipalities from the ISTAT list (`backend/src/cities/Elenco-comuni-italiani.xlsx`) and
+their coordinates from `backend/src/cities/coordinate-comuni.csv`, matched by ISTAT code. The coordinates come from
+the [GeoNames](https://www.geonames.org/) dump of Italy (`IT.zip`, license CC-BY 4.0), where the municipalities are
+the ADM3 units and their admin3 code is the ISTAT code; Castegnero Nanto, born in 2025 and not yet in GeoNames, has
+the point halfway between Castegnero and Nanto. Running it again updates the existing cities and deletes none.
 
 On macOS and Linux `./start.sh` (also `./start.sh --build`) can replace `docker compose up -d`: it also passes the
 server the address of the PC in the local network, which the server in Docker cannot see. The page **Simulazione**
