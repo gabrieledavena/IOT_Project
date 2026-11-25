@@ -228,7 +228,7 @@ and redraws its components:
 - the font is Urbanist (Google Fonts); the icons are our own SVGs in `templates/partials/icons.html`, used with
   `{% icon "name" %}` (`SP/templatetags/ui.py`);
 - the Chart.js charts take font, colours and tooltip from `SP/static/SP/chart_theme.js`: mint on the band, green on
-  the light ground. The production chart shows one point every 2 minutes ("1 min", the default), or the averages of
+  the light ground. The production chart shows one point a minute ("1 min", the default), or the averages of
   15 minutes and of one hour.
 
 ## Energy totals and summaries

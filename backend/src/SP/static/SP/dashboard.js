@@ -1,5 +1,5 @@
 // Grafici delle dashboard di produzione: potenza e, se presenti nella pagina, luminosità e temperatura.
-// I dati arrivano dal tag <script id="chart-data"> generato dal template (un punto ogni 2 minuti).
+// I dati arrivano dal tag <script id="chart-data"> generato dal template (un punto al minuto).
 // Colori e font vengono da SP/chart_theme.js: menta sulla banda verde, verde e nero sul fondo chiaro.
 (function () {
     const rawData = JSON.parse(document.getElementById('chart-data').textContent);

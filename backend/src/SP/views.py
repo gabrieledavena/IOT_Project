@@ -172,7 +172,7 @@ class UserDashboardView(LoginRequiredMixin, View):
                 "specific_yield": energy / installed_power if installed_power else None,
                 "weather": get_day_weather(community.city, today),
             },
-            "chart_data": series[:: ProductionDashboardView.chart_step],
+            "chart_data": series,
         }
 
 
@@ -359,8 +359,6 @@ class ProductionDashboardView(LoginRequiredMixin, View):
     """
 
     template_name = None
-    # Un punto ogni 2 minuti basta per i grafici e dimezza i dati inviati alla pagina
-    chart_step = 2
 
     def load(self, request, **kwargs):
         raise NotImplementedError
@@ -387,7 +385,7 @@ class ProductionDashboardView(LoginRequiredMixin, View):
             return redirect(f"{request.path}?day={days[0]}")
 
         series = self.get_series(date.fromisoformat(selected_day)) if days else []
-        chart_data = series[:: self.chart_step]
+        chart_data = series  # un punto al minuto, la stessa serie del picco e dell'energia
         today = date.today().isoformat()
         context = {
             "community": self.community,

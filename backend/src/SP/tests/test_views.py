@@ -39,7 +39,7 @@ class CommunityDashboardTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["total_energy"], 6.0)
-        self.assertEqual(len(response.context["chart_data"]), 30)  # 60 minuti, un punto ogni 2
+        self.assertEqual(len(response.context["chart_data"]), 60)  # 60 minuti, un punto al minuto
         self.assertContains(response, '<script id="chart-data" type="application/json">')
         self.assertNotContains(response, "maps.google.com")  # la mappa della città non c'è più
         get_day_weather.assert_called_once_with(self.community.city, "2026-09-28")
