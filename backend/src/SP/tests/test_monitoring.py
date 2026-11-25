@@ -159,6 +159,16 @@ class CheckSystemsCommandTests(MonitoringTestCase):
         PhotovoltaicSystem.objects.update(last_check=timezone.now() - timedelta(days=2))
         self.assertIn("Checked 2 systems", self.run_command())
 
+    def test_runs_like_the_scheduler_after_the_system_checks_of_django(self):
+        # Lo scheduler lancia python manage.py check_systems, che prima fa i controlli di sistema di Django
+        # chiamando il metodo check del comando; call_command li salta, a meno di chiederli con skip_checks=False
+        self.recent_system(1.0, name="Sano")
+
+        out = StringIO()
+        call_command("check_systems", skip_checks=False, stdout=out)
+
+        self.assertIn("Checked 1 systems (1 OK", out.getvalue())
+
     def test_status_changes_are_sent_to_the_installed_devices(self):
         # Due impianti su tre producono poco: i loro pannelli sono sporchi
         dirty = self.recent_system(0.6, name="Sporco")

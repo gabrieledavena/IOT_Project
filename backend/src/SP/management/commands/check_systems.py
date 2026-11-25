@@ -37,7 +37,7 @@ class Command(BaseCommand):
             systems = systems.filter(community_id__in=options['community'])
         systems = list(systems.select_related('community__city').order_by('community__name', 'community_id', 'name'))
         if systems:
-            changed += self.check(systems, now)
+            changed += self.check_production(systems, now)
         else:
             self.stdout.write('No system to check.')
 
@@ -74,7 +74,9 @@ class Command(BaseCommand):
                 changed.append(system)
         return changed
 
-    def check(self, systems, now):
+    # Non può chiamarsi check: è il metodo con cui Django fa i controlli di sistema prima di eseguire il comando
+    # da riga di comando (python manage.py check_systems, come fa lo scheduler)
+    def check_production(self, systems, now):
         """Controllo della produzione degli ultimi giorni; restituisce gli impianti il cui stato è cambiato."""
         changed = []
         try:
