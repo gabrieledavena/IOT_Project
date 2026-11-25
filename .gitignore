@@ -28,3 +28,8 @@ env/
 .venv/
 
 ArduinoBridge/*/build/*
+
+# --- Blender (videos are rendered locally from casa_monitoraggio.blend) ---
+*.blend1
+*.blend@
+blender/*.mp4
