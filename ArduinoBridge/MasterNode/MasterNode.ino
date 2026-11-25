@@ -287,6 +287,17 @@ int pagina = 0;
 bool pulsantePremuto = false;
 unsigned long pulsantePremutoDa = 0;
 
+// Lo stato di un impianto nella colonna a sinistra della sua pagina: un'icona Open Iconic da 16x16 pixel e una
+// parola sotto (due righe se non ci sta in una), in negativo se c'è da intervenire. Dichiarato qui, prima delle funzioni, perché l'IDE di Arduino
+// mette i prototipi che genera prima della prima funzione
+struct AspettoStato {
+  const uint8_t *font;
+  uint16_t icona;
+  const char *parola;
+  bool problema;
+  const char *parolaSopra;   // la prima riga se la parola è su due, altrimenti nullptr
+};
+
 // ===================================================================================================================
 
 String argomento(const char *nome) {
@@ -1857,15 +1868,26 @@ bool riepilogoStati(char *riga, size_t spazio) {
   return totale > 0 && riga[0] != '\0';
 }
 
-const char *descrizioneStato(const char *stato) {
-  if (strcmp(stato, "OK") == 0) return "OK";
-  if (strcmp(stato, "DRT") == 0) return "PANNELLI SPORCHI";
-  if (strcmp(stato, "FLT") == 0) return "PROBABILE GUASTO";
-  if (strcmp(stato, "BRK") == 0) return "GUASTO";
-  return "STATO NON ANCORA NOTO";
+AspettoStato aspettoStato(const Nodo &nodo) {
+  if (nodo.lavaggio) {
+    return {u8g2_font_open_iconic_thing_2x_t, 72, "LAVAGGIO", true};       // goccia
+  }
+  if (strcmp(nodo.stato, "OK") == 0) {
+    return {u8g2_font_open_iconic_check_2x_t, 65, "OK", false};           // spunta nel cerchio
+  }
+  if (strcmp(nodo.stato, "DRT") == 0) {
+    return {u8g2_font_open_iconic_embedded_2x_t, 71, "SPORCHI", true};    // triangolo con il punto esclamativo
+  }
+  if (strcmp(nodo.stato, "FLT") == 0) {
+    return {u8g2_font_open_iconic_embedded_2x_t, 71, "GUASTO", true, "PROB."};
+  }
+  if (strcmp(nodo.stato, "BRK") == 0) {
+    return {u8g2_font_open_iconic_check_2x_t, 66, "GUASTO", true};        // croce nel cerchio
+  }
+  return {u8g2_font_open_iconic_app_2x_t, 69, "IN ATTESA", false};        // orologio: stato non ancora arrivato
 }
 
-// Un impianto: nome, stato (in negativo se non è OK), ultima misura, nodo e lavaggi
+// Un impianto: in alto il nome; a sinistra lo stato, a destra l'ultima misura; in basso il nodo e i lavaggi
 void mostraImpianto(Nodo &nodo, int numero, int totale) {
   char testo[40];
   schermo.setFont(u8g2_font_5x7_tf);
@@ -1876,39 +1898,48 @@ void mostraImpianto(Nodo &nodo, int numero, int totale) {
   schermo.drawUTF8(0, 0, adatta(nome, 128 - larghezzaNumero - 4).c_str());
   schermo.drawHLine(0, 8, 128);
 
-  // Lo stato: un riquadro vuoto se OK, pieno (testo in negativo) se c'è da intervenire
-  const char *stato = descrizioneStato(nodo.stato);
-  bool problema = strcmp(nodo.stato, "OK") != 0 && strcmp(nodo.stato, lora::NON_ASSEGNATO) != 0;
-  schermo.setFont(u8g2_font_6x10_tf);
-  int x = (128 - schermo.getStrWidth(stato)) / 2;
-  if (problema) {
-    schermo.drawBox(0, 11, 128, 14);
+  // Lo stato: icona e parola, su un riquadro pieno (in negativo) solo se c'è da intervenire
+  const int colonna = 38;
+  AspettoStato aspetto = aspettoStato(nodo);
+  if (aspetto.problema) {
+    schermo.drawRBox(0, 11, colonna, 33, 3);
     schermo.setDrawColor(0);
-    schermo.drawStr(x, 13, stato);
-    schermo.setDrawColor(1);
-  } else {
-    schermo.drawFrame(0, 11, 128, 14);
-    schermo.drawStr(x, 13, stato);
   }
+  // Con due righe l'icona sale di due pixel per fare posto
+  schermo.setFont(aspetto.font);
+  schermo.drawGlyph((colonna - 16) / 2, aspetto.parolaSopra == nullptr ? 14 : 12, aspetto.icona);
+  schermo.setFont(u8g2_font_4x6_tf);
+  if (aspetto.parolaSopra != nullptr) {
+    schermo.drawStr((colonna - schermo.getStrWidth(aspetto.parolaSopra)) / 2, 29, aspetto.parolaSopra);
+  }
+  schermo.drawStr((colonna - schermo.getStrWidth(aspetto.parola)) / 2, 35, aspetto.parola);
+  schermo.setDrawColor(1);
 
-  // Ultima misura: produzione e temperatura, poi luce e ora
+  // Ultima misura: la produzione in grande, poi temperatura e ora, poi luce
+  const int x = colonna + 5;
   bool recente = nodo.misurato && millis() - nodo.misuraDa < MISURA_RECENTE;
   String valore = recente ? conVirgola(nodo.potenza / 1000, 2, " kW") : String("-- kW");
-  schermo.drawStr(0, 28, valore.c_str());
-  valore = recente ? testoTemperatura(nodo.misura.temperatura) : String("-- °C");
-  schermo.drawUTF8(128 - schermo.getUTF8Width(valore.c_str()), 28, valore.c_str());
+  schermo.setFont(u8g2_font_helvB12_tf);
+  schermo.drawStr(x, 12, valore.c_str());
   schermo.setFont(u8g2_font_5x7_tf);
   if (recente) {
-    valore = testoLuce(nodo.misura.luce);
-    schermo.drawStr(0, 40, valore.c_str());
+    valore = testoTemperatura(nodo.misura.temperatura);
+    schermo.drawUTF8(x, 29, valore.c_str());
     if (nodo.misura.ora != 0) {
-      valore = "alle " + oraLocale(nodo.misura.ora);
-      schermo.drawStr(128 - schermo.getStrWidth(valore.c_str()), 40, valore.c_str());
+      valore = oraLocale(nodo.misura.ora).substring(0, 5);
+      schermo.drawStr(128 - schermo.getStrWidth(valore.c_str()), 29, valore.c_str());
     }
+    schermo.drawStr(x, 38, testoLuce(nodo.misura.luce).c_str());
+  } else if (nodo.misurato) {
+    schermo.drawStr(x, 29, "Nessuna misura");
+    snprintf(testo, sizeof(testo), "da %lu min", (millis() - nodo.misuraDa) / 60000);
+    schermo.drawStr(x, 38, testo);
   } else {
-    schermo.drawStr(0, 40, nodo.misurato ? "Nessuna misura da 1 min" : "Nessuna misura");
+    schermo.drawStr(x, 29, "In attesa della");
+    schermo.drawStr(x, 38, "prima misura");
   }
 
+  schermo.drawHLine(0, 47, 128);
   if (nodo.simulato) {
     snprintf(testo, sizeof(testo), "Sensore simulato dal sito");
   } else {
@@ -1916,9 +1947,7 @@ void mostraImpianto(Nodo &nodo, int numero, int totale) {
   }
   schermo.drawStr(0, 48, testo);
   if (nodo.lavaggio) {
-    if ((millis() / 500) % 2) {
-      schermo.drawStr(0, 56, "LAVAGGIO IN CORSO");
-    }
+    schermo.drawStr(0, 56, "Lavaggio in corso");
   } else if (nodo.ultimoLavaggio != 0) {
     snprintf(testo, sizeof(testo), "Lavato alle %s", oraLocale(nodo.ultimoLavaggio).substring(0, 5).c_str());
     schermo.drawStr(0, 56, testo);
