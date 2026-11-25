@@ -16,9 +16,14 @@ Il titolare chiede al bot lo stato degli impianti (/stato), il report di un gior
 un impianto (/lettura). Sotto il report e la lettura ci sono dei bottoni (inline keyboard): il giorno prima o dopo,
 gli altri impianti. Un bottone premuto arriva al bot come callback_query con i suoi dati, per esempio "report:2026-11-16"
 o "lettura:42", e il bot sostituisce il messaggio con quello nuovo invece di scriverne un altro.
+
+Quando il tecnico propone un altro giorno per l'intervento (SP/interventions.py), il titolare riceve la proposta con
+i bottoni per approvarla o rifiutarla; il rifiuto annulla la richiesta, quindi il bot chiede di confermarlo. Le
+proposte ancora senza risposta sono anche in /intervento. Sul sito il titolare risponde dalla pagina della proposta.
 """
 import logging
 import secrets
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -35,7 +40,9 @@ from django.utils.timesince import timesince
 from django.views import View
 
 from .access import NOT_A_CUSTOMER, AccessError
-from .forms import InterventionRequestForm, intervention_date_range, request_unavailable
+from .forms import (
+    OWNER_WITHOUT_CONTACTS, InterventionRequestForm, intervention_date_range, owner_contacts_missing, request_unavailable,
+)
 from .models import Customer, Intervention, PhotovoltaicSystem
 from .reports import day_report, latest_reading
 
@@ -52,7 +59,7 @@ COMMANDS = {
     "stato": "Stato degli impianti della community",
     "report": "Report di un giorno: /report, /report ieri o /report 15/11",
     "lettura": "Ultima lettura di un impianto",
-    "intervento": "Chiedi l'intervento di un tecnico per un guasto",
+    "intervento": "Chiedi l'intervento di un tecnico per un guasto o rispondi a una nuova data",
     "stop": "Non ricevere più gli avvisi",
     "aiuto": "Cosa sa fare il bot",
 }
@@ -65,6 +72,13 @@ INTERVENTION_BUTTON = "intervento"  # intervento:<impianto>[:<primo giorno della
 DAY_BUTTON = "giorno"  # giorno:<impianto>:<giorno>
 SEND_BUTTON = "invia"  # invia:<impianto>:<giorno>
 CANCEL_BUTTON = "annulla"
+# Nuovo giorno proposto dal tecnico: <tipo>:<intervento>:<giorno proposto>. Il giorno serve a riconoscere un
+# bottone di una proposta superata da un'altra
+PROPOSAL_BUTTON = "proposta"  # mostra la proposta
+APPROVE_BUTTON = "approva"
+REJECT_BUTTON = "rifiuta"  # chiede di confermare il rifiuto
+CONFIRM_REJECT_BUTTON = "rifiuto"  # rifiuto confermato: la richiesta è annullata
+PROPOSAL_BUTTONS = (PROPOSAL_BUTTON, APPROVE_BUTTON, REJECT_BUTTON, CONFIRM_REJECT_BUTTON)
 DAYS_PER_PAGE = 7
 # Dopo aver scelto il giorno il bot aspetta la nota per il tecnico per al massimo mezz'ora
 NOTE_TIMEOUT = 30 * 60
@@ -79,6 +93,10 @@ NOT_LINKED = (
     "della pagina <b>Notifiche Telegram</b> del sito."
 )
 NOT_OWNER = "Solo il titolare della community riceve gli avvisi e lo stato degli impianti su Telegram."
+SERVER_ERROR = (
+    "⚠️ Non sono riuscito a completare l'operazione per un errore del server: riprova tra poco. Se il problema "
+    "continua, puoi fare lo stesso dal sito."
+)
 
 
 class TelegramError(Exception):
@@ -235,7 +253,7 @@ def answer(chat_id, text):
         # Un comando annulla la nota attesa: un testo scritto più tardi non deve diventare una richiesta
         cache.delete(pending_key(chat_id))
     if command == "/intervento":
-        return intervention_menu(customer.community)
+        return intervention_menu(customer)
     if command == "/stato":
         return Reply(status_text(customer.community))
     if command == "/report":
@@ -273,6 +291,9 @@ def answer_button(chat_id, data, message_id=None):
     if kind == CANCEL_BUTTON:
         cache.delete(pending_key(chat_id))
         return Reply("Richiesta di intervento annullata.")
+    if kind in PROPOSAL_BUTTONS:
+        cache.delete(pending_key(chat_id))
+        return answer_proposal_button(customer, kind, value)
 
     system_id, _, day = value.partition(":")
     system = community_system(customer, system_id)
@@ -281,13 +302,19 @@ def answer_button(chat_id, data, message_id=None):
     if kind not in (INTERVENTION_BUTTON, DAY_BUTTON, SEND_BUTTON):
         return Reply(commands_text())
 
-    # Richiesta di intervento: a ogni passo si ricontrollano le regole, come fa il sito al momento dell'invio
-    cache.delete(pending_key(chat_id))
+    # Richiesta di intervento: a ogni passo si ricontrollano le regole, come fa il sito al momento dell'invio. Con
+    # «Invia senza note» la richiesta in attesa della nota resta finché la richiesta non è inviata: se l'invio non
+    # riesce per un errore, il titolare può riprovare o scrivere la nota
+    if kind != SEND_BUTTON:
+        cache.delete(pending_key(chat_id))
     if system is None:
         return Reply("Impianto non trovato: chiedi di nuovo con /intervento.")
+    if owner_contacts_missing(customer.community, customer.user):
+        return contacts_missing_reply()
     unavailable = request_unavailable(system)
     if unavailable:
-        return Reply(unavailable)
+        cache.delete(pending_key(chat_id))
+        return already_requested_reply(system) or Reply(unavailable)
     day = parse_iso_day(day)
     if kind == INTERVENTION_BUTTON:
         return choose_day_reply(system, day)
@@ -301,7 +328,9 @@ def answer_button(chat_id, data, message_id=None):
         cache.set(pending_key(chat_id), {"system": system.id, "day": day.isoformat(), "message": message_id},
                   NOTE_TIMEOUT)
         return confirm_reply(system, day)
-    return submit_request(customer, system, day, "")
+    reply = submit_request(customer, system, day, "")
+    cache.delete(pending_key(chat_id))
+    return reply
 
 
 def handle_update(update):
@@ -321,8 +350,20 @@ def handle_update(update):
     if not message or message["chat"]["type"] != "private" or "text" not in message:
         return
     chat_id = message["chat"]["id"]
-    reply = answer(chat_id, message["text"])
+    with error_reply(chat_id):
+        reply = answer(chat_id, message["text"])
     send_message(chat_id, reply.text, reply.buttons)
+
+
+@contextmanager
+def error_reply(chat_id):
+    """Se la risposta non riesce per un errore, il titolare lo sa invece di non ricevere niente; l'errore prosegue
+    fino al comando telegram_bot, che lo scrive nel log."""
+    try:
+        yield
+    except Exception:
+        send_message(chat_id, SERVER_ERROR)
+        raise
 
 
 def handle_button(query):
@@ -337,7 +378,9 @@ def handle_button(query):
     if not message or message["chat"]["type"] != "private":
         return
     chat_id = message["chat"]["id"]
-    reply = answer_button(chat_id, query.get("data", ""), message["message_id"])
+    # Il messaggio con i bottoni resta com'era, così il titolare può riprovare
+    with error_reply(chat_id):
+        reply = answer_button(chat_id, query.get("data", ""), message["message_id"])
     edit_message(chat_id, message["message_id"], reply.text, reply.buttons)
 
 
@@ -496,35 +539,66 @@ def system_label(system):
     return f"{STATUS_ICONS.get(system.status, '•')} {system.name}"
 
 
-def open_requests_text(community):
-    """Richieste di intervento non ancora eseguite della community, come le vede il cliente nella pagina dell'impianto."""
-    interventions = (Intervention.objects.filter(system__community=community)
-                     .exclude(status=Intervention.Status.DONE).select_related("system").order_by("preferred_date"))
-    lines = [f"• {escape(intervention.system.name)}: {intervention.get_status_display()} per il "
-             f"{intervention.preferred_date:%d/%m/%Y}" for intervention in interventions]
+def open_interventions(community):
+    """Richieste di intervento della community non ancora eseguite né annullate, dal giorno più vicino."""
+    return (Intervention.objects.filter(system__community=community, status__in=Intervention.OPEN_STATUSES)
+            .select_related("system").order_by("scheduled_date", "requested_at"))
+
+
+def open_requests_text(interventions):
+    """Le richieste aperte, come le vede il cliente nella pagina dell'impianto."""
+    lines = []
+    for intervention in interventions:
+        line = f"• {escape(intervention.system.name)}: {intervention.get_status_display()}"
+        if intervention.is_proposed:
+            line += (f", il {intervention.proposed_date:%d/%m/%Y} invece del "
+                     f"{intervention.scheduled_date:%d/%m/%Y}: aspetta la tua risposta")
+        else:
+            line += f" per il {intervention.scheduled_date:%d/%m/%Y}"
+        lines.append(line)
     return "\n".join(["📋 <b>Richieste aperte</b>", *lines]) if lines else ""
 
 
-def intervention_menu(community):
-    """Risposta a /intervento: gli impianti per cui si può chiedere un intervento, poi le richieste aperte.
+def contacts_missing_text():
+    """Il titolare di prima che telefono ed email fossero obbligatori li aggiunge dal profilo del sito."""
+    return f"{escape(OWNER_WITHOUT_CONTACTS)}\n\nAggiungili dal profilo: {escape(site_url(reverse('SP:profile')))}"
 
-    Con un solo impianto da scegliere si passa subito alla scelta del giorno.
+
+def contacts_missing_reply():
+    return Reply(contacts_missing_text())
+
+
+def intervention_menu(customer):
+    """Risposta a /intervento: gli impianti per cui si può chiedere un intervento, poi le richieste aperte con i
+    bottoni per rispondere ai giorni proposti dai tecnici.
+
+    Con un solo impianto da scegliere e nessuna proposta in attesa si passa subito alla scelta del giorno. Il
+    titolare senza telefono ed email (di prima che fossero obbligatori) li aggiunge prima dal profilo del sito.
     """
-    systems = [system for system in community.photovoltaic_systems.order_by("name")
-               if request_unavailable(system) is None]
-    if len(systems) == 1:
-        return choose_day_reply(systems[0])
-    if systems:
-        lines = ["Per quale impianto vuoi chiedere l'intervento di un tecnico?"]
-        buttons = [[button(system_label(system), INTERVENTION_BUTTON, system.id)] for system in systems]
+    community = customer.community
+    interventions = list(open_interventions(community))
+    proposals = [intervention for intervention in interventions if intervention.is_proposed]
+    if owner_contacts_missing(community, customer.user):
+        systems = []
+        lines = [contacts_missing_text()]
     else:
-        lines = ["Nessun impianto ha un guasto per cui chiedere un intervento: lo puoi chiedere quando il controllo "
-                 "automatico trova un probabile guasto o un guasto, e se non c'è già un intervento per quel guasto."]
-        buttons = None
-    requests_text = open_requests_text(community)
+        systems = [system for system in community.photovoltaic_systems.order_by("name")
+                   if request_unavailable(system) is None]
+        if len(systems) == 1 and not proposals:
+            return choose_day_reply(systems[0])
+        if systems:
+            lines = ["Per quale impianto vuoi chiedere l'intervento di un tecnico?"]
+        else:
+            lines = ["Nessun impianto ha un guasto per cui chiedere un intervento: lo puoi chiedere quando il "
+                     "controllo automatico trova un probabile guasto o un guasto, e se non c'è già un intervento "
+                     "per quel guasto."]
+    buttons = [[button(system_label(system), INTERVENTION_BUTTON, system.id)] for system in systems]
+    buttons += [[button(f"📅 Rispondi per {intervention.system.name}: {intervention.proposed_date:%d/%m}",
+                        PROPOSAL_BUTTON, proposal_value(intervention))] for intervention in proposals]
+    requests_text = open_requests_text(interventions)
     if requests_text:
         lines += ["", requests_text]
-    return Reply("\n".join(lines), buttons)
+    return Reply("\n".join(lines), buttons or None)
 
 
 def choose_day_reply(system, start=None):
@@ -577,18 +651,35 @@ def form_errors(form):
     return Reply(f"{escape(errors)} Chiedi di nuovo con /intervento.")
 
 
+def already_requested_reply(system):
+    """La richiesta aperta dell'impianto, o None: per esempio dopo aver premuto due volte «Invia senza note», o un
+    bottone di un messaggio vecchio, il titolare la ritrova invece di un errore."""
+    intervention = system.interventions.filter(status__in=Intervention.OPEN_STATUSES).order_by("-requested_at").first()
+    if intervention is None:
+        return None
+    url = site_url(reverse("SP:photovoltaic_system", args=[system.id]))
+    return Reply(
+        f"La richiesta di intervento per <b>{escape(system.name)}</b> è già stata inoltrata: "
+        f"{intervention.get_status_display()} per il {intervention.scheduled_date:%d/%m/%Y}.\n\n"
+        f"Lo stato della richiesta è in /intervento e nella pagina dell'impianto: {escape(url)}"
+    )
+
+
 def submit_request(customer, system, day, notes):
     """Invia la richiesta con le stesse regole e lo stesso form del sito (SP/interventions.py)."""
+    if owner_contacts_missing(customer.community, customer.user):
+        return contacts_missing_reply()
     unavailable = request_unavailable(system)
     if unavailable:
-        return Reply(unavailable)
+        return already_requested_reply(system) or Reply(unavailable)
     form = request_form(day, notes)
     if not form.is_valid():
         return form_errors(form)
     intervention = form.save_request(system, customer.user)
     lines = [
         f"✅ Richiesta di intervento per <b>{escape(system.name)}</b> inoltrata per il "
-        f"{intervention.preferred_date:%d/%m/%Y}: la vedrai accettata quando lo staff la prenderà in carico.",
+        f"{intervention.preferred_date:%d/%m/%Y}: la vedrai accettata quando lo staff la prenderà in carico. Se il "
+        "tecnico non è disponibile quel giorno, ti contatterà per accordarsi su un altro.",
     ]
     if intervention.customer_notes:
         lines += ["", f"Note per il tecnico: {escape(intervention.customer_notes)}"]
@@ -598,18 +689,136 @@ def submit_request(customer, system, day, notes):
 
 
 def send_with_note(customer, chat_id, pending, notes):
-    """Il titolare ha scritto la nota dopo aver scelto il giorno: si invia la richiesta con la nota."""
-    cache.delete(pending_key(chat_id))
+    """Il titolare ha scritto la nota dopo aver scelto il giorno: si invia la richiesta con la nota.
+
+    La richiesta in attesa della nota e i bottoni del messaggio precedente restano finché la richiesta non è
+    inviata: se l'invio non riesce per un errore, il titolare può riprovare.
+    """
     system = community_system(customer, str(pending["system"]))
     if system is None:
+        cache.delete(pending_key(chat_id))
         return Reply("Impianto non trovato: chiedi di nuovo con /intervento.")
     day = date.fromisoformat(pending["day"])
+    reply = submit_request(customer, system, day, notes)
+    cache.delete(pending_key(chat_id))
     if pending.get("message"):
         # I bottoni del messaggio precedente non servono più: la risposta arriva come messaggio nuovo
         edit_message(chat_id, pending["message"],
                      f"🛠 <b>Intervento per {escape(system.name)}</b> il {dateformat.format(day, 'l j F Y')}: "
                      "nota ricevuta.")
-    return submit_request(customer, system, day, notes)
+    return reply
+
+
+def proposal_value(intervention, day=None):
+    return f"{intervention.pk}:{(day or intervention.proposed_date).isoformat()}"
+
+
+def day_text(day):
+    return dateformat.format(day, "l j F Y")
+
+
+def proposal_text(intervention):
+    """La proposta del tecnico: nuovo giorno, giorno che sostituisce, conseguenze di approvazione e rifiuto."""
+    system = intervention.system
+    staff = intervention.staff.get_full_name() or intervention.staff.username
+    replaced = "il giorno richiesto" if not intervention.rescheduled else "il giorno concordato"
+    lines = [
+        "📅 <b>Nuova data per l'intervento</b>",
+        "",
+        f"{escape(staff)}, il tecnico che ha in carico la richiesta per <b>{escape(system.name)}</b> "
+        f"({escape(system.community.name)}), propone di intervenire <b>{day_text(intervention.proposed_date)}</b> "
+        f"invece di {day_text(intervention.scheduled_date)}, {replaced}.",
+    ]
+    if intervention.code:
+        lines.append(f"Tipo di intervento: {intervention.get_code_display()}")
+    url = site_url(reverse("SP:intervention_proposal", args=[intervention.pk]))
+    lines += [
+        "",
+        "Se approvi, l'intervento resta con la nuova data. Se rifiuti, la richiesta di intervento viene annullata e "
+        "per avere un tecnico dovrai aprirne una nuova.",
+        "",
+        f"Puoi rispondere anche dal sito: {escape(url)}",
+    ]
+    return "\n".join(lines)
+
+
+def proposal_reply(intervention):
+    value = proposal_value(intervention)
+    return Reply(proposal_text(intervention), [[
+        button(f"✅ Approva il {intervention.proposed_date:%d/%m}", APPROVE_BUTTON, value),
+        button("❌ Rifiuta", REJECT_BUTTON, value),
+    ]])
+
+
+def proposal_state_text(intervention):
+    """Lo stato di un intervento la cui proposta non aspetta più risposta: approvata, rifiutata o superata."""
+    system = escape(intervention.system.name)
+    if intervention.is_cancelled:
+        return (f"La richiesta di intervento per <b>{system}</b> è stata annullata: hai rifiutato il giorno proposto. "
+                "Se serve ancora un tecnico, aprine una nuova con /intervento.")
+    if intervention.is_done:
+        return f"L'intervento su <b>{system}</b> è stato eseguito il {intervention.executed_on:%d/%m/%Y}."
+    return (f"Questa proposta non aspetta più la tua risposta: l'intervento su <b>{system}</b> è in programma "
+            f"{day_text(intervention.scheduled_date)}.")
+
+
+def answer_proposal_button(customer, kind, value):
+    """Bottoni della proposta del tecnico: mostra, approva, rifiuta (con conferma) il nuovo giorno."""
+    intervention_id, _, day = value.partition(":")
+    intervention = (Intervention.objects.select_related("system__community", "staff")
+                    .filter(pk=int(intervention_id), system__community=customer.community).first()
+                    if intervention_id.isdigit() else None)
+    day = parse_iso_day(day)
+    if intervention is None or day is None:
+        return Reply("Intervento non trovato: le richieste aperte sono in /intervento.")
+    if not intervention.is_proposed:
+        return Reply(proposal_state_text(intervention))
+    if day != intervention.proposed_date:
+        # Bottone di una proposta vecchia: il tecnico ne ha fatta un'altra, si mostra quella
+        reply = proposal_reply(intervention)
+        return Reply("⚠️ Il tecnico ha proposto un altro giorno.\n\n" + reply.text, reply.buttons)
+    system = escape(intervention.system.name)
+    if kind == PROPOSAL_BUTTON:
+        return proposal_reply(intervention)
+    if kind == REJECT_BUTTON:
+        value = proposal_value(intervention)
+        return Reply(
+            f"Vuoi rifiutare il {day:%d/%m/%Y}? La richiesta di intervento per <b>{system}</b> sarà annullata e, "
+            "se serve ancora un tecnico, dovrai aprirne una nuova.",
+            [[button("Sì, rifiuta e annulla la richiesta", CONFIRM_REJECT_BUTTON, value)],
+             [button("◀ Torna alla proposta", PROPOSAL_BUTTON, value)]],
+        )
+    approved = kind == APPROVE_BUTTON
+    if not Intervention.answer_proposal(intervention.pk, day, approved=approved):
+        # Nel frattempo ha risposto dal sito
+        intervention.refresh_from_db()
+        return Reply(proposal_state_text(intervention))
+    if approved:
+        return Reply(f"✅ Nuovo giorno approvato: l'intervento su <b>{system}</b> è {day_text(day)}.")
+    reply = (f"Nuovo giorno rifiutato: la richiesta di intervento per <b>{system}</b> è annullata.\n\n"
+             "Se serve ancora un tecnico, apri una nuova richiesta.")
+    buttons = None
+    if request_unavailable(intervention.system) is None:
+        buttons = [[button("🛠 Nuova richiesta", INTERVENTION_BUTTON, intervention.system_id)]]
+    return Reply(reply, buttons)
+
+
+def notify_proposal(intervention_id):
+    """Invia al titolare della community il nuovo giorno proposto dal tecnico, con i bottoni per rispondere.
+
+    Riceve l'id e rilegge l'intervento, come notify_accepted. Restituisce True se il messaggio è stato inviato.
+    """
+    if not enabled():
+        return False
+    intervention = (Intervention.objects.select_related("system__community__owner", "staff")
+                    .filter(pk=intervention_id, status=Intervention.Status.PROPOSED).first())
+    if intervention is None or intervention.staff is None:
+        return False
+    owner = intervention.system.community.owner
+    if owner is None or not owner.telegram_chat_id:
+        return False
+    reply = proposal_reply(intervention)
+    return send_message(owner.telegram_chat_id, reply.text, reply.buttons)
 
 
 def status_text(community):

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load ui %}
+
+{% block title %}Recapiti del titolare{% endblock %}
+
+{% block band %}
+<!-- Associazione di un utente a una community senza utenti: ne diventa il titolare, che deve avere telefono ed email -->
+<div class="wrap">
+    <section class="head--page" aria-labelledby="owner-title">
+        <div>
+            <a href="{% url 'SP:customer_assignment' %}" class="back">{% icon "arrow-left" %}Nuovi utenti</a>
+            <h1 class="title title--big" id="owner-title">Recapiti del titolare</h1>
+            <p class="lead-b"><strong>{{ customer }}</strong> è il primo utente di {{ community.name }} e ne diventa il titolare: telefono ed email sono obbligatori, servono ai tecnici per contattarlo per gli interventi.</p>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="section" aria-label="Recapiti di {{ customer }}">
+    <form method="post" action="{% url 'SP:customer_assign' customer.id %}" class="form-b form-narrow" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="community" value="{{ community.id }}">
+        {% for name, value in back.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+        <input type="hidden" name="owner-customer" value="{{ customer.pk }}">
+        {% for field in contacts_form %}
+            <div class="field">
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }} *</label>
+                {{ field }}
+                {% if show_errors %}{% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}{% endif %}
+            </div>
+        {% endfor %}
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Salva e associa {% icon "arrow-right" %}</button>
+            <a href="{% url 'SP:customer_assignment' %}" class="btn btn-outline-secondary">Annulla</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

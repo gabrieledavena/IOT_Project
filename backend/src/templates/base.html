@@ -87,6 +87,29 @@
     </div>
 
     <main id="main" class="page">
+        {% if owner_proposals or owner_without_contacts %}
+        <!-- Avvisi per il titolare della community: i giorni proposti dai tecnici e i recapiti mancanti -->
+        <div class="wrap notices">
+            {% for proposal in owner_proposals %}
+                <div class="callout callout--warn notice" role="status">
+                    <div>
+                        <b>Nuova data per l'intervento su {{ proposal.system.name }}</b>
+                        <p>Il tecnico propone {{ proposal.proposed_date|date:"l j F" }} invece di {{ proposal.scheduled_date|date:"l j F" }}: approvala o rifiutala.</p>
+                    </div>
+                    <a href="{% url 'SP:intervention_proposal' proposal.pk %}" class="btn btn-primary">Rispondi</a>
+                </div>
+            {% endfor %}
+            {% if owner_without_contacts %}
+                <div class="callout callout--warn notice" role="status">
+                    <div>
+                        <b>Aggiungi telefono ed email</b>
+                        <p>Come titolare della community sono obbligatori: servono ai tecnici per contattarti per gli interventi.</p>
+                    </div>
+                    <a href="{% url 'SP:profile' %}" class="btn btn-outline-secondary">Vai al profilo</a>
+                </div>
+            {% endif %}
+        </div>
+        {% endif %}
         {% block main %}
         <div class="wrap">
             {% block content %}{% endblock %}

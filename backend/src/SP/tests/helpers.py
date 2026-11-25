@@ -34,9 +34,11 @@ def create_community(name="Community A", city=None):
     return Community.objects.create(name=name, city=city or create_city())
 
 
-def create_customer(community, username="mario"):
-    user = User.objects.create_user(username=username, password="test-password")
-    Customer.objects.create(user=user, name="Mario", surname="Rossi", community=community)
+def create_customer(community, username="mario", email=None, phone="+39 333 1234567"):
+    """Utente della community; il primo ne diventa il titolare, che ha telefono ed email (Customer.has_contacts)."""
+    email = f"{username}@example.com" if email is None else email
+    user = User.objects.create_user(username=username, password="test-password", email=email)
+    Customer.objects.create(user=user, name="Mario", surname="Rossi", phone=phone, community=community)
     return user
 
 

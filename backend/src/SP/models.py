@@ -62,14 +62,22 @@ class Community(models.Model):
             raise ValidationError({"owner": "Il titolare deve essere uno degli utenti della community."})
         if self.owner is None and self.pk and self.customers.exists():
             raise ValidationError({"owner": "Scegli il titolare tra gli utenti della community."})
+        if self.owner and not self.owner.has_contacts:
+            raise ValidationError({"owner": owner_contacts_error(self.owner)})
 
     class Meta:
         verbose_name = "Community"
         verbose_name_plural = "Communities"
 
 
-# Il telefono di clienti e personale, facoltativo come l'email (User.email)
+# Il telefono di clienti e personale, facoltativo come l'email (User.email); per il titolare di una community sono
+# obbligatori tutti e due, perché il tecnico lo contatta per gli interventi (Customer.has_contacts)
 PHONE_VALIDATOR = RegexValidator(r"^\+?[0-9 ]{6,19}$", "Inserisci un numero di telefono valido, es. +39 333 1234567.")
+
+
+def owner_contacts_error(customer):
+    return (f"{customer} non ha telefono ed email: il titolare deve averli tutti e due, servono ai tecnici "
+            "per contattarlo per gli interventi.")
 
 
 class Customer(models.Model):
@@ -79,7 +87,8 @@ class Customer(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
     surname = models.CharField(max_length=100)
-    # Facoltativo, come l'email (User.email): servono al tecnico per contattare il cliente
+    # Facoltativo, come l'email (User.email): servono al tecnico per contattare il cliente. Il titolare della
+    # community li deve avere tutti e due (has_contacts): lo si controlla dove lo diventa e dove li cambia
     phone = models.CharField("Telefono", max_length=20, blank=True, validators=[PHONE_VALIDATOR])
     # SET_NULL: eliminata la community, i suoi utenti restano in attesa di un'altra
     community = models.ForeignKey(
@@ -96,6 +105,9 @@ class Customer(models.Model):
     def clean(self):
         if self.pk and Community.objects.filter(owner=self).exclude(pk=self.community_id).exists():
             raise ValidationError({"community": "È il titolare della sua community: prima va scelto un altro titolare."})
+        # Il titolare, o chi lo diventa entrando in una community senza utenti (save), ha telefono ed email
+        if self.community_id is not None and self.community.owner_id in (None, self.pk) and not self.has_contacts:
+            raise ValidationError(owner_contacts_error(self))
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -107,6 +119,11 @@ class Customer(models.Model):
     @property
     def is_owner(self):
         return self.community_id is not None and self.community.owner_id == self.pk
+
+    @property
+    def has_contacts(self):
+        """True se ha telefono ed email, obbligatori per il titolare della community."""
+        return bool(self.phone) and bool(self.user.email)
 
     @staticmethod
     def community_of(user):
@@ -180,17 +197,14 @@ class PhotovoltaicSystem(models.Model):
 
     @property
     def can_request_intervention(self):
-        """True se ha un guasto, probabile o confermato, non ancora affidato a un intervento.
+        """True se ha un guasto, probabile o confermato, e non c'è già una richiesta aperta per l'impianto.
 
-        Il guasto è già affidato se c'è una richiesta aperta o un intervento eseguito dopo il controllo
-        che lo ha rilevato: in quel caso si aspetta il prossimo controllo della produzione.
+        L'intervento eseguito riporta l'impianto a OK (SP/interventions.py, system_repaired): un guasto trovato dopo,
+        dal controllo automatico o impostato a mano, è un guasto nuovo, e si può chiedere un altro intervento anche
+        nello stesso giorno. Non conta nemmeno una richiesta annullata (il titolare ha rifiutato il giorno proposto
+        dal tecnico): se ne apre una nuova.
         """
-        if not self.has_fault:
-            return False
-        handled = ~Q(status=Intervention.Status.DONE)
-        if self.last_check:
-            handled |= Q(executed_on__gte=timezone.localdate(self.last_check))
-        return not self.interventions.filter(handled).exists()
+        return self.has_fault and not self.interventions.filter(status__in=Intervention.OPEN_STATUSES).exists()
 
 
 class Intervention(models.Model):
@@ -207,7 +221,14 @@ class Intervention(models.Model):
     class Status(models.TextChoices):
         REQUESTED = "REQ", "Richiesta inoltrata"
         ACCEPTED = "ACC", "Richiesta accettata"
+        # Il tecnico che l'ha in carico propone al titolare un altro giorno e aspetta la sua risposta
+        PROPOSED = "PRO", "Nuova data proposta"
         DONE = "DON", "Intervento eseguito"
+        # Il titolare ha rifiutato il giorno proposto: per avere un tecnico deve aprire una nuova richiesta
+        CANCELLED = "CAN", "Richiesta annullata"
+
+    # Richieste non ancora chiuse: finché ce n'è una, per lo stesso guasto non se ne apre un'altra
+    OPEN_STATUSES = (Status.REQUESTED, Status.ACCEPTED, Status.PROPOSED)
 
     system = models.ForeignKey(
         PhotovoltaicSystem,
@@ -233,12 +254,25 @@ class Intervention(models.Model):
         related_name="managed_interventions", verbose_name="Gestito da",
     )
     code = models.CharField(max_length=3, choices=InterventionType.choices, blank=True, verbose_name="Tipo di Intervento")
+    # Il giorno in cui il tecnico interverrà: quello richiesto dal cliente, finché il titolare non approva un
+    # altro giorno proposto dal tecnico (vuoto, save() lo copia dal giorno richiesto)
+    scheduled_date = models.DateField(blank=True, verbose_name="Giorno dell'intervento")
+    # Nuovo giorno proposto dal tecnico dopo essersi accordato con il titolare, che lo approva o lo rifiuta dal
+    # sito o da Telegram. Approvato diventa il giorno dell'intervento; rifiutato resta qui, e la richiesta è annullata
+    proposed_date = models.DateField(null=True, blank=True, verbose_name="Nuova data proposta")
+    proposed_at = models.DateTimeField(null=True, blank=True, verbose_name="Data della proposta")
+    answered_at = models.DateTimeField(null=True, blank=True, verbose_name="Risposta del titolare")
     executed_on = models.DateField(null=True, blank=True, verbose_name="Data di esecuzione")
     notes = models.TextField(null=True, blank=True, verbose_name="Lavori eseguiti")
     cost = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True, verbose_name="Costo (€)")
 
     def __str__(self):
         return f"Intervento su {self.system.name} richiesto il {timezone.localdate(self.requested_at):%d/%m/%Y}"
+
+    def save(self, *args, **kwargs):
+        if self.scheduled_date is None:
+            self.scheduled_date = self.preferred_date
+        super().save(*args, **kwargs)
 
     def clean(self):
         errors = {}
@@ -249,6 +283,8 @@ class Intervention(models.Model):
                 errors["staff"] = "Una richiesta accettata deve essere gestita da un membro dello staff."
             if not self.code:
                 errors["code"] = "Indica il tipo di intervento."
+        if self.status in (self.Status.PROPOSED, self.Status.CANCELLED) and not self.proposed_date:
+            errors["proposed_date"] = "Indica il giorno proposto al titolare."
         if self.status == self.Status.DONE and not self.executed_on:
             errors["executed_on"] = "Indica il giorno in cui è stato eseguito l'intervento."
         if errors:
@@ -259,9 +295,59 @@ class Intervention(models.Model):
         return self.status == self.Status.DONE
 
     @property
+    def is_open(self):
+        return self.status in self.OPEN_STATUSES
+
+    @property
+    def is_proposed(self):
+        """True se il titolare deve ancora rispondere al giorno proposto dal tecnico."""
+        return self.status == self.Status.PROPOSED
+
+    @property
+    def is_cancelled(self):
+        return self.status == self.Status.CANCELLED
+
+    @property
+    def rescheduled(self):
+        """True se il titolare ha approvato un giorno diverso da quello che aveva richiesto."""
+        return self.scheduled_date != self.preferred_date
+
+    @property
     def number(self):
         """Numero dell'intervento nei report, come INT-00042."""
         return f"INT-{self.pk:05d}"
+
+    @classmethod
+    def propose(cls, pk, staff, day, code=None):
+        """Il tecnico propone al titolare il giorno `day`; True se la proposta è registrata.
+
+        Con `code` il tecnico accetta una richiesta inoltrata e la prende in carico già con il nuovo giorno; senza,
+        la proposta è di chi ha in carico l'intervento, anche per cambiarne una ancora senza risposta. Una query
+        sola, come l'accettazione (SP/interventions.py): nel frattempo un altro tecnico può aver accettato.
+        """
+        if code is None:
+            interventions = cls.objects.filter(pk=pk, staff=staff, status__in=(cls.Status.ACCEPTED, cls.Status.PROPOSED))
+            changes = {}
+        else:
+            interventions = cls.objects.filter(pk=pk, status=cls.Status.REQUESTED)
+            changes = {"staff": staff, "code": code}
+        return interventions.update(status=cls.Status.PROPOSED, proposed_date=day, proposed_at=timezone.now(),
+                                    answered_at=None, **changes) > 0
+
+    @classmethod
+    def answer_proposal(cls, pk, day, approved):
+        """Risposta del titolare, dal sito o da Telegram, al giorno `day` proposto dal tecnico; True se registrata.
+
+        Se approva, l'intervento resta in carico al tecnico con il nuovo giorno; se rifiuta, la richiesta è annullata.
+        Vale solo per la proposta ancora in attesa, e solo se è proprio quella del giorno `day`: nel frattempo il
+        tecnico può aver proposto un altro giorno, o il titolare può aver già risposto dall'altra parte.
+        """
+        proposal = cls.objects.filter(pk=pk, status=cls.Status.PROPOSED, proposed_date=day)
+        if approved:
+            changes = {"status": cls.Status.ACCEPTED, "scheduled_date": day, "proposed_date": None}
+        else:
+            changes = {"status": cls.Status.CANCELLED}
+        return proposal.update(answered_at=timezone.now(), **changes) > 0
 
     class Meta:
         ordering = ["-requested_at"]

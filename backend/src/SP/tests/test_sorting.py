@@ -156,8 +156,14 @@ class PendingCustomerSortingTests(TestCase):
     def test_assigning_goes_back_with_the_same_search_and_sort(self):
         community = create_community("Famiglia Bianchi")
 
-        response = self.client.post(f"{self.URL}{self.anna.id}/assign/",
-                                    {"community": community.id, "q": "a", "sort": "newest"})
+        url = f"{self.URL}{self.anna.id}/assign/"
+        # Anna diventa la titolare: la pagina dei suoi recapiti tiene ricerca e ordinamento
+        response = self.client.post(url, {"community": community.id, "q": "a", "sort": "newest"})
+        self.assertContains(response, '<input type="hidden" name="sort" value="newest">')
+
+        response = self.client.post(url, {"community": community.id, "q": "a", "sort": "newest",
+                                          "owner-customer": self.anna.id, "owner-email": "anna@example.com",
+                                          "owner-phone": "+39 333 1234567"})
 
         self.assertRedirects(response, f"{self.URL}?q=a&sort=newest", fetch_redirect_response=False)
 

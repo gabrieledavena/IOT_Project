@@ -29,7 +29,11 @@
                 <div class="section-head">
                     <div>
                         <h2 id="contacts-title">Recapiti</h2>
-                        <p>Servono ai tecnici per contattarti, per esempio per un intervento sui tuoi impianti. Lascia vuoto un campo per toglierlo.</p>
+                        {% if form.required %}
+                            <p>Servono ai tecnici per contattarti, per esempio per accordarsi sul giorno di un intervento. Come titolare della community sono obbligatori tutti e due.</p>
+                        {% else %}
+                            <p>Servono ai tecnici per contattarti, per esempio per un intervento sui tuoi impianti. Lascia vuoto un campo per toglierlo.</p>
+                        {% endif %}
                     </div>
                 </div>
                 <form method="post" class="form-b form-narrow" novalidate>
@@ -37,7 +41,7 @@
                     {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
                     {% for field in form %}
                         <div class="field">
-                            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
                             {{ field }}
                             {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
                         </div>

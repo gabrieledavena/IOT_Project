@@ -136,6 +136,36 @@ class CommunityAssignmentTests(TestCase):
         self.assertTrue(self.anna.is_owner)
         self.assertEqual(list(self.client.get(self.URL).context["page"]), [])
 
+    def test_who_becomes_the_owner_without_phone_and_email_enters_them_first(self):
+        carlo = create_pending_customer("carlo", name="Carlo")
+
+        response = self.assign(carlo, self.community.id, q="carlo")
+
+        self.assertTemplateUsed(response, "SP/owner_contacts.html")
+        self.assertContains(response, "è il primo utente di Famiglia Bianchi e ne diventa il titolare")
+        self.assertNotContains(response, "Obbligatorio per il titolare")
+        carlo.refresh_from_db()
+        self.assertIsNone(carlo.community)
+
+        contacts = {"owner-customer": carlo.id, "owner-email": "carlo@example.com", "owner-phone": ""}
+        self.assertContains(self.assign(carlo, self.community.id, **contacts), "Obbligatorio per il titolare")
+        response = self.assign(carlo, self.community.id, q="carlo", **{**contacts, "owner-phone": "+39 347 7654321"})
+
+        self.assertRedirects(response, f"{self.URL}?q=carlo", fetch_redirect_response=False)
+        carlo.refresh_from_db()
+        self.assertTrue(carlo.is_owner)
+        self.assertEqual((carlo.user.email, carlo.phone), ("carlo@example.com", "+39 347 7654321"))
+
+    def test_the_other_users_of_a_community_need_no_contacts(self):
+        self.assign(self.anna, self.community.id)
+        carlo = create_pending_customer("carlo", name="Carlo")
+
+        self.assign(carlo, self.community.id)
+
+        carlo.refresh_from_db()
+        self.assertEqual(carlo.community, self.community)
+        self.assertFalse(carlo.is_owner)
+
     def test_a_user_already_in_a_community_is_not_moved(self):
         self.assign(self.anna, self.community.id)
         other = create_community("Other")
@@ -164,3 +194,57 @@ class CommunityAssignmentTests(TestCase):
 
         self.client.logout()
         self.assertRedirects(self.client.get(self.URL), f"/sp/login/?next={self.URL}", fetch_redirect_response=False)
+
+
+class OwnerContactsInTheAdminTests(TestCase):
+    """Anche nell'admin il titolare di una community ha telefono ed email."""
+
+    def setUp(self):
+        self.client.force_login(User.objects.create_superuser("admin", password="test-password"))
+        self.community = create_community("Famiglia Bianchi")
+        self.anna = create_pending_customer(email="", phone="")
+
+    def save_customer(self, customer, **fields):
+        data = {"user": customer.user_id, "name": customer.name, "surname": customer.surname,
+                "email": customer.user.email, "phone": customer.phone, "community": self.community.id,
+                "telegram_chat_id": "", **fields}
+        return self.client.post(f"/admin/SP/customer/{customer.id}/change/", data)
+
+    def test_who_becomes_the_owner_needs_phone_and_email(self):
+        response = self.save_customer(self.anna)
+
+        self.assertContains(response, "il titolare deve averli tutti e due")
+        self.anna.refresh_from_db()
+        self.assertIsNone(self.anna.community)
+
+        response = self.save_customer(self.anna, email="anna@example.com", phone="+39 333 1234567")
+
+        self.assertEqual(response.status_code, 302)
+        self.anna.refresh_from_db()
+        self.assertTrue(self.anna.is_owner)
+        self.assertEqual((self.anna.user.email, self.anna.phone), ("anna@example.com", "+39 333 1234567"))
+
+    def test_the_owner_keeps_them(self):
+        owner = Customer.objects.get(user=create_customer(self.community))
+
+        self.assertContains(self.save_customer(owner, phone=""), "il titolare deve averli tutti e due")
+        response = self.client.post(f"/admin/auth/user/{owner.user_id}/change/", {
+            "username": owner.user.username, "first_name": "", "last_name": "", "email": "", "is_active": "on",
+            "date_joined_0": "2026-11-01", "date_joined_1": "10:00:00",
+        })
+        self.assertContains(response, "l&#x27;email è obbligatoria")
+        owner.refresh_from_db()
+        self.assertEqual((owner.phone, owner.user.email), ("+39 333 1234567", "mario@example.com"))
+
+    def test_the_owner_chosen_in_the_admin_needs_them(self):
+        create_customer(self.community)
+        self.anna.community = self.community
+        self.anna.save()
+
+        response = self.client.post(f"/admin/SP/community/{self.community.id}/change/", {
+            "name": "Famiglia Bianchi", "city": self.community.city_id, "owner": self.anna.id,
+        })
+
+        self.assertContains(response, "non ha telefono ed email")
+        self.community.refresh_from_db()
+        self.assertNotEqual(self.community.owner, self.anna)

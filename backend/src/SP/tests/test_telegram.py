@@ -5,13 +5,14 @@ from unittest import mock
 import requests
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from SP import telegram
-from SP.forms import ALREADY_HANDLED, NO_FAULT
+from SP.forms import NO_FAULT
 from SP.models import Customer, Intervention, PhotovoltaicSystem
 from SP.tests.helpers import (
     add_readings, create_community, create_customer, create_system, create_technician, install_device, utc,
@@ -583,6 +584,54 @@ class InterventionRequestTests(BotDataTestCase):
         self.assertIn("Comandi:", ask(CHAT, "grazie"))
         self.assertEqual(Intervention.objects.count(), 1)
 
+    def test_pressing_invia_senza_note_twice_shows_the_request_already_sent(self):
+        self.choose_day()
+        self.bot.calls.clear()
+        self.press(f"invia:{self.sede.id}:2026-11-20")
+        self.bot.calls.clear()
+
+        params = self.press(f"invia:{self.sede.id}:2026-11-20")
+
+        self.assertIn("La richiesta di intervento per <b>Sede</b> è già stata inoltrata", params["text"])
+        self.assertEqual(Intervention.objects.count(), 1)
+
+    def send_update(self, update):
+        """Un aggiornamento che il bot non riesce a gestire: l'errore arriva al comando telegram_bot, che lo scrive
+        nel log (qui, un errore del database come quello di un bot avviato prima di una migrazione)."""
+        self.bot.calls.clear()
+        with mock.patch.object(telegram.InterventionRequestForm, "save_request",
+                               side_effect=IntegrityError("NOT NULL constraint failed")), \
+                self.assertRaises(IntegrityError):
+            telegram.handle_update(update)
+
+    def test_an_error_while_sending_without_notes_is_not_silent_and_can_be_retried(self):
+        self.choose_day()
+
+        self.send_update({"update_id": 1, "callback_query": {
+            "id": "query-1", "data": f"invia:{self.sede.id}:2026-11-20",
+            "message": {"message_id": 9, "chat": {"id": CHAT, "type": "private"}},
+        }})
+
+        # Il titolare riceve l'errore, e il messaggio resta con i suoi bottoni
+        self.assertEqual(self.bot.sent, [(CHAT, telegram.SERVER_ERROR)])
+        self.assertNotIn("editMessageText", [method for method, _ in self.bot.calls])
+        self.assertFalse(Intervention.objects.exists())
+        # Può ancora scrivere la nota, o premere di nuovo «Invia senza note»
+        self.assertIn("inoltrata per il 20/11/2026", ask(CHAT, "Accesso dal cortile"))
+        self.assertEqual(Intervention.objects.get().customer_notes, "Accesso dal cortile")
+
+    def test_an_error_while_sending_with_a_note_is_not_silent_and_can_be_retried(self):
+        self.choose_day()
+
+        self.send_update({"update_id": 1, "message": {"chat": {"id": CHAT, "type": "private"}, "text": "Citofono"}})
+
+        # Nessun «nota ricevuta» prima che la richiesta sia salvata
+        self.assertEqual(self.bot.sent, [(CHAT, telegram.SERVER_ERROR)])
+        self.assertEqual([method for method, _ in self.bot.calls], ["sendMessage"])
+        self.bot.calls.clear()
+        self.assertIn("inoltrata per il 20/11/2026", self.press(f"invia:{self.sede.id}:2026-11-20")["text"])
+        self.assertEqual(Intervention.objects.count(), 1)
+
     def test_a_command_or_annulla_cancel_the_request(self):
         self.choose_day()
         ask(CHAT, "/stato")
@@ -605,7 +654,8 @@ class InterventionRequestTests(BotDataTestCase):
         self.bot.calls.clear()
         self.press(f"invia:{self.sede.id}:2026-11-20")
         self.bot.calls.clear()
-        self.assertEqual(self.press(f"invia:{self.sede.id}:2026-11-21")["text"], ALREADY_HANDLED)
+        self.assertIn("La richiesta di intervento per <b>Sede</b> è già stata inoltrata: Richiesta inoltrata per il "
+                      "20/11/2026.", self.press(f"invia:{self.sede.id}:2026-11-21")["text"])
         self.assertEqual(Intervention.objects.count(), 1)
         # Solo gli impianti della sua community
         other = create_system(create_community("Bianchi"), "Non suo")
@@ -689,6 +739,175 @@ class AcceptedRequestAlertTests(TelegramTestCase):
         self.post_as(self.technician, self.url, {"code": "INV"})
 
         self.assertEqual(self.bot.sent, [])
+
+
+class DateProposalTests(BotDataTestCase):
+    """Il tecnico propone un altro giorno: il titolare lo approva o lo rifiuta (con conferma) dai bottoni."""
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.sede.set_status(Status.FAULT, NOW)
+        self.technician = create_technician("tecnico", first_name="Paolo", last_name="Neri")
+        self.intervention = Intervention.objects.create(
+            system=self.sede, requested_by=self.owner_user, preferred_date=date(2026, 11, 20),
+            status=Intervention.Status.ACCEPTED, staff=self.technician, code="INV",
+        )
+        self.url = f"/sp/interventions/{self.intervention.pk}/"
+        self.value = f"{self.intervention.pk}:2026-11-24"
+
+    def propose(self, day="2026-11-24"):
+        """Il tecnico invia il nuovo giorno dalla sua pagina; restituisce i parametri del messaggio al titolare."""
+        self.client.force_login(self.technician)
+        self.bot.calls.clear()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(self.url, {"action": "propose", "day": day})
+        [(method, params)] = self.bot.calls
+        self.assertEqual((method, params["chat_id"]), ("sendMessage", CHAT))
+        return params
+
+    def press_button(self, data):
+        self.bot.calls.clear()
+        return self.press(data)
+
+    def status(self):
+        self.intervention.refresh_from_db()
+        return self.intervention.status
+
+    def test_the_owner_receives_the_new_day_with_the_buttons(self):
+        params = self.propose()
+
+        for expected in ("📅 <b>Nuova data per l'intervento</b>",
+                         "Paolo Neri, il tecnico che ha in carico la richiesta per <b>Sede</b> (Rossi Trasporti), "
+                         "propone di intervenire <b>Martedì 24 Novembre 2026</b> invece di Venerdì 20 Novembre "
+                         "2026, il giorno richiesto.",
+                         "Tipo di intervento: Intervento su Inverter",
+                         "Se rifiuti, la richiesta di intervento viene annullata",
+                         f"http://localhost:8000/sp/interventions/{self.intervention.pk}/proposal/"):
+            self.assertIn(expected, params["text"])
+        self.assertEqual(button_data(params["reply_markup"]["inline_keyboard"]),
+                         [[("✅ Approva il 24/11", f"approva:{self.value}"), ("❌ Rifiuta", f"rifiuta:{self.value}")]])
+
+    def test_accepting_with_another_day_sends_the_proposal_instead_of_the_acceptance(self):
+        request = Intervention.objects.create(system=self.magazzino, requested_by=self.member_user,
+                                              preferred_date=date(2026, 11, 20))
+        self.client.force_login(self.technician)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(f"/sp/interventions/{request.pk}/", {"code": "CLN", "day": "2026-11-26"})
+
+        [(chat_id, text)] = self.bot.sent
+        self.assertIn("propone di intervenire <b>Giovedì 26 Novembre 2026</b>", text)
+        self.assertNotIn("Richiesta di intervento accettata", text)
+
+    def test_approved_the_intervention_stays_with_the_new_day(self):
+        self.propose()
+
+        params = self.press_button(f"approva:{self.value}")
+
+        self.assertEqual(params["text"], "✅ Nuovo giorno approvato: l'intervento su <b>Sede</b> è Martedì 24 "
+                                         "Novembre 2026.")
+        self.assertNotIn("reply_markup", params)
+        self.assertEqual(self.status(), Intervention.Status.ACCEPTED)
+        self.assertEqual(self.intervention.scheduled_date, date(2026, 11, 24))
+
+    def test_rejecting_asks_to_confirm_and_cancels_the_request(self):
+        self.propose()
+
+        params = self.press_button(f"rifiuta:{self.value}")
+        self.assertIn("Vuoi rifiutare il 24/11/2026? La richiesta di intervento per <b>Sede</b> sarà annullata",
+                      params["text"])
+        self.assertEqual(button_data(params["reply_markup"]["inline_keyboard"]),
+                         [[("Sì, rifiuta e annulla la richiesta", f"rifiuto:{self.value}")],
+                          [("◀ Torna alla proposta", f"proposta:{self.value}")]])
+        self.assertEqual(self.status(), Intervention.Status.PROPOSED)
+        self.assertIn("Nuova data per l'intervento", self.press_button(f"proposta:{self.value}")["text"])
+
+        params = self.press_button(f"rifiuto:{self.value}")
+
+        self.assertIn("Nuovo giorno rifiutato: la richiesta di intervento per <b>Sede</b> è annullata",
+                      params["text"])
+        self.assertEqual(self.status(), Intervention.Status.CANCELLED)
+        # Per avere un tecnico apre una nuova richiesta, anche subito dal bottone
+        self.assertEqual(button_data(params["reply_markup"]["inline_keyboard"]),
+                         [[("🛠 Nuova richiesta", f"intervento:{self.sede.id}")]])
+        self.assertIn("Intervento per Sede", self.press_button(f"intervento:{self.sede.id}")["text"])
+
+    def test_a_button_of_an_old_proposal_shows_the_new_one(self):
+        self.propose()
+        self.propose("2026-11-25")
+
+        params = self.press_button(f"approva:{self.value}")
+
+        self.assertIn("⚠️ Il tecnico ha proposto un altro giorno.", params["text"])
+        self.assertIn("<b>Mercoledì 25 Novembre 2026</b>", params["text"])
+        self.assertEqual(params["reply_markup"]["inline_keyboard"][0][0]["callback_data"],
+                         f"approva:{self.intervention.pk}:2026-11-25")
+        self.assertEqual(self.status(), Intervention.Status.PROPOSED)
+        self.assertEqual(self.intervention.proposed_date, date(2026, 11, 25))
+
+    def test_answered_on_the_site_the_buttons_say_so(self):
+        self.propose()
+        self.client.force_login(self.owner_user)
+        self.client.post(f"{self.url}proposal/", {"answer": "approve", "day": "2026-11-24"})
+
+        params = self.press_button(f"rifiuto:{self.value}")
+
+        self.assertEqual(params["text"], "Questa proposta non aspetta più la tua risposta: l'intervento su "
+                                         "<b>Sede</b> è in programma Martedì 24 Novembre 2026.")
+        self.assertEqual(self.status(), Intervention.Status.ACCEPTED)
+
+    def test_only_the_interventions_of_the_community_of_the_owner(self):
+        other = create_system(create_community("Bianchi"), "Non suo")
+        theirs = Intervention.objects.create(system=other, preferred_date=date(2026, 11, 20), staff=self.technician,
+                                             code="INV", status=Intervention.Status.PROPOSED,
+                                             proposed_date=date(2026, 11, 24))
+
+        params = self.press_button(f"approva:{theirs.pk}:2026-11-24")
+
+        self.assertEqual(params["text"], "Intervento non trovato: le richieste aperte sono in /intervento.")
+        theirs.refresh_from_db()
+        self.assertEqual(theirs.status, Intervention.Status.PROPOSED)
+
+    def test_intervento_lists_the_proposals_to_answer(self):
+        self.propose()
+        self.magazzino.set_status(Status.BROKEN, NOW)
+
+        reply = telegram.answer(CHAT, "/intervento")
+
+        self.assertIn("• Sede: Nuova data proposta, il 24/11/2026 invece del 20/11/2026: aspetta la tua risposta",
+                      reply.text)
+        self.assertEqual(button_data(reply.buttons), [[("🔴 Magazzino", f"intervento:{self.magazzino.id}")],
+                                                      [("📅 Rispondi per Sede: 24/11", f"proposta:{self.value}")]])
+
+    def test_no_message_without_a_linked_account(self):
+        self.owner.telegram_chat_id = None
+        self.owner.save()
+        Intervention.propose(self.intervention.pk, self.technician, date(2026, 11, 24))
+
+        self.assertFalse(telegram.notify_proposal(self.intervention.pk))
+        self.assertEqual(self.bot.sent, [])
+
+
+class OwnerWithoutContactsTests(BotDataTestCase):
+    """Un titolare di prima che telefono ed email fossero obbligatori li aggiunge dal sito prima di chiedere."""
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.sede.set_status(Status.FAULT, NOW)
+        Customer.objects.filter(pk=self.owner.pk).update(phone="")
+
+    def test_the_request_waits_for_the_contacts(self):
+        reply = telegram.answer(CHAT, "/intervento")
+
+        self.assertIn("Prima di richiedere un intervento aggiungi telefono ed email nel tuo profilo", reply.text)
+        self.assertIn("http://localhost:8000/sp/profile/", reply.text)
+        self.assertIsNone(reply.buttons)
+        self.assertIn("aggiungi telefono ed email", self.press(f"invia:{self.sede.id}:2026-11-20")["text"])
+        self.assertFalse(Intervention.objects.exists())
 
 
 @BOT

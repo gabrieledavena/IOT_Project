@@ -23,6 +23,9 @@ urlpatterns = [
     path("interventions/", interventions.InterventionDashboardView.as_view(), name="intervention_dashboard"),
     path("interventions/<int:pk>/", interventions.InterventionDetailView.as_view(), name="intervention_detail"),
     path("interventions/<int:pk>/report/", interventions.InterventionReportView.as_view(), name="intervention_report"),
+    # Il titolare approva o rifiuta il nuovo giorno proposto dal tecnico
+    path("interventions/<int:pk>/proposal/", interventions.InterventionProposalView.as_view(),
+         name="intervention_proposal"),
     # Utenti appena registrati, che un tecnico associa a una community
     path("customers/", customers.PendingCustomerListView.as_view(), name="customer_assignment"),
     path("customers/<int:customer_id>/assign/", customers.AssignCommunityView.as_view(), name="customer_assign"),

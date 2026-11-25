@@ -76,7 +76,7 @@
         <table class="table align-middle">
             <thead>
                 <tr>
-                    <th>Richiesto il</th><th class="hide-phone">Giorno richiesto</th><th>Tipo</th><th>Stato</th>
+                    <th>Richiesto il</th><th class="hide-phone">Giorno</th><th>Tipo</th><th>Stato</th>
                     <th class="hide-phone">Tecnico</th><th class="hide-phone">Eseguito il</th><th><span class="visually-hidden">Azioni</span></th>
                 </tr>
             </thead>
@@ -84,12 +84,23 @@
                 {% for intervention in interventions %}
                     <tr>
                         <td class="nb">{{ intervention.requested_at|date:"d/m/Y" }}</td>
-                        <td class="hide-phone">{{ intervention.preferred_date|date:"d/m/Y" }}</td>
+                        <td class="hide-phone nb">
+                            {{ intervention.scheduled_date|date:"d/m/Y" }}
+                            {% if intervention.is_proposed %}<span class="sub">proposto il {{ intervention.proposed_date|date:"d/m/Y" }}</span>
+                            {% elif intervention.is_cancelled %}<span class="sub">rifiutato il {{ intervention.proposed_date|date:"d/m/Y" }}</span>
+                            {% elif intervention.rescheduled %}<span class="sub">richiesto il {{ intervention.preferred_date|date:"d/m/Y" }}</span>{% endif %}
+                        </td>
                         <td>{{ intervention.get_code_display|default:"Da definire" }}</td>
-                        <td><span class="status {{ intervention.status|status_badge }}">{{ intervention.get_status_display }}</span></td>
+                        <td>
+                            <span class="status {{ intervention.status|status_badge }}">{{ intervention.get_status_display }}</span>
+                            {% if intervention.is_proposed and not is_owner %}<span class="sub">in attesa della risposta del titolare</span>{% endif %}
+                        </td>
                         <td class="hide-phone">{{ intervention.staff|person }}</td>
                         <td class="hide-phone">{{ intervention.executed_on|date:"d/m/Y"|default:"-" }}</td>
                         <td class="go">
+                            {% if intervention.is_proposed and is_owner %}
+                                <a href="{% url 'SP:intervention_proposal' intervention.pk %}" class="btn btn-sm btn-primary">Rispondi</a>
+                            {% endif %}
                             {% if is_technician %}
                                 <a href="{% url 'SP:intervention_detail' intervention.pk %}" class="btn btn-sm btn-outline-secondary">Gestisci</a>
                             {% endif %}

@@ -373,10 +373,13 @@ class Command(BaseCommand):
                 first_name = self.random.choice(FIRST_NAMES)
                 surname = owner_surname if index == 0 else self.random.choice(SURNAMES)
                 user = User.objects.create(
-                    username=f'user{users}', password=self.password, first_name=first_name, last_name=surname
+                    username=f'user{users}', password=self.password, first_name=first_name, last_name=surname,
+                    email=f'user{users}@example.com',
                 )
-                # The first one becomes the owner (see Customer.save)
-                Customer.objects.create(user=user, name=first_name, surname=surname, community=community)
+                # The first one becomes the owner (see Customer.save), who must have phone and email: the
+                # technicians call or write to the owner to agree on the day of an intervention
+                phone = f'+39 3{self.random.randint(20, 49)} {self.random.randint(1000000, 9999999)}' if index == 0 else ''
+                Customer.objects.create(user=user, name=first_name, surname=surname, phone=phone, community=community)
                 users += 1
             communities.append(community)
         return communities

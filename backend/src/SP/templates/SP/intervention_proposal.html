@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% load interventions ui %}
+
+{% block title %}Nuova data per l'intervento{% endblock %}
+
+{% block band %}
+<!-- Il titolare risponde al giorno proposto dal tecnico: lo stesso che riceve su Telegram -->
+<div class="wrap">
+    <section class="head--page" aria-labelledby="proposal-title">
+        <div>
+            {% if not error %}<a href="{% url 'SP:photovoltaic_system' system.id %}" class="back">{% icon "arrow-left" %}{{ system.name }}</a>{% endif %}
+            <h1 class="title title--big" id="proposal-title">{% if intervention.is_proposed %}Nuova data per l'intervento{% else %}Intervento {{ intervention.number }}{% endif %}</h1>
+            {% if not error %}
+                {% if intervention.is_proposed %}
+                    <p class="lead-b">Il tecnico propone di intervenire su <strong>{{ system.name }}</strong> {{ intervention.proposed_date|date:"l j F Y" }}, invece di {{ intervention.scheduled_date|date:"l j F Y" }}.</p>
+                {% else %}
+                    <p class="mt-3 mb-0"><span class="status status--big {{ intervention.status|status_badge }}">{{ intervention.get_status_display }}</span></p>
+                {% endif %}
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+    <div class="section">{% include "partials/error_alert.html" %}</div>
+{% else %}
+    <div class="split split--narrow">
+        <section class="section" aria-labelledby="intervention-title">
+            <div class="section-head"><h2 id="intervention-title">La richiesta</h2></div>
+            <dl class="pairs">
+                <div><dt>Impianto</dt><dd>{{ system.name }}</dd></div>
+                <div><dt>Richiesta il</dt><dd>{{ intervention.requested_at|date:"d/m/Y" }}{% if intervention.requested_by %} da {{ intervention.requested_by|person }}{% endif %}</dd></div>
+                <div><dt>Giorno richiesto</dt><dd>{{ intervention.preferred_date|date:"l d/m/Y" }}</dd></div>
+                {% if intervention.rescheduled %}
+                    <div><dt>Giorno concordato</dt><dd>{{ intervention.scheduled_date|date:"l d/m/Y" }}</dd></div>
+                {% endif %}
+                <div><dt>Tipo di intervento</dt><dd>{{ intervention.get_code_display|default:"Da definire" }}</dd></div>
+                <div><dt>Tecnico</dt><dd>{{ intervention.staff|person }}</dd></div>
+            </dl>
+            {% if intervention.staff and intervention.is_proposed %}
+                <p class="note mb-0">Se vuoi parlarne prima di rispondere, contatta il tecnico:</p>
+                <ul class="contacts">
+                    {% if staff_phone %}<li><a href="tel:{{ staff_phone|tel }}" class="link">{% icon "phone" %}{{ staff_phone }}</a></li>{% endif %}
+                    {% if intervention.staff.email %}<li><a href="mailto:{{ intervention.staff.email }}" class="link">{% icon "mail" %}{{ intervention.staff.email }}</a></li>{% endif %}
+                    {% if not staff_phone and not intervention.staff.email %}<li class="muted">Il tecnico non ha ancora recapiti sul sito: ti contatterà lui.</li>{% endif %}
+                </ul>
+            {% endif %}
+        </section>
+
+        <section class="section" aria-labelledby="answer-title">
+            {% if intervention.is_proposed %}
+                <div class="section-head"><h2 id="answer-title">La tua risposta</h2></div>
+                <div class="callout callout--ok">
+                    <h3 class="h3">Approvi {{ intervention.proposed_date|date:"l j F" }}?</h3>
+                    <p class="muted">L'intervento resta in carico al tecnico, con la nuova data.</p>
+                    <form method="post" class="m-0">
+                        {% csrf_token %}
+                        <input type="hidden" name="day" value="{{ intervention.proposed_date|date:'Y-m-d' }}">
+                        <button type="submit" name="answer" value="approve" class="btn btn-primary">{% icon "check" %}Approva la nuova data</button>
+                    </form>
+                </div>
+                <div class="callout callout--danger mt-4">
+                    <h3 class="h3">Non va bene?</h3>
+                    <p class="muted">Rifiutando, la richiesta di intervento viene annullata: se serve ancora un tecnico dovrai aprirne una nuova, dalla pagina dell'impianto o con /intervento su Telegram.</p>
+                    <form method="post" class="m-0">
+                        {% csrf_token %}
+                        <input type="hidden" name="day" value="{{ intervention.proposed_date|date:'Y-m-d' }}">
+                        <button type="submit" name="answer" value="reject" class="btn btn-outline-danger">{% icon "close" %}Rifiuta e annulla la richiesta</button>
+                    </form>
+                </div>
+                <p class="note">Puoi rispondere anche dai bottoni del messaggio su Telegram, se hai collegato il bot.</p>
+            {% else %}
+                <div class="section-head"><h2 id="answer-title">Nessuna proposta in attesa</h2></div>
+                <div class="callout{% if intervention.is_cancelled %} callout--danger{% endif %}" role="status">
+                    {% if intervention.is_cancelled %}
+                        Hai rifiutato il giorno proposto, {{ intervention.proposed_date|date:"l j F" }}: la richiesta è annullata. Se serve ancora un tecnico, aprine una nuova dalla pagina dell'impianto.
+                    {% elif intervention.is_done %}
+                        L'intervento è stato eseguito il {{ intervention.executed_on|date:"d/m/Y" }}.
+                    {% else %}
+                        L'intervento è in programma {{ intervention.scheduled_date|date:"l j F Y" }}.
+                    {% endif %}
+                </div>
+                <p class="mt-4 mb-0"><a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-secondary">Torna all'impianto</a></p>
+            {% endif %}
+        </section>
+    </div>
+{% endif %}
+{% endblock %}

@@ -57,8 +57,8 @@ The system optimizes self-consumption, monitors performance, and use collective 
 | 3. Production forecasting: today, tomorrow, next 7 and 30 days, in one page | Implemented (Random Forest, see [Forecast model](#forecast-model)) |
 | 4. Community benchmark: public page with the measured yield per installed kW of every Italian city and a heatmap of Italy (measured yield, or PVGIS expected yield) | Implemented, with the automatic check of each system (see [System monitoring](#system-monitoring)) |
 | ROI calculator with printable quote, for the consultants | Implemented |
-| Maintenance interventions: requests of the customers, dashboard of the technicians and printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
-| Telegram bot: alert to the owner of the community when a system has a fault and when a technician accepts a request of intervention; status of the systems, daily report of the community, last reading of a system and request of an intervention | Implemented (see [Telegram alerts](#telegram-alerts)) |
+| Maintenance interventions: requests of the customers, dashboard of the technicians with the contacts of the owner, new day agreed with the owner and approved by them, printable report | Implemented (see [Maintenance interventions](#maintenance-interventions)) |
+| Telegram bot: alert to the owner of the community when a system has a fault and when a technician accepts a request of intervention; new day proposed by the technician, to approve or reject; status of the systems, daily report of the community, last reading of a system and request of an intervention | Implemented (see [Telegram alerts](#telegram-alerts)) |
 | Simulation of the systems without a sensor, run by the master of the community, with the values chosen by an administrator (for the demo with two boards) | Implemented (see [Simulated systems](#simulated-systems)) |
 | Smart relays of the appliances, 1. self-consumption optimization, 5. energy community simulation | Not implemented yet |
 
@@ -632,17 +632,35 @@ virtual nodes that joined with **Aggiungi nodi**; if some are left in the page o
 When the check finds a probable fault or a fault (confirmed after the washing), the page of the system shows the
 **Richiedi intervento** button to the users of its community: it opens a calendar to choose the day of the intervention (from tomorrow to two months ahead).
 The owner of the community can also request it from the Telegram bot (`/intervento`, see [Telegram alerts](#telegram-alerts)). A
-system can have one open request at a time; after an intervention a new one can be requested only if a later check
-finds the fault again. The users see the status of the requests on the page of the system:
+system can have one open request at a time. The executed intervention brings the system back to OK: if the fault comes
+back, found by a later check or set by hand, a new request can be made, also on the same day; a cancelled request
+does not count either. The users see the status of the requests on the page of the system:
 
 1. **Richiesta inoltrata**: the request waits for the technicians;
-2. **Richiesta accettata**: a technician chose the kind of intervention and accepted the request, taking charge of
-   it. Only that technician can record the execution. The owner of the community gets a message on Telegram (see
-   [Telegram alerts](#telegram-alerts));
-3. **Intervento eseguito**: the date of execution, the work done and the cost are recorded.
+2. **Richiesta accettata**: a technician chose the kind of intervention and the day, and accepted the request, taking
+   charge of it. Only that technician can record the execution. The owner of the community gets a message on
+   Telegram (see [Telegram alerts](#telegram-alerts));
+3. **Nuova data proposta**: the technician is not available on the requested day, called or wrote to the owner and
+   agreed on another day, and sent it to the owner, when accepting the request or later if the day changes again. The
+   owner approves or rejects it on the site (a notice on top of every page, page **Nuova data per l'intervento**) or
+   with the buttons of the Telegram message. Approved, the intervention stays in charge of the technician with the
+   new day (`scheduled_date`); rejected, the request is cancelled (**Richiesta annullata**) and the owner has to open
+   a new one. An answer counts only for the day still proposed: the buttons of an older proposal do not change it;
+4. **Intervento eseguito**: the date of execution, the work done and the cost are recorded, and the status of the
+   system goes back to OK (also when the execution is recorded in the admin) and is sent to its device. It counts as
+   a check: the next automatic one comes two days later, on the production after the repair.
+
+The page of the intervention shows the **contacts of the owner** of the community: a `tel:` link to call them and a
+`mailto:` link to write to them (and the contacts of the user who made the request, if it is someone else). Phone and
+email are therefore **mandatory for the owner**: whoever becomes the owner (the first user assigned to a community,
+the user of **Crea una community per**, the owner chosen editing the community) gets them entered by the technician
+on the same page, and the owner cannot remove them from the profile; the admin checks them too. An owner from before
+this rule without them sees a notice on every page, cannot request an intervention until they add them, and is
+shown with **Recapiti mancanti** in the list of the communities; editing the community, the technician enters them.
 
 The dashboard of the technicians (`/sp/interventions/`, menu **Interventi**, with the number of requests to accept) shows the
-requests to accept, the interventions in progress and the executed ones, with the requests whose day has passed.
+requests to accept, the interventions in progress (also those waiting for the owner), the executed and the cancelled
+ones, with the interventions whose day has passed.
 Every intervention has a printable report (or saved as PDF from the browser), available to the technicians and to the
 users of the community.
 
@@ -660,6 +678,11 @@ one made on the site by another user): who took charge of it, the requested day,
 link to the page of the system. It is sent once, when the request goes from `Richiesta inoltrata` to `Richiesta
 accettata`, from the page of the intervention or from the admin; not when the intervention is executed.
 
+When the technician proposes **another day** (see [Maintenance interventions](#maintenance-interventions)), the owner
+gets it with two buttons: **Approva** keeps the intervention with the new day, **Rifiuta** asks to confirm, because
+the request is then cancelled, and offers to open a new one. The proposals still waiting for an answer are also in
+`/intervento`.
+
 **Linking the account.** Only the owner has the box **Notifiche Telegram** in the profile (the username in the menu,
 `/sp/profile/`), which shows whether the account is linked and opens the page **Notifiche Telegram**
 (`/sp/community/telegram/`). Its button **Collega Telegram** opens the bot with a code of that owner
@@ -675,7 +698,7 @@ account receives the alerts of one owner.
 | `/stato` | Status of every system of the community, with the date of the last check |
 | `/report` | Report of today until now; `/report ieri`, `/report 15/11` or `/report 15/11/2026` for another day |
 | `/lettura` | Last reading of a system, chosen with the buttons |
-| `/intervento` | Request of an intervention for a system with a fault, and the open requests |
+| `/intervento` | Request of an intervention for a system with a fault, the open requests and the new days to answer |
 | `/stop` | Unlinks the account: no more alerts |
 | `/aiuto` | The list of the commands |
 
@@ -719,8 +742,11 @@ owner's community, also for the buttons of old messages.
   until a message arrives, then the bot answers and asks again. Each request confirms the messages already read.
   The messages sent while the service is stopped stay on Telegram for 24 hours and are answered when it starts
   again. No open port or public address is needed (a webhook would need one). If Telegram is not reachable, the
-  service retries every 30 s. Like `mqtt-worker`, it is a long process: after changing `SP/telegram.py` or
-  `SP/reports.py` it must be restarted with `docker compose restart telegram-bot`.
+  service retries every 30 s. Like `mqtt-worker`, it is a long process that loads the code once, when it starts:
+  after changing the code (also the models, as with a new migration) it must be restarted with
+  `docker compose restart telegram-bot mqtt-worker`. Otherwise it keeps the old models: after migration 0019, for
+  example, it could not save the requests of intervention any more. When an answer fails for an error, the bot tells
+  the owner to try again, and the error is in the log of the service.
 
 **Configuration.** Create the bot with [@BotFather](https://t.me/BotFather) (`/newbot`) and put its token and
 username in a `.env` file next to `docker-compose.yml` (it is not on git: the token gives full control of the bot):

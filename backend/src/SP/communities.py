@@ -5,7 +5,9 @@ di una community ha il suo master, i nodi sui tetti da assegnare agli impianti (
 cui si apre l'installazione di ognuno (SP/installations.py); da lì si crea anche un nuovo impianto della community.
 
 Le community, come quella di una famiglia, le creano, modificano ed eliminano i tecnici (e gli amministratori, anche
-dall'admin). Il primo utente associato a una community ne diventa il titolare (SP/customers.py).
+dall'admin). Il primo utente associato a una community ne diventa il titolare (SP/customers.py). Il titolare deve
+avere telefono ed email, che servono ai tecnici per contattarlo per gli interventi: creando la community per un
+utente e modificandola (anche cambiando il titolare) il tecnico li conferma o li inserisce.
 """
 from django.contrib import messages
 from django.core.paginator import Paginator
@@ -15,7 +17,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
 from .access import TechnicianRequiredMixin
-from .customers import assign_community
+from .customers import assign_community, owner_contacts_form
 from .forms import CommunityForm
 from .gateways import (
     IDENTIFY_SECONDS, assign_node, identify, node_online, permit_join, remove_node, uninstall_gateway,
@@ -44,7 +46,7 @@ class CommunityListView(TechnicianRequiredMixin, View):
     def get(self, request):
         query = request.GET.get("q", "").strip()
         ordering = Ordering(request, self.ORDERINGS)
-        communities = Community.objects.select_related("city", "owner", "gateway").annotate(
+        communities = Community.objects.select_related("city", "owner__user", "gateway").annotate(
             users=Count("customers", distinct=True),
             systems=Count("photovoltaic_systems", distinct=True),
             # Impianti con il sensore collegato, scollegato o senza sensore
@@ -179,10 +181,17 @@ class NewCommunityView(TechnicianRequiredMixin, View):
         customer_id = request.GET.get("customer")
         customer = None
         if customer_id and customer_id.isdigit():
-            customer = Customer.objects.filter(pk=customer_id, community__isnull=True).first()
+            customer = Customer.objects.select_related("user").filter(pk=customer_id, community__isnull=True).first()
+        # L'utente diventa il titolare: servono il suo telefono e la sua email
+        contacts = None
+        if customer is not None:
+            contacts = owner_contacts_form(customer, request.POST if form.is_bound else None)
 
-        if form.is_bound and form.is_valid():
-            community = Community.objects.create(name=form.cleaned_data["name"], city=form.cleaned_data["city"])
+        if form.is_bound and form.is_valid() and (contacts is None or contacts.is_valid()):
+            with transaction.atomic():
+                community = Community.objects.create(name=form.cleaned_data["name"], city=form.cleaned_data["city"])
+                if contacts is not None:
+                    contacts.save()
             if customer is not None:
                 if assign_community(customer, community):
                     messages.success(request, f"Community {community} creata: {customer} ne è il titolare.")
@@ -192,33 +201,57 @@ class NewCommunityView(TechnicianRequiredMixin, View):
                 return redirect("SP:customer_assignment")
             messages.success(request, f"Community {community} creata.")
             return redirect("SP:community_detail", community_id=community.id)
-        return render(request, self.template_name, {"form": form, "customer": customer})
+        return render(request, self.template_name, {"form": form, "customer": customer, "contacts_form": contacts})
 
 
 class EditCommunityView(TechnicianRequiredMixin, View):
-    """Nome, comune e titolare di una community; i suoi utenti."""
+    """Nome, comune e titolare di una community, con telefono ed email del titolare; i suoi utenti.
+
+    I recapiti sono quelli del titolare scelto: se il tecnico sceglie un altro utente, la pagina mostra i suoi
+    (SP/static/SP/owner_contacts.js) e il campo nascosto owner-customer dice di chi sono quelli inviati.
+    """
 
     template_name = "SP/community_form.html"
 
     def get(self, request, community_id):
-        community = get_object_or_404(Community.objects.select_related("city"), pk=community_id)
-        return self.render(request, community, CommunityForm(community=community))
+        community = get_object_or_404(Community.objects.select_related("city", "owner__user"), pk=community_id)
+        contacts = owner_contacts_form(community.owner) if community.owner else None
+        return self.render(request, community, CommunityForm(community=community), contacts)
 
     def post(self, request, community_id):
-        community = get_object_or_404(Community.objects.select_related("city"), pk=community_id)
+        community = get_object_or_404(Community.objects.select_related("city", "owner__user"), pk=community_id)
         form = CommunityForm(request.POST, community=community)
-        if not form.is_valid():
-            return self.render(request, community, form)
+        owner = self.chosen_owner(request, community, form)
+        contacts = owner_contacts_form(owner, request.POST) if owner else None
+        if not form.is_valid() or (contacts is not None and not contacts.is_valid()):
+            return self.render(request, community, form, contacts)
         community.name, community.city = form.cleaned_data["name"], form.cleaned_data["city"]
         if "owner" in form.cleaned_data:
             community.owner = form.cleaned_data["owner"]
-        community.save()
+        with transaction.atomic():
+            if contacts is not None:
+                contacts.save()
+            community.save()
         messages.success(request, f"Community {community} aggiornata.")
         return redirect("SP:community_detail", community_id=community.id)
 
-    def render(self, request, community, form):
+    @staticmethod
+    def chosen_owner(request, community, form):
+        """Il titolare scelto nel form, anche se il form ha errori in altri campi; senza utenti, nessuno."""
+        if "owner" not in form.fields:
+            return None
+        owner_id = request.POST.get("owner", "")
+        chosen = form.fields["owner"].queryset.filter(pk=owner_id).first() if owner_id.isdigit() else None
+        return chosen or community.owner
+
+    def render(self, request, community, form, contacts):
         members = community.customers.select_related("user").order_by("surname", "name")
-        return render(request, self.template_name, {"form": form, "community": community, "members": members})
+        context = {
+            "form": form, "community": community, "members": members, "contacts_form": contacts,
+            # Recapiti di ogni utente, per mostrare quelli del titolare scelto
+            "member_contacts": {member.pk: {"email": member.user.email, "phone": member.phone} for member in members},
+        }
+        return render(request, self.template_name, context)
 
 
 class DeleteCommunityView(TechnicianRequiredMixin, View):

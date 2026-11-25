@@ -27,3 +27,28 @@ def pending_interventions(request):
         "pending_interventions": Intervention.objects.filter(status=Intervention.Status.REQUESTED).count(),
         "pending_customers": Customer.objects.filter(community__isnull=True).count(),
     }
+
+
+def owner_notices(request):
+    """Avvisi in cima alle pagine del titolare di una community (templates/base.html): i giorni proposti dai tecnici
+    che aspettano la sua risposta e, se è titolare da prima che fossero obbligatori, i recapiti che gli mancano.
+
+    Non nelle pagine dove li gestisce già: la proposta e il profilo.
+    """
+    user = request.user
+    if not user.is_authenticated:
+        return {}
+    customer = Customer.objects.select_related("community__owner", "user").filter(user=user).first()
+    if customer is None or not customer.is_owner:
+        return {}
+    match = getattr(request, "resolver_match", None)
+    view = match.view_name if match else ""
+    notices = {}
+    if view != "SP:intervention_proposal":
+        proposals = (Intervention.objects.filter(system__community=customer.community_id,
+                                                 status=Intervention.Status.PROPOSED)
+                     .select_related("system").order_by("proposed_date"))
+        notices["owner_proposals"] = list(proposals)
+    if view != "SP:profile":
+        notices["owner_without_contacts"] = not customer.has_contacts
+    return notices

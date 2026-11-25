@@ -16,7 +16,7 @@
         </div>
     </section>
 
-    <!-- Avanzamento: richiesta, accettazione, esecuzione -->
+    <!-- Avanzamento: richiesta, accettazione, esecuzione (o la nuova data in attesa del titolare, o l'annullamento) -->
     <ol class="timeline" aria-label="Avanzamento">
         <li class="done">
             <span class="dot">{% icon "send" %}</span>
@@ -28,11 +28,25 @@
             <b>Richiesta accettata</b>
             <span>{% if intervention.staff %}da {{ intervention.staff|person }}{% else %}in attesa{% endif %}</span>
         </li>
-        <li{% if intervention.is_done %} class="done"{% endif %}>
-            <span class="dot">{% icon "check" %}</span>
-            <b>Intervento eseguito</b>
-            <span>{% if intervention.is_done %}il {{ intervention.executed_on|date:"d/m/Y" }}{% else %}giorno richiesto: {{ intervention.preferred_date|date:"d/m/Y" }}{% endif %}</span>
-        </li>
+        {% if intervention.is_proposed %}
+            <li>
+                <span class="dot">{% icon "clock" %}</span>
+                <b>Nuova data proposta</b>
+                <span>{{ intervention.proposed_date|date:"d/m/Y" }}, in attesa del titolare</span>
+            </li>
+        {% elif intervention.is_cancelled %}
+            <li>
+                <span class="dot">{% icon "close" %}</span>
+                <b>Richiesta annullata</b>
+                <span>il {{ intervention.answered_at|date:"d/m/Y" }}: il titolare ha rifiutato il {{ intervention.proposed_date|date:"d/m/Y" }}</span>
+            </li>
+        {% else %}
+            <li{% if intervention.is_done %} class="done"{% endif %}>
+                <span class="dot">{% icon "check" %}</span>
+                <b>Intervento eseguito</b>
+                <span>{% if intervention.is_done %}il {{ intervention.executed_on|date:"d/m/Y" }}{% else %}giorno dell'intervento: {{ intervention.scheduled_date|date:"d/m/Y" }}{% endif %}</span>
+            </li>
+        {% endif %}
     </ol>
 </div>
 {% endblock %}
@@ -46,10 +60,53 @@
                 <div><dt>Richiesta da</dt><dd>{{ intervention.requested_by|person }}</dd></div>
                 <div><dt>Data della richiesta</dt><dd>{{ intervention.requested_at|date:"d/m/Y H:i" }}</dd></div>
                 <div><dt>Giorno richiesto</dt><dd>{{ intervention.preferred_date|date:"l d/m/Y" }}</dd></div>
+                {% if intervention.rescheduled %}
+                    <div><dt>Giorno dell'intervento</dt><dd>{{ intervention.scheduled_date|date:"l d/m/Y" }} <span class="muted">(approvato dal titolare)</span></dd></div>
+                {% endif %}
+                {% if intervention.is_proposed %}
+                    <div><dt>Nuova data proposta</dt><dd><span class="status proposed">{{ intervention.proposed_date|date:"l d/m/Y" }}</span> <span class="muted">(dal {{ intervention.proposed_at|date:"d/m/Y H:i" }})</span></dd></div>
+                {% elif intervention.is_cancelled %}
+                    <div><dt>Data rifiutata</dt><dd>{{ intervention.proposed_date|date:"l d/m/Y" }} <span class="muted">(il {{ intervention.answered_at|date:"d/m/Y H:i" }})</span></dd></div>
+                {% endif %}
             </dl>
             <dl class="pairs pairs--stack">
                 <div><dt>Note del cliente</dt><dd>{{ intervention.customer_notes|default:"-"|linebreaksbr }}</dd></div>
             </dl>
+        </section>
+
+        <!-- Il titolare, da chiamare o scrivere per accordarsi sul giorno -->
+        <section class="section" aria-labelledby="contacts-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="contacts-title">Contatta il titolare</h2>
+                    <p>Se non sei disponibile il giorno richiesto, accordati con lui su un altro giorno e indicalo qui: lo approverà sul sito o su Telegram.</p>
+                </div>
+            </div>
+            {% if owner %}
+                <p class="h3 mb-1">{{ owner }}</p>
+                <p class="muted mb-0">Titolare di {{ system.community.name }}</p>
+                {% if owner.has_contacts %}
+                    <ul class="contacts">
+                        <li><a href="tel:{{ owner.phone|tel }}" class="link">{% icon "phone" %}Chiama {{ owner.phone }}</a></li>
+                        <li><a href="mailto:{{ owner.user.email }}?subject={% filter urlencode %}{% autoescape off %}Intervento {{ intervention.number }} su {{ system.name }}{% endautoescape %}{% endfilter %}&amp;body={% filter urlencode %}{% autoescape off %}Buongiorno {{ owner.name }}, la contatto per la richiesta di intervento {{ intervention.number }} su {{ system.name }} del {{ intervention.scheduled_date|date:"d/m/Y" }}.{% endautoescape %}{% endfilter %}" class="link">{% icon "mail" %}Scrivi a {{ owner.user.email }}</a></li>
+                    </ul>
+                {% else %}
+                    <div class="callout callout--warn mt-3" role="status">
+                        Il titolare non ha ancora indicato telefono ed email: li aggiungerà dal suo profilo, oppure puoi inserirli modificando la <a href="{% url 'SP:community_edit' system.community.id %}" class="link">community</a>.
+                        {% if owner.phone %}<br><a href="tel:{{ owner.phone|tel }}" class="link">{% icon "phone" %}{{ owner.phone }}</a>{% endif %}
+                        {% if owner.user.email %}<br><a href="mailto:{{ owner.user.email }}" class="link">{% icon "mail" %}{{ owner.user.email }}</a>{% endif %}
+                    </div>
+                {% endif %}
+            {% else %}
+                <p class="muted mb-0">La community non ha un titolare.</p>
+            {% endif %}
+            {% if requester %}
+                <p class="note">
+                    Ha fatto la richiesta {{ requester }}{% if requester.phone or requester.user.email %}:{% endif %}
+                    {% if requester.phone %}<a href="tel:{{ requester.phone|tel }}" class="link nb">{{ requester.phone }}</a>{% endif %}
+                    {% if requester.user.email %}<a href="mailto:{{ requester.user.email }}" class="link">{{ requester.user.email }}</a>{% endif %}
+                </p>
+            {% endif %}
         </section>
 
         <section class="section" aria-labelledby="system-title">
@@ -84,51 +141,88 @@
         {% endif %}
     </div>
 
-    <!-- L'azione del tecnico: accettare la richiesta o registrare l'intervento eseguito -->
-    <section class="section" aria-labelledby="action-title">
-        <div class="callout{% if intervention.status == intervention.Status.REQUESTED %} callout--warn{% elif intervention.is_done %} callout--ok{% endif %}">
-            {% if intervention.status == intervention.Status.REQUESTED %}
-                <h2 class="h3" id="action-title">Valuta la richiesta</h2>
-                <p class="muted">Indica di che intervento si tratta. Accettando, la richiesta passa in carico a te e il cliente la vede accettata nella pagina dell'impianto.</p>
-            {% elif form %}
-                <h2 class="h3" id="action-title">Intervento eseguito</h2>
-                <p class="muted">L'intervento è in carico a te: dopo averlo eseguito, registra cosa è stato fatto.</p>
-            {% elif intervention.is_done %}
-                <h2 class="h3" id="action-title">Intervento eseguito</h2>
-            {% else %}
-                <h2 class="h3" id="action-title">In carico a {{ intervention.staff|person }}</h2>
-                <p class="muted mb-0">Solo il membro dello staff che ha accettato la richiesta può registrare l'intervento eseguito.</p>
-            {% endif %}
+    <!-- L'azione del tecnico: accettare la richiesta, proporre un altro giorno o registrare l'intervento eseguito -->
+    <div class="stack">
+        <section class="section" aria-labelledby="action-title">
+            <div class="callout{% if intervention.status == intervention.Status.REQUESTED or intervention.is_proposed %} callout--warn{% elif intervention.is_done %} callout--ok{% elif intervention.is_cancelled %} callout--danger{% endif %}">
+                {% if intervention.status == intervention.Status.REQUESTED %}
+                    <h2 class="h3" id="action-title">Valuta la richiesta</h2>
+                    <p class="muted">Indica di che intervento si tratta e il giorno. Accettando, la richiesta passa in carico a te e il cliente la vede accettata nella pagina dell'impianto.</p>
+                {% elif intervention.is_proposed %}
+                    <h2 class="h3" id="action-title">In attesa del titolare</h2>
+                    <p class="muted mb-0">
+                        {% if intervention.staff_id == user.id %}Hai proposto{% else %}{{ intervention.staff|person }} ha proposto{% endif %}
+                        {{ intervention.proposed_date|date:"l d/m/Y" }} invece di {{ intervention.scheduled_date|date:"l d/m/Y" }}.
+                        Il titolare lo approva o lo rifiuta dal sito o da Telegram: se lo rifiuta, la richiesta è annullata.
+                    </p>
+                {% elif form %}
+                    <h2 class="h3" id="action-title">Intervento eseguito</h2>
+                    <p class="muted">L'intervento è in carico a te, per {{ intervention.scheduled_date|date:"l d/m/Y" }}: dopo averlo eseguito, registra cosa è stato fatto. Registrandolo, lo stato dell'impianto torna OK.</p>
+                {% elif intervention.is_done %}
+                    <h2 class="h3" id="action-title">Intervento eseguito</h2>
+                {% elif intervention.is_cancelled %}
+                    <h2 class="h3" id="action-title">Richiesta annullata</h2>
+                    <p class="muted mb-0">Il {{ intervention.answered_at|date:"d/m/Y" }} il titolare ha rifiutato il giorno proposto, {{ intervention.proposed_date|date:"l d/m/Y" }}. Se serve ancora un tecnico, aprirà una nuova richiesta.</p>
+                {% else %}
+                    <h2 class="h3" id="action-title">In carico a {{ intervention.staff|person }}</h2>
+                    <p class="muted mb-0">Solo il membro dello staff che ha accettato la richiesta può registrare l'intervento eseguito.</p>
+                {% endif %}
 
-            {% if form %}
-                <form method="post" class="form-b" novalidate>
-                    {% csrf_token %}
-                    {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
-                    {% for field in form %}
-                        <div class="field">
-                            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
-                            {{ field }}
-                            {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
+                {% if form %}
+                    <form method="post" class="form-b" novalidate>
+                        {% csrf_token %}
+                        {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+                        {% for field in form %}
+                            <div class="field">
+                                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+                                {{ field }}
+                                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                                {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
+                            </div>
+                        {% endfor %}
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary w-100">
+                                {% if intervention.status == intervention.Status.REQUESTED %}Accetta richiesta{% else %}Registra intervento eseguito{% endif %}
+                            </button>
                         </div>
-                    {% endfor %}
+                    </form>
+                {% elif intervention.is_done %}
+                    <dl class="pairs mt-3">
+                        <div><dt>Eseguito il</dt><dd>{{ intervention.executed_on|date:"d/m/Y" }}</dd></div>
+                        <div><dt>Tipo</dt><dd>{{ intervention.get_code_display }}</dd></div>
+                        <div><dt>Tecnico</dt><dd>{{ intervention.staff|person }}</dd></div>
+                        <div><dt>Costo</dt><dd>{% if intervention.cost is not None %}{{ intervention.cost|floatformat:"2g" }} €{% else %}-{% endif %}</dd></div>
+                    </dl>
+                    <dl class="pairs pairs--stack">
+                        <div><dt>Lavori eseguiti</dt><dd>{{ intervention.notes|linebreaksbr }}</dd></div>
+                    </dl>
+                {% endif %}
+            </div>
+        </section>
+
+        {% if proposal_form %}
+            <!-- Il giorno cambia dopo l'accordo con il titolare: gli si invia il nuovo, da approvare -->
+            <section class="section" aria-labelledby="proposal-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="proposal-title">{% if intervention.is_proposed %}Proponi un altro giorno{% else %}Cambia il giorno{% endif %}</h2>
+                        <p>Se dopo esservi accordati il giorno cambia, invia il nuovo al titolare: lo riceve sul sito e su Telegram. Se lo approva l'intervento resta con il nuovo giorno, se lo rifiuta la richiesta è annullata.</p>
+                    </div>
+                </div>
+                <form method="post" class="form-b form-narrow" novalidate>
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="propose">
+                    <div class="field">
+                        <label for="{{ proposal_form.day.id_for_label }}" class="form-label">{{ proposal_form.day.label }} *</label>
+                        {{ proposal_form.day }}
+                        {% for error in proposal_form.day.errors %}<div class="error">{{ error }}</div>{% endfor %}
+                    </div>
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-primary w-100">
-                            {% if intervention.status == intervention.Status.REQUESTED %}Accetta richiesta{% else %}Registra intervento eseguito{% endif %}
-                        </button>
+                        <button type="submit" class="btn btn-outline-secondary">{% icon "send" %}Invia il nuovo giorno al titolare</button>
                     </div>
                 </form>
-            {% elif intervention.is_done %}
-                <dl class="pairs mt-3">
-                    <div><dt>Eseguito il</dt><dd>{{ intervention.executed_on|date:"d/m/Y" }}</dd></div>
-                    <div><dt>Tipo</dt><dd>{{ intervention.get_code_display }}</dd></div>
-                    <div><dt>Tecnico</dt><dd>{{ intervention.staff|person }}</dd></div>
-                    <div><dt>Costo</dt><dd>{% if intervention.cost is not None %}{{ intervention.cost|floatformat:"2g" }} €{% else %}-{% endif %}</dd></div>
-                </dl>
-                <dl class="pairs pairs--stack">
-                    <div><dt>Lavori eseguiti</dt><dd>{{ intervention.notes|linebreaksbr }}</dd></div>
-                </dl>
-            {% endif %}
-        </div>
-    </section>
+            </section>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}

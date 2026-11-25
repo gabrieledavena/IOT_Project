@@ -95,10 +95,13 @@ class CustomerRegistrationForm(UserCreationForm):
 
     name = forms.CharField(label="Nome", max_length=100, required=True)
     surname = forms.CharField(label="Cognome", max_length=100, required=True)
+    # Facoltativi per chi si registra: diventano obbligatori se diventa il titolare della sua community
     email = forms.EmailField(label="Email (facoltativa)", required=False)
     phone = forms.CharField(
         label="Telefono (facoltativo)", max_length=Customer._meta.get_field("phone").max_length, required=False,
         validators=Customer._meta.get_field("phone").validators,
+        help_text="Email e telefono sono obbligatori per il titolare della community: servono ai tecnici per "
+                  "contattarlo per gli interventi.",
     )
 
     class Meta(UserCreationForm.Meta):
@@ -122,20 +125,31 @@ class CustomerRegistrationForm(UserCreationForm):
 
 
 class ContactForm(forms.Form):
-    """I recapiti che un cliente cambia dal suo profilo: email e telefono. Quelli del personale li cambiano solo gli
-    amministratori, dall'admin."""
+    """I recapiti di un cliente: email e telefono. Il cliente li cambia dal suo profilo; quelli del personale li
+    cambiano solo gli amministratori, dall'admin.
+
+    Per il titolare della community sono obbligatori (required): servono ai tecnici per contattarlo per gli
+    interventi. Lo stesso form, con il prefisso "owner", chiede i recapiti a chi diventa titolare nelle pagine dei
+    tecnici (SP/communities.py e SP/customers.py).
+    """
 
     email = forms.EmailField(label="Email", required=False,
                              widget=forms.EmailInput(attrs={"class": "form-control", "autocomplete": "email"}))
     phone = forms.CharField(
         label="Telefono", max_length=Customer._meta.get_field("phone").max_length, required=False,
         validators=Customer._meta.get_field("phone").validators,
-        widget=forms.TextInput(attrs={"class": "form-control", "autocomplete": "tel", "placeholder": "Es. +39 333 1234567"}),
+        widget=forms.TextInput(attrs={"class": "form-control", "autocomplete": "tel", "type": "tel",
+                                      "placeholder": "Es. +39 333 1234567"}),
     )
 
-    def __init__(self, *args, customer, **kwargs):
+    def __init__(self, *args, customer, required=None, **kwargs):
         self.customer = customer
+        self.required = customer.is_owner if required is None else required
         super().__init__(*args, initial={"email": customer.user.email, "phone": customer.phone}, **kwargs)
+        for field in self.fields.values():
+            field.required = self.required
+            if self.required:
+                field.error_messages["required"] = "Obbligatorio per il titolare della community."
 
     def clean_email(self):
         return self.cleaned_data["email"].strip()
@@ -172,6 +186,10 @@ def intervention_date_range():
 
 NO_FAULT = "L'impianto non ha un guasto: non serve richiedere un intervento."
 ALREADY_HANDLED = "C'è già un intervento per il guasto di questo impianto."
+OWNER_WITHOUT_CONTACTS = (
+    "Prima di richiedere un intervento aggiungi telefono ed email nel tuo profilo: come titolare della community "
+    "sono obbligatori, servono al tecnico per contattarti e accordarsi sul giorno."
+)
 
 
 def request_unavailable(system):
@@ -183,6 +201,18 @@ def request_unavailable(system):
     if system.can_request_intervention:
         return None
     return ALREADY_HANDLED if system.has_fault else NO_FAULT
+
+
+def owner_contacts_missing(community, user):
+    """Perché non si può chiedere un intervento per la community finché il suo titolare non ha telefono ed email
+    (un titolare di prima che fossero obbligatori), o None. Il messaggio cambia se `user` è il titolare."""
+    owner = community.owner
+    if owner is None or owner.has_contacts:
+        return None
+    if owner.user_id == user.id:
+        return OWNER_WITHOUT_CONTACTS
+    return (f"Il titolare della community, {owner}, deve prima aggiungere telefono ed email nel suo profilo: "
+            "servono al tecnico per contattarlo e accordarsi sul giorno dell'intervento.")
 
 
 class InterventionRequestForm(forms.ModelForm):
@@ -223,17 +253,72 @@ class InterventionRequestForm(forms.ModelForm):
         return intervention
 
 
+def date_widget():
+    first, last = intervention_date_range()
+    return forms.DateInput(attrs={"type": "date", "class": "form-control", "min": first.isoformat(),
+                                  "max": last.isoformat()}, format="%Y-%m-%d")
+
+
+def check_proposed_day(day):
+    """Il giorno che il tecnico propone al titolare: negli stessi giorni che il cliente può chiedere."""
+    first, last = intervention_date_range()
+    if not first <= day <= last:
+        raise forms.ValidationError(f"Proponi un giorno tra il {first:%d/%m/%Y} e il {last:%d/%m/%Y}.")
+    return day
+
+
 class InterventionAcceptForm(forms.ModelForm):
-    """Prima di accettare una richiesta lo staff stabilisce di che intervento si tratta."""
+    """Prima di accettare una richiesta lo staff stabilisce di che intervento si tratta e il giorno.
+
+    Il giorno è quello richiesto dal cliente; se il tecnico non è disponibile, contatta il titolare e indica il
+    giorno su cui si sono accordati: la richiesta è accettata con la nuova data, che il titolare approva o rifiuta.
+    """
+
+    # Vuoto vale il giorno richiesto
+    day = forms.DateField(
+        label="Giorno dell'intervento", required=False,
+        help_text="Quello richiesto dal cliente. Se non sei disponibile, contatta il titolare e indica il giorno "
+                  "su cui vi siete accordati: gli arriverà da approvare sul sito e su Telegram.",
+    )
 
     class Meta:
         model = Intervention
-        fields = ("code",)
+        fields = ("code", "day")
         widgets = {"code": forms.Select(attrs={"class": "form-select"})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["code"].required = True
+        self.fields["day"].initial = self.instance.preferred_date
+        # Il giorno richiesto resta accettabile anche se nel frattempo è passato: si propone solo un giorno nuovo
+        self.fields["day"].widget = date_widget()
+
+    def clean_day(self):
+        day = self.cleaned_data["day"] or self.instance.preferred_date
+        return day if day == self.instance.preferred_date else check_proposed_day(day)
+
+    @property
+    def proposes_new_day(self):
+        return self.cleaned_data["day"] != self.instance.preferred_date
+
+
+class DateProposalForm(forms.Form):
+    """Il tecnico che ha in carico l'intervento propone al titolare un altro giorno, su cui si sono accordati."""
+
+    day = forms.DateField(label="Nuovo giorno")
+
+    def __init__(self, *args, intervention, **kwargs):
+        self.intervention = intervention
+        super().__init__(*args, **kwargs)
+        self.fields["day"].widget = date_widget()
+
+    def clean_day(self):
+        day = check_proposed_day(self.cleaned_data["day"])
+        if self.intervention.is_proposed and day == self.intervention.proposed_date:
+            raise forms.ValidationError("Hai già proposto questo giorno: il titolare deve ancora rispondere.")
+        if not self.intervention.is_proposed and day == self.intervention.scheduled_date:
+            raise forms.ValidationError("È già il giorno dell'intervento.")
+        return day
 
 
 class InterventionCompletionForm(forms.ModelForm):

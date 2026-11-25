@@ -169,3 +169,43 @@ class ContactTests(TestCase):
         response = self.client.post(URL, {"email": "x@example.com"})
 
         self.assertRedirects(response, f"/sp/login/?next={URL}", fetch_redirect_response=False)
+
+
+class OwnerContactTests(TestCase):
+    """Il titolare della community deve avere telefono ed email: servono ai tecnici per contattarlo."""
+
+    def setUp(self):
+        self.community = create_community("Famiglia Bianchi")
+        self.owner = create_customer(self.community)
+        self.client.force_login(self.owner)
+
+    def test_the_owner_cannot_remove_them(self):
+        response = self.client.get(URL)
+        self.assertTrue(response.context["form"].required)
+        self.assertContains(response, "Come titolare della community sono obbligatori tutti e due.")
+
+        for contacts in ({"email": "", "phone": "+39 333 1234567"}, {"email": "mario@example.com", "phone": ""}):
+            with self.subTest(contacts=contacts):
+                response = self.client.post(URL, contacts)
+                self.assertEqual(response.status_code, 400)
+                self.assertContains(response, "Obbligatorio per il titolare della community.", status_code=400)
+        customer = Customer.objects.select_related("user").get(user=self.owner)
+        self.assertEqual((customer.user.email, customer.phone), ("mario@example.com", "+39 333 1234567"))
+
+    def test_the_other_users_can(self):
+        luigi = create_customer(self.community, username="luigi")
+        self.client.force_login(luigi)
+
+        self.client.post(URL, {"email": "", "phone": ""})
+
+        customer = Customer.objects.select_related("user").get(user=luigi)
+        self.assertEqual((customer.user.email, customer.phone), ("", ""))
+
+    def test_an_owner_from_before_without_them_is_asked_on_every_page(self):
+        Customer.objects.filter(user=self.owner).update(phone="")
+
+        self.assertContains(self.client.get("/"), "Aggiungi telefono ed email")
+        # Non nel profilo, dove li aggiunge
+        self.assertNotContains(self.client.get(URL), "Aggiungi telefono ed email")
+        self.client.post(URL, {"email": "mario@example.com", "phone": "+39 333 1234567"})
+        self.assertNotContains(self.client.get("/"), "Aggiungi telefono ed email")

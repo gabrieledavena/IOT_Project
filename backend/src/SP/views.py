@@ -228,7 +228,7 @@ class ProfileView(LoginRequiredMixin, View):
         if technician:
             mine = Intervention.objects.filter(staff=user)
             context["interventions"] = {
-                "open": mine.filter(status=Intervention.Status.ACCEPTED).count(),
+                "open": mine.filter(status__in=(Intervention.Status.ACCEPTED, Intervention.Status.PROPOSED)).count(),
                 "done": mine.filter(status=Intervention.Status.DONE).count(),
             }
         return render(request, self.template_name, context, status=status)
@@ -453,9 +453,12 @@ class PhotovoltaicSystemView(ProductionDashboardView):
 
     def get_extra_context(self):
         is_member = Customer.community_of(self.request.user) == self.community
+        owner = self.community.owner
         return {
             "system": self.system,
             "status": SYSTEM_STATUSES[self.system.status],
+            # Il titolare risponde ai giorni proposti dai tecnici
+            "is_owner": is_member and owner is not None and owner.user_id == self.request.user.id,
             # Lo stato delle richieste di intervento, visibile anche al cliente
             "interventions": self.system.interventions.select_related("staff")[:5],
             "can_request_intervention": is_member and self.system.can_request_intervention,

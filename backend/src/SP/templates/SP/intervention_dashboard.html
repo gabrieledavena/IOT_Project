@@ -8,15 +8,16 @@
     <section class="head--page head--tight" aria-labelledby="interventions-title">
         <div>
             <h1 class="title title--big" id="interventions-title">Interventi di manutenzione</h1>
-            <p class="lead-b">Richieste dei clienti, interventi in corso ed eseguiti. Accettando una richiesta la prendi in carico.</p>
+            <p class="lead-b">Richieste dei clienti, interventi in corso ed eseguiti. Accettando una richiesta la prendi in carico; se non sei disponibile il giorno richiesto, accordati con il titolare su un altro giorno.</p>
         </div>
     </section>
-    <!-- I contatori: tre portano alla scheda corrispondente -->
-    <div class="metrics">
+    <!-- I contatori: quattro portano alla scheda corrispondente -->
+    <div class="metrics" style="--n: 5">
         <a href="?tab=pending" class="metric"><div class="m-label">Da accettare</div><div class="m-value">{{ pending_count }}</div></a>
         <a href="?tab=accepted&amp;mine=1" class="metric"><div class="m-label">In carico a te</div><div class="m-value">{{ my_open_count }}</div></a>
+        <a href="?tab=accepted" class="metric"><div class="m-label">Nuova data in attesa del titolare</div><div class="m-value">{{ proposed_count }}</div></a>
         <div>
-            <div class="m-label">Giorno richiesto passato</div>
+            <div class="m-label">Giorno passato</div>
             <div class="m-value">{% if overdue_count %}<span class="status broken">{{ overdue_count }}</span>{% else %}0{% endif %}</div>
         </div>
         <a href="?tab=done" class="metric"><div class="m-label">Eseguiti negli ultimi 30 giorni</div><div class="m-value">{{ done_last_30_days }}</div></a>
@@ -52,8 +53,10 @@
                     <th class="hide-phone">Community</th>
                     {% if tab == "done" %}
                         <th>Eseguito il</th><th class="hide-phone">Tipo</th><th class="hide-phone">Tecnico</th><th class="num">Costo</th>
+                    {% elif tab == "cancelled" %}
+                        <th>Annullato il</th><th class="hide-phone">Giorno richiesto</th><th>Giorno rifiutato</th><th class="hide-phone">Tecnico</th>
                     {% else %}
-                        <th class="hide-phone">Richiesto il</th><th>Giorno richiesto</th><th class="hide-phone">{% if tab == "pending" %}Richiesto da{% else %}Tipo{% endif %}</th>
+                        <th class="hide-phone">Richiesto il</th><th>Giorno</th><th class="hide-phone">{% if tab == "pending" %}Richiesto da{% else %}Tipo{% endif %}</th>
                         {% if tab == "accepted" %}<th class="hide-phone">Tecnico</th>{% endif %}
                     {% endif %}
                     <th><span class="visually-hidden">Azioni</span></th>
@@ -70,13 +73,23 @@
                             <td class="hide-phone">{{ intervention.get_code_display }}</td>
                             <td class="hide-phone">{{ intervention.staff|person }}</td>
                             <td class="num">{% if intervention.cost is not None %}{{ intervention.cost|floatformat:"2g" }} €{% else %}-{% endif %}</td>
+                        {% elif tab == "cancelled" %}
+                            <td class="nb">{{ intervention.answered_at|date:"d/m/Y H:i"|default:"-" }}</td>
+                            <td class="hide-phone nb">{{ intervention.preferred_date|date:"d/m/Y" }}</td>
+                            <td class="nb">{{ intervention.proposed_date|date:"d/m/Y"|default:"-" }}</td>
+                            <td class="hide-phone">{{ intervention.staff|person }}</td>
                         {% else %}
                             <td class="hide-phone nb">{{ intervention.requested_at|date:"d/m/Y H:i" }}</td>
                             <td class="nb">
-                                {% if intervention.preferred_date < today %}
-                                    <span class="status broken" title="Il giorno richiesto è passato">{{ intervention.preferred_date|date:"d/m/Y" }}</span>
+                                {% if intervention.scheduled_date < today %}
+                                    <span class="status broken" title="Il giorno dell'intervento è passato">{{ intervention.scheduled_date|date:"d/m/Y" }}</span>
                                 {% else %}
-                                    {{ intervention.preferred_date|date:"D d/m/Y" }}
+                                    {{ intervention.scheduled_date|date:"D d/m/Y" }}
+                                {% endif %}
+                                {% if intervention.is_proposed %}
+                                    <span class="sub"><span class="status proposed">Proposto il {{ intervention.proposed_date|date:"d/m" }}</span></span>
+                                {% elif intervention.rescheduled %}
+                                    <span class="sub">concordato con il titolare</span>
                                 {% endif %}
                             </td>
                             {% if tab == "pending" %}
@@ -100,7 +113,7 @@
                     </tr>
                 {% empty %}
                     <tr><td colspan="8" class="empty">
-                        {% if tab == "pending" %}Nessuna richiesta da accettare.{% elif tab == "accepted" %}Nessun intervento in corso.{% else %}Nessun intervento eseguito.{% endif %}
+                        {% if tab == "pending" %}Nessuna richiesta da accettare.{% elif tab == "accepted" %}Nessun intervento in corso.{% elif tab == "cancelled" %}Nessuna richiesta annullata.{% else %}Nessun intervento eseguito.{% endif %}
                     </td></tr>
                 {% endfor %}
             </tbody>

@@ -68,6 +68,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'SP.context_processors.roles',
                 'SP.context_processors.pending_interventions',
+                'SP.context_processors.owner_notices',
             ],
         },
     },

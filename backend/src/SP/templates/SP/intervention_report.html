@@ -89,6 +89,8 @@
             <tr><td>Data della richiesta</td><td>{{ intervention.requested_at|date:"d/m/Y H:i" }}</td></tr>
             <tr><td>Richiesta da</td><td>{{ intervention.requested_by|person }}</td></tr>
             <tr><td>Giorno richiesto</td><td>{{ intervention.preferred_date|date:"l d/m/Y" }}</td></tr>
+            {% if intervention.rescheduled %}<tr><td>Giorno concordato con il titolare</td><td>{{ intervention.scheduled_date|date:"l d/m/Y" }}</td></tr>{% endif %}
+            {% if intervention.is_cancelled %}<tr><td>Richiesta annullata</td><td>il {{ intervention.answered_at|date:"d/m/Y" }}: il titolare ha rifiutato il {{ intervention.proposed_date|date:"d/m/Y" }}</td></tr>{% endif %}
             <tr><td>Note del cliente</td><td>{{ intervention.customer_notes|default:"-"|linebreaksbr }}</td></tr>
         </tbody>
     </table>

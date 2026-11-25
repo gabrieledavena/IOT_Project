@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import mqtt, telegram
+from .interventions import system_repaired
 from .models import (
     PHONE_VALIDATOR, City, Community, Customer, Device, Intervention, PanelData, PhotovoltaicSystem, StaffProfile,
 )
@@ -33,6 +34,41 @@ class StaffUserChangeForm(UserChangeForm):
 
     def clean_phone(self):
         return " ".join(self.cleaned_data["phone"].split())
+
+    def clean_email(self):
+        email = self.cleaned_data.get("email", "")
+        # Il titolare di una community deve avere l'email (Customer.has_contacts)
+        customer = Customer.objects.select_related("community").filter(user_id=self.instance.pk).first()
+        if not email and customer is not None and customer.is_owner:
+            raise forms.ValidationError("È il titolare della sua community: l'email è obbligatoria.")
+        return email
+
+
+class CustomerAdminForm(forms.ModelForm):
+    """Dati di un cliente, con l'email del suo utente: telefono ed email sono obbligatori per il titolare, che lo
+    diventa anche entrando per primo in una community (Customer.clean)."""
+
+    email = forms.EmailField(label="Email", required=False)
+
+    class Meta:
+        model = Customer
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        user = getattr(self.instance, "user", None) if self.instance.user_id else None
+        self.initial["email"] = user.email if user else ""
+
+    def clean_phone(self):
+        return " ".join(self.cleaned_data["phone"].split())
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # Customer.clean controlla i recapiti con l'email nuova: è dell'utente scelto, che diventa instance.user e
+        # che CustomerAdmin.save_model salva
+        if cleaned_data.get("user") is not None and "email" in cleaned_data:
+            cleaned_data["user"].email = cleaned_data["email"]
+        return cleaned_data
 
 
 admin.site.unregister(User)
@@ -129,9 +165,16 @@ class CommunityAdmin(admin.ModelAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
+    form = CustomerAdminForm
+    fields = ("user", "name", "surname", "email", "phone", "community", "telegram_chat_id")
     list_display = ("id", "name", "surname", "phone", "community")
     list_select_related = ("community",)
     search_fields = ("name", "surname", "phone", "user__username", "user__email")
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        obj.user.email = form.cleaned_data["email"]
+        obj.user.save(update_fields=["email"])
 
 
 @admin.register(PhotovoltaicSystem)
@@ -178,13 +221,23 @@ class PanelDataAdmin(admin.ModelAdmin):
 
 @admin.register(Intervention)
 class InterventionAdmin(admin.ModelAdmin):
-    list_display = ("id", "system", "status", "requested_at", "preferred_date", "staff", "code", "executed_on")
+    list_display = ("id", "system", "status", "requested_at", "preferred_date", "scheduled_date", "staff", "code",
+                    "executed_on")
     list_select_related = ("system", "staff")
     list_filter = ("status", "code")
 
     def save_model(self, request, obj, form, change):
+        if obj.status == Intervention.Status.PROPOSED and {"status", "proposed_date"} & set(form.changed_data):
+            # Una proposta nuova, come dalla pagina del tecnico: aspetta la risposta del titolare
+            obj.proposed_at, obj.answered_at = timezone.now(), None
         super().save_model(request, obj, form, change)
         # Come quando il tecnico accetta la richiesta dalla sua pagina, il titolare riceve l'avviso su Telegram
         accepted = obj.status == Intervention.Status.ACCEPTED
         if change and accepted and form.initial.get("status") == Intervention.Status.REQUESTED:
             transaction.on_commit(lambda: telegram.notify_accepted(obj.pk))
+        # e il nuovo giorno da approvare, se è stato proposto qui
+        if obj.status == Intervention.Status.PROPOSED and {"status", "proposed_date"} & set(form.changed_data):
+            transaction.on_commit(lambda: telegram.notify_proposal(obj.pk))
+        # Come dalla pagina del tecnico, l'intervento eseguito riporta l'impianto a OK
+        if obj.status == Intervention.Status.DONE and (not change or "status" in form.changed_data):
+            system_repaired(obj.system)

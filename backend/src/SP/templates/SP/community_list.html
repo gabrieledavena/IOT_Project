@@ -55,7 +55,7 @@
                 {% for community in page %}
                     <tr>
                         <td><a href="{% url 'SP:community_detail' community.id %}" class="row-link">{{ community.name }}</a><span class="sub">{{ community.city }}</span></td>
-                        <td class="hide-phone">{% if community.owner %}{{ community.owner }}{% else %}<span class="muted">Nessuno</span>{% endif %}</td>
+                        <td class="hide-phone">{% if community.owner %}{{ community.owner }}{% if not community.owner.has_contacts %}<span class="sub"><span class="status warn">Recapiti mancanti</span></span>{% endif %}{% else %}<span class="muted">Nessuno</span>{% endif %}</td>
                         <td class="hide-phone">{{ community.users }}</td>
                         <td>
                             <b>{{ community.systems }}</b>

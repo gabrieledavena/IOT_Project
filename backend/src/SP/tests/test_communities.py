@@ -152,15 +152,45 @@ class NewCommunityTests(TestCase):
         self.anna.refresh_from_db()
         self.assertIsNone(self.anna.community)
 
+    def owner_contacts(self, email="anna@example.com", phone="+39 333  1234567"):
+        return {"owner-customer": self.anna.id, "owner-email": email, "owner-phone": phone}
+
     def test_creates_the_community_of_a_waiting_user_who_becomes_its_owner(self):
         response = self.client.get(f"{self.URL}?customer={self.anna.id}")
         self.assertContains(response, "Alla nuova community sarà associato <strong>Anna Bianchi</strong>")
+        # Diventa il titolare: la pagina chiede telefono ed email
+        self.assertContains(response, "Recapiti del titolare")
+        self.assertContains(response, 'name="owner-phone"')
+
+        response = self.create(f"{self.URL}?customer={self.anna.id}", **self.owner_contacts())
+
+        self.assertRedirects(response, "/sp/customers/", fetch_redirect_response=False)
+        self.anna.refresh_from_db()
+        self.assertEqual(self.anna.community.name, "Famiglia Bianchi")
+        self.assertTrue(self.anna.is_owner)
+        self.assertEqual((self.anna.phone, self.anna.user.email), ("+39 333 1234567", "anna@example.com"))
+
+    def test_the_new_owner_needs_phone_and_email(self):
+        for contacts in ({}, self.owner_contacts(email=""), self.owner_contacts(phone="")):
+            with self.subTest(contacts=contacts):
+                response = self.create(f"{self.URL}?customer={self.anna.id}", **contacts)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "Obbligatorio per il titolare della community.")
+        self.assertFalse(Community.objects.exists())
+        self.anna.refresh_from_db()
+        self.assertIsNone(self.anna.community)
+
+    def test_contacts_the_user_already_has_are_enough(self):
+        self.anna.phone = "+39 333 1234567"
+        self.anna.save()
+        self.anna.user.email = "anna@example.com"
+        self.anna.user.save()
 
         response = self.create(f"{self.URL}?customer={self.anna.id}")
 
         self.assertRedirects(response, "/sp/customers/", fetch_redirect_response=False)
         self.anna.refresh_from_db()
-        self.assertEqual(self.anna.community.name, "Famiglia Bianchi")
         self.assertTrue(self.anna.is_owner)
 
     def test_a_user_already_in_a_community_is_not_moved(self):
@@ -236,6 +266,63 @@ class EditCommunityTests(TestCase):
         self.client.post(self.url, {"name": "Famiglia Bianchi", "city": self.bari.id, "owner": self.mario.id})
         self.community.refresh_from_db()
         self.assertEqual(self.community.city, self.bari)
+
+    def edit(self, owner, **fields):
+        return self.client.post(self.url, {"name": "Famiglia Bianchi", "city": self.modena.id, "owner": owner.id,
+                                           **fields})
+
+    def test_the_form_has_the_contacts_of_the_owner(self):
+        response = self.client.get(self.url)
+
+        contacts = response.context["contacts_form"]
+        self.assertEqual((contacts["email"].value(), contacts["phone"].value()), ("mario@example.com", "+39 333 1234567"))
+        self.assertContains(response, f'name="owner-customer" id="id_owner-customer" value="{self.mario.id}"')
+        self.assertContains(response, '<script id="member-contacts" type="application/json">')
+
+    def test_the_technician_changes_the_contacts_of_the_owner(self):
+        self.edit(self.mario, **{"owner-customer": self.mario.id, "owner-email": "mario.rossi@example.com",
+                                 "owner-phone": "+39 051 123456"})
+
+        self.mario.refresh_from_db()
+        self.assertEqual((self.mario.user.email, self.mario.phone), ("mario.rossi@example.com", "+39 051 123456"))
+        response = self.edit(self.mario, **{"owner-customer": self.mario.id, "owner-email": "", "owner-phone": ""})
+        self.assertContains(response, "Obbligatorio per il titolare della community.")
+
+    def test_a_new_owner_without_contacts_gets_them_before_becoming_owner(self):
+        Customer.objects.filter(pk=self.luigi.pk).update(phone="")
+        # Senza lo script la pagina manda i recapiti di Mario: non valgono per Luigi
+        mario_contacts = {"owner-customer": self.mario.id, "owner-email": "mario@example.com",
+                          "owner-phone": "+39 333 1234567"}
+
+        response = self.edit(self.luigi, **mario_contacts)
+
+        self.assertContains(response, "Obbligatorio per il titolare della community.")
+        self.assertEqual(response.context["contacts_form"].customer, self.luigi)
+        self.community.refresh_from_db()
+        self.assertEqual(self.community.owner, self.mario)
+
+        self.edit(self.luigi, **{"owner-customer": self.luigi.id, "owner-email": "luigi@example.com",
+                                 "owner-phone": "+39 347 7654321"})
+
+        self.community.refresh_from_db()
+        self.luigi.refresh_from_db()
+        self.assertEqual(self.community.owner, self.luigi)
+        self.assertEqual(self.luigi.phone, "+39 347 7654321")
+        self.mario.refresh_from_db()
+        self.assertEqual(self.mario.phone, "+39 333 1234567")
+
+    def test_an_owner_from_before_without_contacts_gets_them_with_the_next_change(self):
+        Customer.objects.filter(pk=self.mario.pk).update(phone="")
+        self.assertContains(self.client.get(LIST_URL), "Recapiti mancanti")
+
+        response = self.edit(self.mario, name="Famiglia Rossi")
+
+        self.assertContains(response, "Obbligatorio per il titolare della community.")
+        self.edit(self.mario, **{"owner-customer": self.mario.id, "owner-email": "mario@example.com",
+                                 "owner-phone": "+39 333 1234567"})
+        self.mario.refresh_from_db()
+        self.assertTrue(self.mario.has_contacts)
+        self.assertNotContains(self.client.get(LIST_URL), "Recapiti mancanti")
 
     def test_a_community_without_users_has_no_owner_to_choose(self):
         empty = create_community("Vuota", city=self.modena)

@@ -568,10 +568,10 @@ a.metric[aria-current] .m-label { color: var(--band-ink); font-weight: 600; }
 }
 
 .status.ok, .status.done, .status.online { --c: var(--s-ok); }
-.status.dirty, .status.requested, .status.warn { --c: var(--s-dirty); }
+.status.dirty, .status.requested, .status.proposed, .status.warn { --c: var(--s-dirty); }
 .status.fault { --c: var(--s-fault); }
 .status.broken, .status.error { --c: var(--s-broken); }
-.status.new, .status.offline { --c: var(--s-new); }
+.status.new, .status.offline, .status.cancelled { --c: var(--s-new); }
 .status.accepted { --c: var(--s-accepted); }
 .status.wash { --c: var(--s-wash); }
 .band .status.ok, .band .status.done, .band .status.online { --c: var(--mint); }
@@ -675,6 +675,16 @@ tr:hover .arrow, .arrow:hover { background: var(--green-pale); transform: transl
 .callout--ok { background: var(--green-pale); }
 .callout > :last-child { margin-bottom: 0; }
 .callout .h3 { margin-bottom: 4px; }
+
+/* Avvisi in cima alla pagina (il titolare: giorni proposti, recapiti mancanti): testo a sinistra, azione a destra */
+.notices { display: grid; gap: 12px; padding-top: 32px; }
+.notice { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px 24px; }
+.notice p { margin: 2px 0 0; color: var(--muted); }
+
+/* Recapiti da chiamare o scrivere: un'icona e il link tel: o mailto: */
+.contacts { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+.contacts a { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; overflow-wrap: anywhere; }
+.contacts .icon { flex: none; color: var(--green); }
 
 .waiting { display: flex; align-items: center; gap: 16px; }
 .waiting .spinner-border { flex: none; color: var(--green); }

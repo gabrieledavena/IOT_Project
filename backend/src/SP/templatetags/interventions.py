@@ -11,7 +11,9 @@ Status = Intervention.Status
 STYLES = {
     Status.REQUESTED: ("requested", "send"),
     Status.ACCEPTED: ("accepted", "user"),
+    Status.PROPOSED: ("proposed", "clock"),
     Status.DONE: ("done", "check"),
+    Status.CANCELLED: ("cancelled", "close"),
 }
 
 
@@ -33,3 +35,9 @@ def person(user):
     if user is None:
         return "-"
     return user.get_full_name() or user.username
+
+
+@register.filter
+def tel(phone):
+    """Il numero per un link tel:, senza spazi."""
+    return "".join(str(phone).split())
