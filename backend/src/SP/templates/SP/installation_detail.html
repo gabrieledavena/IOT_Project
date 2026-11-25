@@ -1,159 +1,150 @@
 {% extends "base.html" %}
-{% load interventions %}
+{% load interventions ui %}
 
 {% block title %}Installazione {{ system.name }}{% endblock %}
 
+{% block band %}
+<div class="wrap">
+    <section class="head--page" aria-labelledby="system-title">
+        <div>
+            <a href="{% url 'SP:community_detail' system.community_id %}" class="back">{% icon "arrow-left" %}{{ system.community.name }}</a>
+            <h1 class="title title--big" id="system-title">{{ system.name }}</h1>
+            <p class="lead-b">{{ system.community.name }} · {{ system.community.city }} · {{ system.max_power|floatformat:2 }} kW</p>
+        </div>
+        <div class="head-actions">
+            <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-light">{% icon "chart" %}Produzione</a>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
 {% block content %}
-<div class="container mb-5">
-    <div class="row mb-4">
-        <div class="col-12 d-flex flex-wrap justify-content-between align-items-end gap-3">
-            <div>
-                <a href="{% url 'SP:community_detail' system.community_id %}" class="text-decoration-none small"><i class="fas fa-arrow-left me-1"></i>{{ system.community.name }}</a>
-                <h2 class="fw-bold text-dark mb-1 mt-2">{{ system.name }}</h2>
-                <span class="text-muted">{{ system.community.name }} · {{ system.community.city }} · {{ system.max_power|floatformat:2 }} kW</span>
-            </div>
-            <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-secondary rounded-pill"><i class="fas fa-chart-area me-2"></i>Produzione</a>
+{% if token %}
+    <!-- Le credenziali si vedono una volta sola: in un riquadro giallo, in cima -->
+    <div class="section">
+        <div class="callout callout--warn">
+            <h2 class="h3">{% icon "key" %} Credenziali del dispositivo</h2>
+            <p class="muted">Copiale ora: il token viene mostrato una volta sola. Se lo perdi, genera nuove credenziali.</p>
+            <dl class="pairs mb-3">
+                <div><dt>Username</dt><dd><code>{{ device.username }}</code></dd></div>
+                <div><dt>Token</dt><dd><code class="user-select-all">{{ token }}</code></dd></div>
+            </dl>
+            <p class="small muted mb-1">Avvio del bridge con Arduino (SimulIDE o scheda USB): la porta seriale la trova il bridge, oppure indicala con <code>--serial</code>:</p>
+            <pre class="user-select-all mb-3">{{ commands.serial }}</pre>
+            <p class="small muted mb-1">Avvio del bridge con un Arduino simulato (nessuna porta seriale):</p>
+            <pre class="user-select-all">{{ commands.simulate }}</pre>
         </div>
     </div>
+{% endif %}
 
-    {% if token %}
-        <div class="card border-0 shadow-sm rounded-4 mb-4 border-start border-warning border-5">
-            <div class="card-body p-4">
-                <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-key me-1"></i>Credenziali del dispositivo</h6>
-                <p class="small text-muted">Copiale ora: il token viene mostrato una volta sola. Se lo perdi, genera nuove credenziali.</p>
-                <dl class="row mb-3">
-                    <dt class="col-sm-3 text-muted fw-normal">Username</dt><dd class="col-sm-9"><code>{{ device.username }}</code></dd>
-                    <dt class="col-sm-3 text-muted fw-normal">Token</dt><dd class="col-sm-9"><code class="user-select-all">{{ token }}</code></dd>
+{% if pairing_step %}
+    <div class="section">
+        <div class="callout waiting" data-pairing-step="{{ pairing_step }}">
+            <div class="spinner-border" role="status"><span class="visually-hidden">In attesa</span></div>
+            <div>
+                {% if pairing_step == "pickup" %}
+                    <p class="h3">In attesa del dispositivo {{ pairing.display_code }}</p>
+                    <p class="muted mb-0">Il dispositivo chiede ogni pochi secondi se è stato abbinato e appena lo fa riceve le credenziali: deve essere acceso e collegato al Wi-Fi.</p>
+                {% else %}
+                    <p class="h3">Credenziali consegnate al dispositivo {{ pairing.display_code }}</p>
+                    <p class="muted mb-0">In attesa che si colleghi al broker MQTT con le sue credenziali.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+<div class="split split--wide">
+    <div class="stack">
+        <section class="section" aria-labelledby="device-title">
+            <div class="section-head"><h2 id="device-title">Dispositivo</h2></div>
+            {% if device %}
+                <dl class="pairs mb-3">
+                    {% if system.lora_node %}
+                        <div><dt>Sensore</dt><dd>nodo LoRa <code>{{ system.lora_node.node_id }}</code>, tramite il <a href="{% url 'SP:community_detail' system.community_id %}" class="link">master della community</a></dd></div>
+                    {% else %}
+                        <div><dt>Username MQTT</dt><dd><code>{{ device.username }}</code></dd></div>
+                    {% endif %}
+                    <div><dt>Collegamento</dt><dd>{% if device.online %}<span class="status online">Collegato</span>{% else %}<span class="status offline">Scollegato</span>{% endif %}</dd></div>
+                    <div><dt>Ultimo messaggio</dt><dd>{{ device.last_seen|date:"d/m/Y H:i:s"|default:"-" }}</dd></div>
+                    <div><dt>Pompa di lavaggio</dt><dd>{% if device.pump_running %}<span class="status wash">In funzione</span>{% else %}Ferma{% endif %}</dd></div>
+                    <div><dt>Ultimo lavaggio</dt><dd>{{ device.last_cleaning|date:"d/m/Y H:i:s"|default:"-" }}</dd></div>
+                    <div><dt>Installato</dt><dd>il {{ device.installed_at|date:"d/m/Y H:i" }}{% if device.installed_by %} da {{ device.installed_by|person }}{% endif %}</dd></div>
                 </dl>
-                <div class="small text-muted mb-1">Avvio del bridge con Arduino (SimulIDE o scheda USB): la porta seriale la trova il bridge, oppure indicala con <code>--serial</code>:</div>
-                <pre class="bg-light rounded-3 p-2 small user-select-all mb-3">{{ commands.serial }}</pre>
-                <div class="small text-muted mb-1">Avvio del bridge con un Arduino simulato (nessuna porta seriale):</div>
-                <pre class="bg-light rounded-3 p-2 small user-select-all mb-0">{{ commands.simulate }}</pre>
-            </div>
-        </div>
-    {% endif %}
-
-    {% if pairing_step %}
-        <div class="card border-0 shadow-sm rounded-4 mb-4 border-start border-info border-5" data-pairing-step="{{ pairing_step }}">
-            <div class="card-body p-4 d-flex align-items-center gap-3">
-                <div class="spinner-border text-info flex-shrink-0" role="status"><span class="visually-hidden">In attesa</span></div>
-                <div>
-                    {% if pairing_step == "pickup" %}
-                        <h6 class="fw-bold mb-1">In attesa del dispositivo {{ pairing.display_code }}</h6>
-                        <div class="small text-muted">Il dispositivo chiede ogni pochi secondi se è stato abbinato e appena lo fa riceve le credenziali: deve essere acceso e collegato al Wi-Fi.</div>
-                    {% else %}
-                        <h6 class="fw-bold mb-1">Credenziali consegnate al dispositivo {{ pairing.display_code }}</h6>
-                        <div class="small text-muted">In attesa che si colleghi al broker MQTT con le sue credenziali.</div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    {% endif %}
-
-    <div class="row g-4">
-        <div class="col-lg-7 d-flex flex-column gap-4">
-            <div class="card border-0 shadow-sm rounded-4">
-                <div class="card-body p-4">
-                    <h6 class="text-muted fw-bold text-uppercase mb-3">Dispositivo</h6>
-                    {% if device %}
-                        <dl class="row mb-3">
-                            {% if system.lora_node %}
-                                <dt class="col-sm-5 text-muted fw-normal">Sensore</dt>
-                                <dd class="col-sm-7">nodo LoRa <code>{{ system.lora_node.node_id }}</code>, tramite il <a href="{% url 'SP:community_detail' system.community_id %}">master della community</a></dd>
-                            {% else %}
-                                <dt class="col-sm-5 text-muted fw-normal">Username MQTT</dt>
-                                <dd class="col-sm-7"><code>{{ device.username }}</code></dd>
-                            {% endif %}
-                            <dt class="col-sm-5 text-muted fw-normal">Collegamento</dt>
-                            <dd class="col-sm-7">
-                                {% if device.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>
-                                {% else %}<span class="badge rounded-pill bg-secondary">Scollegato</span>{% endif %}
-                            </dd>
-                            <dt class="col-sm-5 text-muted fw-normal">Ultimo messaggio</dt>
-                            <dd class="col-sm-7">{{ device.last_seen|date:"d/m/Y H:i:s"|default:"-" }}</dd>
-                            <dt class="col-sm-5 text-muted fw-normal">Pompa di lavaggio</dt>
-                            <dd class="col-sm-7">{% if device.pump_running %}<span class="badge rounded-pill bg-info text-dark"><i class="fas fa-tint me-1"></i>In funzione</span>{% else %}Ferma{% endif %}</dd>
-                            <dt class="col-sm-5 text-muted fw-normal">Ultimo lavaggio</dt>
-                            <dd class="col-sm-7">{{ device.last_cleaning|date:"d/m/Y H:i:s"|default:"-" }}</dd>
-                            <dt class="col-sm-5 text-muted fw-normal">Installato</dt>
-                            <dd class="col-sm-7 mb-0">il {{ device.installed_at|date:"d/m/Y H:i" }}{% if device.installed_by %} da {{ device.installed_by|person }}{% endif %}</dd>
-                        </dl>
-                        {% if system.lora_node %}<p class="small text-muted">Il nodo non ha credenziali: le sue misure le pubblica il master. Con <strong>Nuove credenziali</strong> l'impianto passa a un bridge e il nodo torna da assegnare.</p>{% endif %}
-                        <div class="d-flex flex-wrap gap-2">
-                            <form method="post" class="m-0" onsubmit="return confirm('Le credenziali attuali smetteranno di funzionare. Continuare?');">
-                                {% csrf_token %}
-                                <button type="submit" name="action" value="regenerate" class="btn btn-outline-warning rounded-pill"><i class="fas fa-key me-2"></i>Nuove credenziali</button>
-                            </form>
-                            <form method="post" class="m-0" onsubmit="return confirm('Disinstallare il dispositivo? Non potrà più collegarsi come questo impianto.');">
-                                {% csrf_token %}
-                                <button type="submit" name="action" value="uninstall" class="btn btn-outline-danger rounded-pill"><i class="fas fa-unlink me-2"></i>Disinstalla</button>
-                            </form>
-                        </div>
-                    {% else %}
-                        <p class="text-muted">Nessun dispositivo installato: installalo per collegare un bridge (vero o simulato) come questo impianto, con le credenziali che compaiono qui. Un dispositivo con il display si installa invece con il suo QR.</p>
-                        <form method="post" class="m-0">
-                            {% csrf_token %}
-                            <button type="submit" name="action" value="install" class="btn btn-success rounded-pill fw-bold"><i class="fas fa-microchip me-2"></i>Installa dispositivo</button>
-                        </form>
-                    {% endif %}
-                </div>
-            </div>
-
-            {% if not pairing_step %}
-                <div class="card border-0 shadow-sm rounded-4">
-                    <div class="card-body p-4">
-                        <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-qrcode me-1"></i>Installa con il QR del display</h6>
-                        <p class="small text-muted">Accendi il dispositivo: collegato al Wi-Fi, mostra un QR sul display. Scansionalo con il telefono e scegli questo impianto, oppure scrivi qui il codice accanto al QR.{% if device %} Le credenziali del dispositivo attuale smetteranno di funzionare.{% endif %}</p>
-                        <form method="post" action="{% url 'SP:installation_pair' system.id %}" class="d-flex gap-2 m-0">
-                            {% csrf_token %}
-                            <input type="text" name="code" class="form-control font-monospace text-uppercase" style="max-width: 220px;" placeholder="ABCD-EFGH" aria-label="Codice del display" autocomplete="off" autocapitalize="characters" required>
-                            <button type="submit" class="btn btn-outline-primary rounded-pill text-nowrap"><i class="fas fa-link me-2"></i>Abbina</button>
-                        </form>
-                    </div>
-                </div>
-            {% endif %}
-
-            <div class="card border-0 shadow-sm rounded-4">
-                <div class="card-body p-4">
-                    <h6 class="text-muted fw-bold text-uppercase mb-3">Topic MQTT dell'impianto</h6>
-                    <ul class="list-unstyled small mb-0">
-                        {% for topic in topics %}<li><code>{{ topic }}</code></li>{% endfor %}
-                    </ul>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-lg-5">
-            <div class="card border-0 shadow-sm rounded-4">
-                <div class="card-body p-4">
-                    <h6 class="text-muted fw-bold text-uppercase mb-3">Simula lo stato</h6>
-                    <dl class="row small mb-3">
-                        <dt class="col-6 text-muted fw-normal">Stato attuale</dt><dd class="col-6 fw-bold">{{ system.get_status_display }}</dd>
-                        <dt class="col-6 text-muted fw-normal">Ultimo cambiamento</dt><dd class="col-6">{{ system.status_changed_at|date:"d/m/Y H:i"|default:"-" }}</dd>
-                        <dt class="col-6 text-muted fw-normal">Ultimo controllo</dt><dd class="col-6 mb-0">{{ system.last_check|date:"d/m/Y H:i"|default:"-" }}</dd>
-                    </dl>
-                    <p class="small text-muted">Lo stato viene salvato come se l'avesse trovato il controllo automatico (il prossimo arriva dopo due giorni) e inviato al dispositivo: con <strong>Pannelli sporchi</strong> Arduino aziona la pompa per 10 secondi.</p>
-                    <form method="post" class="m-0">
+                {% if system.lora_node %}<p class="note mb-3">Il nodo non ha credenziali: le sue misure le pubblica il master. Con <strong>Nuove credenziali</strong> l'impianto passa a un bridge e il nodo torna da assegnare.</p>{% endif %}
+                <div class="form-actions">
+                    <form method="post" class="m-0" onsubmit="return confirm('Le credenziali attuali smetteranno di funzionare. Continuare?');">
                         {% csrf_token %}
-                        <input type="hidden" name="action" value="force_status">
-                        <label for="{{ form.status.id_for_label }}" class="form-label fw-bold small text-muted">{{ form.status.label }}</label>
-                        <div class="d-flex gap-2">
-                            {{ form.status }}
-                            <button type="submit" class="btn btn-primary rounded-pill text-nowrap">Imposta</button>
-                        </div>
-                        {% for error in form.status.errors %}<div class="text-danger small mt-1">{{ error }}</div>{% endfor %}
+                        <button type="submit" name="action" value="regenerate" class="btn btn-outline-secondary">{% icon "key" %}Nuove credenziali</button>
+                    </form>
+                    <form method="post" class="m-0" onsubmit="return confirm('Disinstallare il dispositivo? Non potrà più collegarsi come questo impianto.');">
+                        {% csrf_token %}
+                        <button type="submit" name="action" value="uninstall" class="btn btn-outline-danger">{% icon "unlink" %}Disinstalla</button>
                     </form>
                 </div>
-            </div>
+            {% else %}
+                <p class="muted">Nessun dispositivo installato: installalo per collegare un bridge (vero o simulato) come questo impianto, con le credenziali che compaiono qui. Un dispositivo con il display si installa invece con il suo QR.</p>
+                <form method="post" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" name="action" value="install" class="btn btn-primary">{% icon "chip" %}Installa dispositivo</button>
+                </form>
+            {% endif %}
+        </section>
 
-            <div class="card border-0 shadow-sm rounded-4 mt-4 border-start border-danger border-5">
-                <div class="card-body p-4">
-                    <h6 class="text-muted fw-bold text-uppercase mb-2"><i class="fas fa-trash-alt me-1"></i>Elimina l'impianto</h6>
-                    <p class="small text-muted">Con l'impianto si eliminano le sue misure e i suoi interventi; il dispositivo smette di funzionare.</p>
-                    <a href="{% url 'SP:installation_delete' system.id %}" class="btn btn-outline-danger rounded-pill"><i class="fas fa-trash-alt me-2"></i>Elimina…</a>
+        {% if not pairing_step %}
+            <section class="section" aria-labelledby="qr-title">
+                <div class="section-head">
+                    <div>
+                        <h2 id="qr-title">Installa con il QR del display</h2>
+                        <p>Accendi il dispositivo: collegato al Wi-Fi, mostra un QR sul display. Scansionalo con il telefono e scegli questo impianto, oppure scrivi qui il codice accanto al QR.{% if device %} Le credenziali del dispositivo attuale smetteranno di funzionare.{% endif %}</p>
+                    </div>
+                </div>
+                <form method="post" action="{% url 'SP:installation_pair' system.id %}" class="d-flex gap-2 m-0">
+                    {% csrf_token %}
+                    <input type="text" name="code" class="form-control font-monospace text-uppercase" style="max-width: 220px;" placeholder="ABCD-EFGH" aria-label="Codice del display" autocomplete="off" autocapitalize="characters" required>
+                    <button type="submit" class="btn btn-outline-secondary">{% icon "link" %}Abbina</button>
+                </form>
+            </section>
+        {% endif %}
+
+        <section class="section" aria-labelledby="topics-title">
+            <div class="section-head"><h2 id="topics-title">Topic MQTT dell'impianto</h2></div>
+            <ul class="list">
+                {% for topic in topics %}<li><code>{{ topic }}</code></li>{% endfor %}
+            </ul>
+        </section>
+    </div>
+
+    <div class="stack">
+        <section class="section" aria-labelledby="simulate-title">
+            <div class="section-head"><h2 id="simulate-title">Simula lo stato</h2></div>
+            <dl class="pairs mb-3">
+                <div><dt>Stato attuale</dt><dd><span class="status {{ system.status|status_class }}">{{ system.get_status_display }}</span></dd></div>
+                <div><dt>Ultimo cambiamento</dt><dd>{{ system.status_changed_at|date:"d/m/Y H:i"|default:"-" }}</dd></div>
+                <div><dt>Ultimo controllo</dt><dd>{{ system.last_check|date:"d/m/Y H:i"|default:"-" }}</dd></div>
+            </dl>
+            <p class="note mb-3">Lo stato viene salvato come se l'avesse trovato il controllo automatico (il prossimo arriva dopo due giorni) e inviato al dispositivo: con <strong>Pannelli sporchi</strong> Arduino aziona la pompa per 10 secondi.</p>
+            <form method="post" class="m-0">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="force_status">
+                <label for="{{ form.status.id_for_label }}" class="form-label">{{ form.status.label }}</label>
+                <div class="d-flex gap-2">
+                    {{ form.status }}
+                    <button type="submit" class="btn btn-outline-secondary">Imposta</button>
+                </div>
+                {% for error in form.status.errors %}<div class="error">{{ error }}</div>{% endfor %}
+            </form>
+        </section>
+
+        <section class="section" aria-labelledby="delete-title">
+            <div class="section-head">
+                <div>
+                    <h2 id="delete-title">Elimina l'impianto</h2>
+                    <p>Con l'impianto si eliminano le sue misure e i suoi interventi; il dispositivo smette di funzionare.</p>
                 </div>
             </div>
-        </div>
+            <a href="{% url 'SP:installation_delete' system.id %}" class="btn btn-outline-danger">{% icon "trash" %}Elimina…</a>
+        </section>
     </div>
 </div>
 {% endblock %}

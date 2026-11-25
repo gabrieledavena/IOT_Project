@@ -1,25 +1,25 @@
 {# Indirizzo del server nella rete locale (server_address di SP/simulation.py): da scrivere nel master e da aprire dal telefono #}
-<div class="card border-0 shadow-sm rounded-4 mb-4{% if not server_address or not server_address.reachable %} border-start border-warning border-5{% endif %}">
-    <div class="card-body p-3 px-4">
-        <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
-            <span class="small text-muted fw-bold text-uppercase"><i class="fas fa-network-wired me-1"></i>Indirizzo del server</span>
+<div class="section">
+    <div class="callout{% if not server_address or not server_address.reachable %} callout--warn{% endif %}">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <span class="muted">Indirizzo del server</span>
             {% if server_address %}
-                <span class="fs-4 fw-bold font-monospace text-dark user-select-all" data-server-address>{{ server_address.url }}</span>
+                <span class="server-address user-select-all" data-server-address>{{ server_address.url }}</span>
                 {% if server_address.reachable %}
-                    <span class="badge rounded-pill bg-success"><i class="fas fa-check me-1"></i>Risponde</span>
+                    <span class="status ok">Risponde</span>
                 {% else %}
-                    <span class="badge rounded-pill bg-warning text-dark"><i class="fas fa-exclamation-triangle me-1"></i>Non risponde</span>
+                    <span class="status warn">Non risponde</span>
                 {% endif %}
             {% else %}
-                <span class="fw-bold text-dark">non noto</span>
+                <b>non noto</b>
             {% endif %}
         </div>
         {% if server_address and server_address.reachable %}
-            <div class="small text-muted mt-1">Scrivilo nella configurazione del Wi-Fi del master, in <strong>Avanzate</strong>, e usalo dal telefono, collegato allo stesso Wi-Fi del PC: è anche l'indirizzo dei QR di abbinamento.</div>
+            <p class="muted mt-2 mb-0">Scrivilo nella configurazione del Wi-Fi del master, in <strong>Avanzate</strong>, e usalo dal telefono, collegato allo stesso Wi-Fi del PC: è anche l'indirizzo dei QR di abbinamento.</p>
         {% elif server_address %}
-            <div class="small text-muted mt-1">Il PC non ha più questo indirizzo: ha cambiato rete o ha ricevuto un nuovo IP dal router. Rilancia <code>./start.sh</code> nella cartella del progetto, poi ricarica la pagina.</div>
+            <p class="muted mt-2 mb-0">Il PC non ha più questo indirizzo: ha cambiato rete o ha ricevuto un nuovo IP dal router. Rilancia <code>./start.sh</code> nella cartella del progetto, poi ricarica la pagina.</p>
         {% else %}
-            <div class="small text-muted mt-1">Il server gira in docker e non vede l'indirizzo del PC nella rete locale: avvia il progetto con <code>./start.sh</code> invece di <code>docker compose up -d</code>, che glielo passa.</div>
+            <p class="muted mt-2 mb-0">Il server gira in docker e non vede l'indirizzo del PC nella rete locale: avvia il progetto con <code>./start.sh</code> invece di <code>docker compose up -d</code>, che glielo passa.</p>
         {% endif %}
     </div>
 </div>

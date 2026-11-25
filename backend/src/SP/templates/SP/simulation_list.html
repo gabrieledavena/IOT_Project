@@ -1,51 +1,52 @@
 {% extends "base.html" %}
+{% load ui %}
 
 {% block title %}Simulazione{% endblock %}
 
-{% block content %}
-<div class="container mb-5">
-    <div class="row mb-4">
-        <div class="col-lg-9">
-            <h2 class="fw-bold text-dark mb-1">Simulazione</h2>
-            <p class="text-muted mb-0">Il master di una community simula gli impianti che non hanno un sensore: li mostra sul display e pubblica le loro misure come per un nodo sul tetto. I valori dei sensori simulati li scegli tu, impianto per impianto. Scegli la community.</p>
+{% block band %}
+<div class="wrap">
+    <section class="head--page">
+        <div>
+            <h1 class="title title--big">Simulazione</h1>
+            <p class="lead-b">Il master di una community simula gli impianti che non hanno un sensore: li mostra sul display e pubblica le loro misure come per un nodo sul tetto. I valori dei sensori simulati li scegli tu, impianto per impianto. Scegli la community.</p>
         </div>
-    </div>
-
-    {% include "SP/server_address.html" %}
-
-    <div class="card border-0 shadow-sm rounded-4">
-        <div class="card-body p-4">
-            <div class="table-responsive">
-                <table class="table align-middle mb-0">
-                    <thead>
-                        <tr class="small text-muted"><th>Community</th><th>Master</th><th>Impianti</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        {% for community in communities %}
-                            <tr>
-                                <td class="fw-bold">{{ community.name }}<div class="small text-muted fw-normal">{{ community.city }}</div></td>
-                                <td>
-                                    {% if community.gateway.online %}<span class="badge rounded-pill bg-success"><i class="fas fa-circle me-1"></i>Collegato</span>
-                                    {% else %}<span class="badge rounded-pill bg-secondary">Scollegato</span>{% endif %}
-                                </td>
-                                <td>
-                                    <span class="fw-bold">{{ community.systems }}</span>
-                                    <div class="small text-nowrap">
-                                        {% if community.simulated %}<span class="text-primary me-1"><i class="fas fa-sliders-h me-1"></i>{{ community.simulated }} simulat{{ community.simulated|pluralize:"o,i" }}</span>{% endif %}
-                                        {% if community.without_sensor %}<span class="text-muted">{{ community.without_sensor }} senza sensore</span>{% endif %}
-                                    </div>
-                                </td>
-                                <td class="text-end">
-                                    <a href="{% url 'SP:simulation_detail' community.id %}" class="btn btn-sm btn-primary rounded-pill text-nowrap">Apri <i class="fas fa-arrow-right ms-1"></i></a>
-                                </td>
-                            </tr>
-                        {% empty %}
-                            <tr><td colspan="4" class="text-muted text-center py-4">Nessuna community ha un master: installalo dalla pagina <a href="{% url 'SP:community_list' %}">Community</a> con il QR del suo display.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
+    </section>
 </div>
+{% endblock %}
+
+{% block content %}
+{% include "SP/server_address.html" %}
+
+<section class="section" aria-label="Community con un master">
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr><th>Community</th><th>Master</th><th>Impianti</th><th><span class="visually-hidden">Apri</span></th></tr>
+            </thead>
+            <tbody>
+                {% for community in communities %}
+                    <tr>
+                        <td><a href="{% url 'SP:simulation_detail' community.id %}" class="row-link">{{ community.name }}</a><span class="sub">{{ community.city }}</span></td>
+                        <td>
+                            {% if community.gateway.online %}<span class="status online">Collegato</span>
+                            {% else %}<span class="status offline">Scollegato</span>{% endif %}
+                        </td>
+                        <td>
+                            <b>{{ community.systems }}</b>
+                            <span class="sub nb">
+                                {% if community.simulated %}<span class="me-2">{% icon "sliders" %} {{ community.simulated }} simulat{{ community.simulated|pluralize:"o,i" }}</span>{% endif %}
+                                {% if community.without_sensor %}<span>{{ community.without_sensor }} senza sensore</span>{% endif %}
+                            </span>
+                        </td>
+                        <td class="go">
+                            <a href="{% url 'SP:simulation_detail' community.id %}" class="arrow" aria-label="Apri {{ community.name }}">{% icon "arrow-right" %}</a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="4" class="empty">Nessuna community ha un master: installalo dalla pagina <a href="{% url 'SP:community_list' %}" class="link">Community</a> con il QR del suo display.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
 {% endblock %}

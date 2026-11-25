@@ -2,12 +2,34 @@
 
 {% block title %}Registrati{% endblock %}
 
+{% block band %}
+<div class="wrap">
+    <section class="head--page">
+        <div>
+            <h1 class="title title--big">Registrati</h1>
+            <p class="lead-b">Dopo la registrazione un nostro tecnico associa il tuo account alla community del tuo impianto, della tua famiglia o della tua azienda.</p>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
 {% block content %}
-    <h2>Registrati</h2>
-    <p>Dopo la registrazione un nostro tecnico associa il tuo account alla community del tuo impianto, della tua famiglia o della tua azienda.</p>
-    <form method="post">
+<section class="section">
+    <form method="post" class="form-b form-narrow">
         {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Registrati</button>
+        {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+        {% for field in form %}
+            <div class="field">
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text|safe }}</div>{% endif %}
+                {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
+            </div>
+        {% endfor %}
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Registrati</button>
+            <span class="muted">Hai già un account? <a href="{% url 'SP:login' %}" class="link">Accedi</a></span>
+        </div>
     </form>
+</section>
 {% endblock %}

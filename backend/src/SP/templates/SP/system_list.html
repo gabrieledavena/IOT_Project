@@ -1,59 +1,53 @@
 {% extends "base.html" %}
+{% load ui %}
 
 {% block title %}Impianti{% endblock %}
 
-{% block content %}
-<div class="container mb-5">
-    <div class="row mb-4">
-        <div class="col-12">
+{% block band %}
+<div class="wrap">
+    <section class="head--page">
+        <div>
             {% if community %}
-                <h2 class="fw-bold text-dark mb-0">Impianti di {{ community.name }}</h2>
-                <p class="text-muted mb-0">
-                    <i class="fas fa-map-marker-alt me-1"></i>{{ community.city }}
-                    {% if community.owner %}<span class="mx-2">·</span><i class="fas fa-user-tie me-1"></i>Titolare: {{ community.owner }}{% endif %}
+                <h1 class="title title--big">Impianti di {{ community.name }}</h1>
+                <p class="lead-b">
+                    {{ community.city }}{% if community.owner %} · Titolare: {{ community.owner }}{% endif %}
                 </p>
-                <p class="text-muted">Seleziona un impianto per visualizzarne i dettagli.</p>
+                <p class="lead-b mt-1">Seleziona un impianto per visualizzarne i dettagli.</p>
             {% else %}
-                <h2 class="fw-bold text-dark mb-0">Impianti Fotovoltaici</h2>
+                <h1 class="title title--big">Impianti Fotovoltaici</h1>
             {% endif %}
         </div>
-    </div>
+    </section>
+</div>
+{% endblock %}
 
+{% block content %}
+<section class="section">
     {% if error %}
         {% include "partials/error_alert.html" %}
     {% else %}
-        <div class="row g-4">
-            {% for system in systems %}
-                <div class="col-md-6 col-lg-4">
-                    <div class="card border-0 shadow-sm rounded-4 h-100 hover-lift text-decoration-none">
-                        <div class="card-body p-4 d-flex flex-column">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <h5 class="fw-bold text-dark mb-0">{{ system.name }}</h5>
-                                <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
-                                    <span class="fs-5">☀️</span>
-                                </div>
-                            </div>
-
-                            <ul class="list-unstyled text-muted mb-4 flex-grow-1">
-                                <li class="mb-2"><i class="fas fa-bolt me-2 text-warning"></i>Potenza Max: <strong>{{ system.max_power|floatformat:2 }} kW</strong></li>
-                                <li class="mb-2"><i class="fas fa-ruler-combined me-2 text-info"></i>Area: <strong>{{ system.area|floatformat:2 }} m²</strong></li>
-                                <li class="mb-2"><i class="fas fa-tag me-2 text-secondary"></i>Brand: <strong>{{ system.brand }}</strong></li>
-                            </ul>
-
-                            <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-outline-primary w-100 rounded-pill fw-bold">
-                                Visualizza Dettagli <i class="fas fa-arrow-right ms-2"></i>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            {% empty %}
-                <div class="col-12">
-                    <div class="alert alert-info shadow-sm rounded-4">
-                        <i class="fas fa-info-circle me-2"></i>Nessun impianto fotovoltaico associato alla tua community.
-                    </div>
-                </div>
-            {% endfor %}
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr><th>Impianto</th><th class="num">Potenza massima</th><th class="num hide-phone">Area</th><th class="hide-phone">Marca</th><th><span class="visually-hidden">Dettagli</span></th></tr>
+                </thead>
+                <tbody>
+                    {% for system in systems %}
+                        <tr>
+                            <td><a href="{% url 'SP:photovoltaic_system' system.id %}" class="row-link">{{ system.name }}</a></td>
+                            <td class="num">{{ system.max_power|floatformat:2 }} kW</td>
+                            <td class="num hide-phone">{{ system.area|floatformat:2 }} m²</td>
+                            <td class="hide-phone">{{ system.brand }}</td>
+                            <td class="go">
+                                <a href="{% url 'SP:photovoltaic_system' system.id %}" class="btn btn-sm btn-outline-secondary">Visualizza Dettagli {% icon "arrow-right" %}</a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="5" class="empty">Nessun impianto fotovoltaico associato alla tua community.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     {% endif %}
-</div>
+</section>
 {% endblock %}

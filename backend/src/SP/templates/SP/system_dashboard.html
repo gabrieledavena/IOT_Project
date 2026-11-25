@@ -1,119 +1,107 @@
 {% extends "SP/dashboard_base.html" %}
-{% load interventions %}
+{% load interventions ui %}
 
 {% block title %}Produzione impianto{% endblock %}
 
-{% block heading %}Panoramica Impianto {{ system.name }}{% endblock %}
-
-{% block subheading %}Monitoraggio in tempo reale della produzione solare, luminosità e temperatura.{% endblock %}
-
-{% block status %}
+{% block band_top %}
 {% if system %}
-<div class="card border-0 shadow-sm rounded-4 mb-4 border-start border-5 {% if system.last_check %}border-{{ status.color }}{% else %}border-secondary{% endif %}">
-    <div class="card-body p-4 d-flex flex-wrap align-items-center gap-3">
-        <div class="flex-grow-1">
-            <h6 class="text-muted fw-bold text-uppercase mb-2">Stato dell'impianto</h6>
-            {% if system.last_check %}
-                <span class="badge rounded-pill bg-{{ status.color }}{% if status.color == 'warning' %} text-dark{% endif %} fs-6">
-                    <i class="fas {{ status.icon }} me-1"></i>{{ system.get_status_display }}
-                </span>
-                <p class="text-muted small mb-0 mt-2">{{ status.description }}</p>
-            {% else %}
-                <span class="badge rounded-pill bg-secondary fs-6"><i class="fas fa-hourglass-half me-1"></i>In attesa del primo controllo</span>
-                <p class="text-muted small mb-0 mt-2">La produzione viene confrontata con la previsione ogni due giorni.</p>
-            {% endif %}
-        </div>
-        <div class="text-md-end">
-            <div class="text-muted small">Data ultimo controllo</div>
-            <div class="fw-bold text-dark">{{ system.last_check|date:"d/m/Y H:i"|default:"-" }}</div>
-            {% if can_request_intervention %}
-                <a href="{% url 'SP:intervention_request' system.id %}" class="btn btn-danger rounded-pill fw-bold mt-3">
-                    <i class="fas fa-tools me-2"></i>Richiedi intervento
-                </a>
-            {% endif %}
-        </div>
+<!-- Nome e stato dell'impianto, in cima alla banda -->
+<section class="head--page sys-head" aria-labelledby="system-title">
+    <div>
+        <a class="back" href="{% url 'home' %}">{% icon "arrow-left" %}{% if is_technician %}Tutti gli impianti{% else %}Impianti di {{ community.name }}{% endif %}</a>
+        <h1 class="title title--big" id="system-title">{{ system.name }}</h1>
+        <p class="lead-b">{{ community.name }} · {{ community.city.name }} · {{ system.max_power|floatformat:2 }} kWp</p>
     </div>
-</div>
-
+    <div class="sys-state">
+        <span class="small muted">Stato dell'impianto</span>
+        {% if system.last_check %}
+            <span class="status status--big {{ system.status|status_class }}">{{ system.get_status_display }}</span>
+            <p>{{ status.description }}</p>
+        {% else %}
+            <span class="status status--big new">In attesa del primo controllo</span>
+            <p>La produzione viene confrontata con la previsione ogni due giorni.</p>
+        {% endif %}
+        <p>Ultimo controllo: {{ system.last_check|date:"d/m/Y H:i"|default:"-" }}</p>
+        {% if can_request_intervention %}
+            <a href="{% url 'SP:intervention_request' system.id %}" class="btn btn-primary">Richiedi intervento</a>
+        {% endif %}
+    </div>
+</section>
 {% endif %}
 {% endblock %}
 
-{% block production_row_margin %}mb-4{% endblock %}
+{% block error_heading %}Impianto{% endblock %}
+{% block empty_heading %}{% endblock %}
+
+{% block day_heading %}
+    <h2 class="title" id="day-title">Energia prodotta {% if is_today %}oggi{% else %}{{ day|date:"l j F"|lower }}{% endif %}</h2>
+{% endblock %}
 
 {% block extra_charts %}
-<!-- Temperature and Lightness Charts -->
-<div class="row g-4 mb-5">
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm rounded-4 h-100">
-            <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
-                <h5 class="fw-bold text-dark mb-0"><i class="fas fa-sun text-warning me-2"></i>Andamento Luminosità</h5>
-            </div>
-            <div class="card-body p-4">
-                <div style="height: 250px; width: 100%;">
-                    <canvas id="lightnessChart"></canvas>
-                </div>
-            </div>
+<!-- Sensori dell'impianto: luce e temperatura, misurate accanto ai pannelli -->
+<section class="section" aria-labelledby="sensors-title">
+    <div class="section-head">
+        <div>
+            <h2 id="sensors-title">Sensori sul tetto</h2>
+            <p>Luce e temperatura misurate accanto ai pannelli, {% if is_today %}oggi{% else %}{{ day|date:"l j F"|lower }}{% endif %}.</p>
         </div>
     </div>
-
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm rounded-4 h-100">
-            <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
-                <h5 class="fw-bold text-dark mb-0"><i class="fas fa-thermometer-half text-danger me-2"></i>Andamento Temperatura</h5>
-            </div>
-            <div class="card-body p-4">
-                <div style="height: 250px; width: 100%;">
-                    <canvas id="temperatureChart"></canvas>
-                </div>
-            </div>
+    <div class="split">
+        <div>
+            <div class="m-label">Luminosità, massimo della giornata</div>
+            <div class="sensor-now" data-sensor="light-max">-</div>
+            <div class="chart" style="height: 240px"><canvas id="lightnessChart" role="img" aria-label="Luminosità durante la giornata"></canvas></div>
+        </div>
+        <div>
+            <div class="m-label">Temperatura, minima e massima</div>
+            <div class="sensor-now" data-sensor="temp-range">-</div>
+            <div class="chart chart--line" style="height: 240px"><canvas id="temperatureChart" role="img" aria-label="Temperatura durante la giornata"></canvas></div>
         </div>
     </div>
-</div>
+</section>
 {% endblock %}
 
 {% block page_end %}
-{% include "partials/energy_summary.html" with extra_class="mb-4 mt-2" %}
+{% include "partials/energy_summary.html" %}
 
 {% if interventions %}
-<div class="card border-0 shadow-sm rounded-4 mb-4 mt-2">
-    <div class="card-body p-4">
-        <h6 class="text-muted fw-bold text-uppercase mb-3"><i class="fas fa-tools me-2"></i>Interventi di manutenzione</h6>
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-                <thead>
-                    <tr class="small text-muted">
-                        <th>Richiesto il</th><th>Giorno richiesto</th><th>Tipo</th><th>Stato</th><th>Tecnico</th><th>Eseguito il</th><th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for intervention in interventions %}
-                        <tr>
-                            <td>{{ intervention.requested_at|date:"d/m/Y" }}</td>
-                            <td>{{ intervention.preferred_date|date:"d/m/Y" }}</td>
-                            <td>{{ intervention.get_code_display|default:"Da definire" }}</td>
-                            <td>
-                                <span class="badge rounded-pill {{ intervention.status|status_badge }}">
-                                    <i class="fas {{ intervention.status|status_icon }} me-1"></i>{{ intervention.get_status_display }}
-                                </span>
-                            </td>
-                            <td>{{ intervention.staff|person }}</td>
-                            <td>{{ intervention.executed_on|date:"d/m/Y"|default:"-" }}</td>
-                            <td class="text-end text-nowrap">
-                                {% if is_technician %}
-                                    <a href="{% url 'SP:intervention_detail' intervention.pk %}" class="btn btn-sm btn-outline-primary rounded-pill">Gestisci</a>
-                                {% endif %}
-                                {% if intervention.is_done %}
-                                    <a href="{% url 'SP:intervention_report' intervention.pk %}" class="btn btn-sm btn-outline-secondary rounded-pill" target="_blank">
-                                        <i class="fas fa-print me-1"></i>Report
-                                    </a>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+<section class="section" aria-labelledby="interventions-title">
+    <div class="section-head">
+        <div>
+            <h2 id="interventions-title">Interventi di manutenzione</h2>
+            <p>Le richieste per questo impianto e il loro stato.</p>
         </div>
     </div>
-</div>
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Richiesto il</th><th class="hide-phone">Giorno richiesto</th><th>Tipo</th><th>Stato</th>
+                    <th class="hide-phone">Tecnico</th><th class="hide-phone">Eseguito il</th><th><span class="visually-hidden">Azioni</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for intervention in interventions %}
+                    <tr>
+                        <td class="nb">{{ intervention.requested_at|date:"d/m/Y" }}</td>
+                        <td class="hide-phone">{{ intervention.preferred_date|date:"d/m/Y" }}</td>
+                        <td>{{ intervention.get_code_display|default:"Da definire" }}</td>
+                        <td><span class="status {{ intervention.status|status_badge }}">{{ intervention.get_status_display }}</span></td>
+                        <td class="hide-phone">{{ intervention.staff|person }}</td>
+                        <td class="hide-phone">{{ intervention.executed_on|date:"d/m/Y"|default:"-" }}</td>
+                        <td class="go">
+                            {% if is_technician %}
+                                <a href="{% url 'SP:intervention_detail' intervention.pk %}" class="btn btn-sm btn-outline-secondary">Gestisci</a>
+                            {% endif %}
+                            {% if intervention.is_done %}
+                                <a href="{% url 'SP:intervention_report' intervention.pk %}" class="btn btn-sm btn-outline-secondary" target="_blank">Report</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
 {% endif %}
 {% endblock %}

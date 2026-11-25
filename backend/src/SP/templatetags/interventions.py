@@ -7,22 +7,23 @@ register = template.Library()
 
 Status = Intervention.Status
 
+# Classe del pallino colorato (app.css, .status) e icona (templates/partials/icons.html) di ogni stato
 STYLES = {
-    Status.REQUESTED: ("bg-warning text-dark", "fa-paper-plane"),
-    Status.ACCEPTED: ("bg-primary", "fa-user-check"),
-    Status.DONE: ("bg-success", "fa-check-double"),
+    Status.REQUESTED: ("requested", "send"),
+    Status.ACCEPTED: ("accepted", "user"),
+    Status.DONE: ("done", "check"),
 }
 
 
 @register.filter
 def status_badge(status):
-    """Classi Bootstrap del badge di uno stato dell'intervento."""
+    """Classe del pallino di uno stato dell'intervento."""
     return STYLES[status][0]
 
 
 @register.filter
 def status_icon(status):
-    """Icona Font Awesome di uno stato dell'intervento."""
+    """Icona di uno stato dell'intervento."""
     return STYLES[status][1]
 
 

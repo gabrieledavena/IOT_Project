@@ -57,13 +57,17 @@
         draw();
     }
 
+    // Colori e font da SP/chart_theme.js: barre verdi sul fondo chiaro
     function draw() {
+        const theme = window.chartTheme;
+        const palette = theme.colors(canvas);
         const data = {
             labels: summary.bars.map(bar => bar.label),
             datasets: [{
                 label: 'Energia generata',
                 data: summary.bars.map(bar => bar.energy),
-                backgroundColor: '#f59f00',
+                backgroundColor: palette.bar,
+                hoverBackgroundColor: theme.alpha(palette.bar, 0.75),
                 borderRadius: 4,
                 maxBarThickness: 32,
             }],
@@ -81,18 +85,15 @@
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {display: false},
-                    tooltip: {
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        padding: 12,
-                        callbacks: {label: context => kwh(context.parsed.y)},
-                    },
+                    tooltip: {...theme.tooltip(palette), callbacks: {label: context => kwh(context.parsed.y)}},
                 },
                 scales: {
-                    x: {grid: {display: false}, ticks: {color: '#6c757d', maxRotation: 45}},
+                    x: {grid: {display: false}, border: {display: false}, ticks: {color: palette.text, maxRotation: 0, autoSkipPadding: 12}},
                     y: {
                         beginAtZero: true,
-                        grid: {color: '#e9ecef'},
-                        ticks: {color: '#6c757d', callback: value => `${number(value, 0)} kWh`},
+                        grid: {color: palette.grid},
+                        border: {display: false},
+                        ticks: theme.ticks(palette, 'kWh', 0),
                     },
                 },
             },

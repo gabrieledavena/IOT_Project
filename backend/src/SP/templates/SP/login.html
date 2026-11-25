@@ -2,12 +2,34 @@
 
 {% block title %}Accedi{% endblock %}
 
+{% block band %}
+<div class="wrap">
+    <section class="head--page">
+        <div>
+            <h1 class="title title--big">Accedi</h1>
+            <p class="lead-b">Per vedere la produzione dei tuoi impianti, le previsioni e gli interventi.</p>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
 {% block content %}
-    <h2>Accedi</h2>
-    <form method="post">
+<section class="section">
+    <form method="post" class="form-b form-narrow">
         {% csrf_token %}
-        {{ form.as_p }}
+        {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}
+        {% for field in form %}
+            <div class="field">
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                {{ field }}
+                {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
+            </div>
+        {% endfor %}
         <input type="hidden" name="next" value="{{ next }}">
-        <button type="submit">Accedi</button>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Accedi</button>
+            <span class="muted">Non hai un account? <a href="{% url 'SP:register' %}" class="link">Registrati</a></span>
+        </div>
     </form>
+</section>
 {% endblock %}

@@ -66,7 +66,8 @@ class UserDashboardTests(TestCase):
 
         self.assertEqual(response.context["rows"][0][0].name, "Tettoia")
         self.assertEqual(response.context["counts"]["broken"], 1)
-        self.assertContains(response, "fa-times-circle me-1\"></i>Guasto")
+        # Il pallino rosso del guasto: nella riga dell'impianto, oltre che nello stato in alto e nel filtro
+        self.assertContains(response, '<span class="status broken">Guasto</span>', count=3)
         self.assertEqual([system.name for system, _ in self.client.get("/?status=broken").context["rows"]], ["Tettoia"])
 
     def test_staff_sees_every_system_with_its_community(self):
@@ -155,7 +156,7 @@ class LandingPageTests(TestCase):
 
 @mock.patch("SP.views.get_day_weather", return_value=DEFAULT_WEATHER)
 class SystemPageLayoutTests(TestCase):
-    def test_map_in_the_weather_card_and_interventions_at_the_end(self, _):
+    def test_weather_after_the_charts_and_interventions_at_the_end(self, _):
         community = create_community()
         system = create_system(community)
         add_readings(system, utc(2026, 9, 28, 12, 0), [2.0] * 61)
@@ -164,8 +165,9 @@ class SystemPageLayoutTests(TestCase):
 
         content = self.client.get(f"/sp/system/{system.id}/?day=2026-09-28").content.decode()
 
+        # Nella banda l'energia del giorno e la potenza; sotto i sensori, il meteo e in fondo gli interventi
         positions = [content.index(text) for text in (
-            "Energia Totale Prodotta", "Previsioni Meteo", "maps.google.com", "productionChart", "temperatureChart",
-            "Interventi di manutenzione",
+            "Energia prodotta", "productionChart", "temperatureChart", "Meteo", "Interventi di manutenzione",
         )]
         self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("maps.google.com", content)

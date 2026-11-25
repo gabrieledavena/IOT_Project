@@ -15,16 +15,16 @@ TEMPLATE = "forecast/forecast.html"
 
 
 def weather_icon(day):
-    """Icona (Font Awesome) del meteo previsto in un giorno."""
+    """Icona del meteo previsto in un giorno (templates/partials/icons.html)."""
     if day["snowfall"] > 0:
-        return "fa-snowflake text-info"
+        return "snow"
     if day["precipitation"] >= 1:
-        return "fa-cloud-rain text-primary"
+        return "rain"
     if day["cloud_cover"] < 25:
-        return "fa-sun text-warning"
+        return "sun"
     if day["cloud_cover"] < 70:
-        return "fa-cloud-sun text-warning"
-    return "fa-cloud text-secondary"
+        return "partly"
+    return "cloud"
 
 
 def rounded(value):
