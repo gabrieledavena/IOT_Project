@@ -131,6 +131,50 @@ class SecondCheckTests(MonitoringTestCase):
         self.assertEqual(result.status, Status.DIRTY)
         self.assertEqual(result.neighbours, 0)
 
+    def test_below_30_percent_is_a_probable_fault_whatever_the_neighbours_produce(self):
+        system = self.system(0.25)
+        for i in range(3):
+            self.system(0.5, name=f"Vicino {i}")
+
+        result = self.check(system)
+
+        self.assertEqual(result.status, Status.FAULT)
+        self.assertEqual(result.neighbours, 0)
+        self.assertEqual(self.check(self.system(0.35, name="Poco sopra")).status, Status.DIRTY)
+
+    def test_dirty_panels_at_3_checks_in_a_row_are_a_probable_fault(self):
+        system = self.system(0.8)
+        self.system(0.8, name="Vicino")
+        system.set_status(Status.DIRTY, timezone.now(), dirty_checks=1)
+
+        result = self.check(system)
+        self.assertEqual((result.status, result.dirty_checks), (Status.DIRTY, 2))
+        self.assertFalse(result.still_dirty)
+
+        system.set_status(Status.DIRTY, timezone.now(), dirty_checks=2)
+        result = self.check(system)
+
+        self.assertEqual((result.status, result.dirty_checks), (Status.FAULT, 3))
+        self.assertTrue(result.still_dirty)
+        self.assertEqual((result.neighbours, result.anomalous_neighbours), (1, 1))
+
+        # Ancora sporchi a un altro controllo, prima del lavaggio: resta un probabile guasto
+        system.set_status(Status.FAULT, timezone.now(), dirty_checks=3)
+        self.assertEqual((self.check(system).status, self.check(system).dirty_checks), (Status.FAULT, 4))
+
+    def test_any_other_result_counts_the_dirty_checks_again_from_zero(self):
+        system = self.system(0.7)
+        for i in range(3):
+            self.system(0.97, name=f"Vicino {i}")
+        system.set_status(Status.DIRTY, timezone.now(), dirty_checks=2)
+
+        result = self.check(system)
+
+        self.assertEqual((result.status, result.dirty_checks), (Status.FAULT, 0))
+        system.set_status(result.status, timezone.now(), result.dirty_checks)
+        system.refresh_from_db()
+        self.assertEqual(system.dirty_checks, 0)
+
 
 class CheckSystemsCommandTests(MonitoringTestCase):
     def run_command(self, *args):
@@ -158,6 +202,38 @@ class CheckSystemsCommandTests(MonitoringTestCase):
         self.assertIn("Checked 2 systems", self.run_command("--all"))
         PhotovoltaicSystem.objects.update(last_check=timezone.now() - timedelta(days=2))
         self.assertIn("Checked 2 systems", self.run_command())
+
+    def test_dirty_panels_at_the_third_check_in_a_row_become_a_probable_fault(self):
+        dirty = self.recent_system(0.8, name="Magazzino")
+        self.recent_system(0.8, name="Sede")
+        very_low = self.recent_system(0.2, name="Negozio")
+
+        output = self.run_command()
+        self.assertIn("Negozio: Probabile guasto, 20% of the forecast; below 30%, whatever the nearby systems produce",
+                      output)
+        self.run_command("--all")
+        dirty.refresh_from_db()
+        self.assertEqual((dirty.status, dirty.dirty_checks), (Status.DIRTY, 2))
+
+        output = self.run_command("--all")
+
+        dirty.refresh_from_db()
+        very_low.refresh_from_db()
+        self.assertEqual((dirty.status, dirty.dirty_checks), (Status.FAULT, 3))
+        self.assertEqual(very_low.status, Status.FAULT)
+        self.assertIn("Magazzino: Probabile guasto, 80% of the forecast; 2 of 2 nearby systems also below it; "
+                      "dirty panels for 3 checks in a row, despite the washing", output)
+
+        # Appena il dispositivo ha lavato di nuovo i pannelli è un guasto, senza confronto con i vicini
+        device, _ = install_device(dirty)
+        device.last_cleaning = timezone.now()
+        device.save()
+        output = self.run_command()
+
+        dirty.refresh_from_db()
+        self.assertEqual((dirty.status, dirty.previous_status, dirty.dirty_checks), (Status.BROKEN, Status.FAULT, 0))
+        self.assertIn("Rossi Trasporti - Magazzino: Guasto, dirty panels for 3 checks in a row, washed again on",
+                      output)
 
     def test_runs_like_the_scheduler_after_the_system_checks_of_django(self):
         # Lo scheduler lancia python manage.py check_systems, che prima fa i controlli di sistema di Django
@@ -310,6 +386,15 @@ class CleaningVerificationTests(MonitoringTestCase):
 
         self.assertEqual(result.status, Status.BROKEN)
         self.assertEqual(result.start, utc(2026, 9, 29, 6, 0))
+
+    def test_with_dirty_panels_at_3_checks_in_a_row_it_is_a_fault_whatever_the_neighbours_produce(self):
+        self.neighbour(1.0)
+        system = self.faulty(0.5)  # dopo il lavaggio produce come il vicino
+        system.dirty_checks = 3
+
+        result = self.verify(system, now=self.CLEANED_AT + timedelta(minutes=1))
+
+        self.assertEqual((result.status, result.ratio, result.start), (Status.BROKEN, None, self.CLEANED_AT))
 
     def test_neighbours_with_a_fault_are_not_a_reference(self):
         broken = self.neighbour(1.0)

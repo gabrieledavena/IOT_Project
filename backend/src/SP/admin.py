@@ -183,13 +183,15 @@ class PhotovoltaicSystemAdmin(admin.ModelAdmin):
     list_select_related = ("community",)
     list_filter = ("status",)
     # Aggiornati da save_model quando cambia lo stato
-    readonly_fields = ("previous_status", "status_changed_at")
+    readonly_fields = ("previous_status", "status_changed_at", "dirty_checks")
 
     def save_model(self, request, obj, form, change):
         if change and "status" in form.changed_data:
             # Un cambiamento di stato come quelli del controllo automatico: il dispositivo lo riconosce
             # dalla data e reagisce (con DRT e FLT aziona la pompa)
             obj.previous_status, obj.status_changed_at = form.initial["status"], timezone.now()
+            # Uno stato messo a mano non è un controllo: i controlli con i pannelli sporchi si contano da capo
+            obj.dirty_checks = 0
         super().save_model(request, obj, form, change)
         # Il dispositivo dell'impianto riceve subito i dati aggiornati, come la potenza massima
         if change:

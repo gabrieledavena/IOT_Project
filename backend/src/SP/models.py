@@ -177,17 +177,24 @@ class PhotovoltaicSystem(models.Model):
     # Ultimo cambiamento di stato: il dispositivo lo riceve via MQTT e reagisce una volta sola a ogni cambiamento
     previous_status = models.CharField(max_length=3, choices=Status.choices, blank=True, verbose_name="Stato precedente")
     status_changed_at = models.DateTimeField(null=True, blank=True, verbose_name="Data cambiamento di stato")
+    # Controlli di fila in cui i pannelli sono risultati sporchi: dopo alcuni il controllo automatico lo considera un
+    # probabile guasto, che diventa un guasto appena il dispositivo li ha lavati di nuovo (SP/monitoring.py)
+    dirty_checks = models.PositiveSmallIntegerField(default=0, verbose_name="Controlli di fila con pannelli sporchi")
 
     def __str__(self):
         return self.name
 
-    def set_status(self, status, checked_at):
-        """Salva l'esito di un controllo; restituisce True se lo stato è cambiato."""
+    def set_status(self, status, checked_at, dirty_checks=0):
+        """Salva l'esito di un controllo; restituisce True se lo stato è cambiato.
+
+        dirty_checks: i controlli di fila, compreso questo, in cui i pannelli sono risultati sporchi.
+        """
         changed = status != self.status
         if changed:
             self.previous_status, self.status, self.status_changed_at = self.status, status, checked_at
+        self.dirty_checks = dirty_checks
         self.last_check = checked_at
-        self.save(update_fields=["status", "last_check", "previous_status", "status_changed_at"])
+        self.save(update_fields=["status", "last_check", "previous_status", "status_changed_at", "dirty_checks"])
         return changed
 
     @property

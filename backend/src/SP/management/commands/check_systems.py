@@ -8,7 +8,8 @@ from forecast.predictor import ForecastError
 from SP import mqtt, telegram
 from SP.models import PhotovoltaicSystem
 from SP.monitoring import (
-    ANOMALY_THRESHOLD, CHECK_DAYS, CleaningVerifier, SystemChecker, systems_to_check, systems_to_verify,
+    ANOMALY_THRESHOLD, CHECK_DAYS, FAULT_THRESHOLD, MAX_DIRTY_CHECKS, CleaningVerifier, SystemChecker,
+    systems_to_check, systems_to_verify,
 )
 
 Status = PhotovoltaicSystem.Status
@@ -18,10 +19,13 @@ class Command(BaseCommand):
     help = (
         f"Checks the photovoltaic systems, community by community: the production of the last {CHECK_DAYS} days "
         f"is compared with the forecast model and, if more than {1 - ANOMALY_THRESHOLD:.0%} lower, with the nearby "
-        f"systems. Only the systems not checked in the last {CHECK_DAYS} days are checked, unless --all is given. "
+        f"systems. Below {FAULT_THRESHOLD:.0%} of the forecast, or with dirty panels at {MAX_DIRTY_CHECKS} checks in a "
+        "row, it is a probable fault whatever the nearby systems produce. "
+        f"Only the systems not checked in the last {CHECK_DAYS} days are checked, unless --all is given. "
         "First it verifies the probable faults whose panels the device has washed: after an hour of production "
-        "they are OK again if they produce like the nearby systems, otherwise they are faults, and the owner of "
-        "the community gets an alert on Telegram. The scheduler service runs it every hour."
+        "they are OK again if they produce like the nearby systems, otherwise they are faults (right after the "
+        f"washing with dirty panels at {MAX_DIRTY_CHECKS} checks in a row), and the owner of the community gets an "
+        "alert on Telegram. The scheduler service runs it every hour."
     )
 
     def add_arguments(self, parser):
@@ -66,10 +70,10 @@ class Command(BaseCommand):
             if result is None:
                 self.stdout.write(f'  {system.community} - {system.name}: waiting for an hour of production after the washing')
                 continue
-            self.stdout.write(
-                f'  {system.community} - {system.name}: {result.status.label}, {result.ratio:.0%} of '
-                f'{result.neighbours} nearby systems from {timezone.localtime(result.start):%d/%m %H:%M}'
-            )
+            start = f'{timezone.localtime(result.start):%d/%m %H:%M}'
+            detail = (f'dirty panels for {MAX_DIRTY_CHECKS} checks in a row, washed again on {start}'
+                      if result.ratio is None else f'{result.ratio:.0%} of {result.neighbours} nearby systems from {start}')
+            self.stdout.write(f'  {system.community} - {system.name}: {result.status.label}, {detail}')
             if system.set_status(result.status, now):
                 changed.append(system)
         return changed
@@ -88,7 +92,7 @@ class Command(BaseCommand):
                     result = checker.check(system)
                     counts[result.status if result else None] += 1
                     self.stdout.write(f'  {system.name}: {self.describe(result)}')
-                    if result and system.set_status(result.status, now):
+                    if result and system.set_status(result.status, now, result.dirty_checks):
                         changed.append(system)
         except ForecastError as error:
             raise CommandError(str(error)) from error
@@ -108,8 +112,14 @@ class Command(BaseCommand):
         if result is None:
             return 'not checked (missing readings or weather)'
         text = f'{result.status.label}, {result.ratio:.0%} of the forecast'
-        if result.status != Status.OK and result.neighbours:
+        if result.status == Status.OK:
+            return text
+        if result.ratio < FAULT_THRESHOLD:
+            return text + f'; below {FAULT_THRESHOLD:.0%}, whatever the nearby systems produce'
+        if result.neighbours:
             text += f'; {result.anomalous_neighbours} of {result.neighbours} nearby systems also below it'
-        elif result.status != Status.OK:
+        else:
             text += '; no nearby system to compare with'
+        if result.still_dirty:
+            text += f'; dirty panels for {MAX_DIRTY_CHECKS} checks in a row, despite the washing'
         return text

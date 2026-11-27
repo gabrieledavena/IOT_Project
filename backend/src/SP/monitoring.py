@@ -1,12 +1,16 @@
 """Controllo degli impianti: la produzione degli ultimi due giorni confrontata con la previsione e con i vicini.
 
 1. Se un impianto ha prodotto meno del 90% di quanto prevede il modello con il meteo reale di quei giorni,
-   ha un'anomalia (per esempio pannelli sporchi).
-2. Solo in quel caso lo si confronta con fino a 10 impianti vicini: se anche la maggior parte di loro ha
+   ha un'anomalia (per esempio pannelli sporchi). Sotto il 30% è un probabile guasto qualunque cosa producano
+   i vicini: lo sporco non fa perdere così tanto.
+2. Altrimenti lo si confronta con fino a 10 impianti vicini: se anche la maggior parte di loro ha
    un'anomalia la causa è comune alla zona e i pannelli sono solo sporchi; altrimenti è un probabile guasto.
+   Se i pannelli risultano sporchi per 3 controlli di fila, nonostante il lavaggio, la causa non è lo sporco:
+   anche questo è un probabile guasto.
 3. Con un probabile guasto il dispositivo lava comunque i pannelli. Dopo un'ora di produzione si confronta
    l'impianto con i vicini in quella stessa ora: se produce come loro (almeno il 90%) torna OK, altrimenti
-   è un guasto. Un guasto resta tale ai controlli successivi finché la produzione non torna nella norma.
+   è un guasto. Con i pannelli sporchi da 3 controlli di fila è un guasto appena il dispositivo li ha lavati,
+   senza confronto. Un guasto resta tale ai controlli successivi finché la produzione non torna nella norma.
 
 Vicini sono gli impianti delle community della stessa città (prima quelli della stessa community) o, se lì
 non ce ne sono con misure utilizzabili, quelli della città più vicina che ne ha.
@@ -34,6 +38,10 @@ CHECK_DAYS = 2
 CHECK_INTERVAL = timedelta(days=CHECK_DAYS)
 # Anomalia: produzione inferiore di almeno il 10% alla previsione
 ANOMALY_THRESHOLD = 0.9
+# Probabile guasto senza guardare i vicini: produzione inferiore al 30% della previsione
+FAULT_THRESHOLD = 0.3
+# Probabile guasto anche con i pannelli sporchi a 3 controlli di fila (PhotovoltaicSystem.dirty_checks)
+MAX_DIRTY_CHECKS = 3
 MAX_NEIGHBOURS = 10
 # Il bridge invia una misura al minuto: un giorno con meno del 90% delle misure non è confrontabile
 READINGS_PER_DAY = 24 * 60
@@ -54,14 +62,22 @@ class CheckResult:
     ratio: float  # energia prodotta / energia prevista
     neighbours: int = 0  # vicini confrontati, solo in caso di anomalia
     anomalous_neighbours: int = 0
+    dirty_checks: int = 0  # controlli di fila, compreso questo, in cui i pannelli sono risultati sporchi
+
+    @property
+    def still_dirty(self):
+        """True se è un probabile guasto perché i pannelli sono sporchi da MAX_DIRTY_CHECKS controlli di fila."""
+        return self.dirty_checks >= MAX_DIRTY_CHECKS
 
 
 @dataclass(frozen=True)
 class CleaningResult:
     status: Status  # OK se dopo il lavaggio produce come i vicini, BROKEN se no
-    ratio: float  # resa dell'impianto / resa mediana dei vicini nell'ora confrontata
+    # Resa dell'impianto / resa mediana dei vicini nell'ora confrontata; None senza confronto (pannelli sporchi da
+    # MAX_DIRTY_CHECKS controlli di fila), e allora start è il lavaggio
+    ratio: float | None
     start: datetime  # inizio dell'ora confrontata
-    neighbours: int
+    neighbours: int = 0
 
 
 def distance_km(city, other):
@@ -133,12 +149,20 @@ class SystemChecker:
             return None
         if ratio >= ANOMALY_THRESHOLD:
             return CheckResult(Status.OK, ratio)
+        # Lo sporco non fa perdere così tanto, qualunque cosa producano i vicini
+        if ratio < FAULT_THRESHOLD:
+            return CheckResult(Status.FAULT, ratio)
 
         neighbours = self.neighbours(system)
         anomalous = sum(self.ratio(neighbour) < ANOMALY_THRESHOLD for neighbour in neighbours)
         # Anomalia comune alla zona (o nessun vicino con cui confrontarsi): solo pannelli sporchi
-        dirty = anomalous * 2 >= len(neighbours)
-        return CheckResult(Status.DIRTY if dirty else Status.FAULT, ratio, len(neighbours), anomalous)
+        if anomalous * 2 < len(neighbours):
+            return CheckResult(Status.FAULT, ratio, len(neighbours), anomalous)
+        # Ancora sporchi dopo i controlli precedenti, nonostante il lavaggio: non è lo sporco. Ogni altro esito
+        # (anche il lavaggio verificato) azzera dirty_checks
+        dirty_checks = system.dirty_checks + 1
+        status = Status.FAULT if dirty_checks >= MAX_DIRTY_CHECKS else Status.DIRTY
+        return CheckResult(status, ratio, len(neighbours), anomalous, dirty_checks)
 
     def ratio(self, system):
         """Energia prodotta nei giorni controllati rispetto a quella prevista dal modello, o None se non calcolabile."""
@@ -197,8 +221,14 @@ class CleaningVerifier:
         self.healthy = list(systems.exclude(status__in=[Status.FAULT, Status.BROKEN]))
 
     def verify(self, system):
-        """Esito del lavaggio, o None se non c'è ancora un'ora di produzione da confrontare."""
+        """Esito del lavaggio, o None se non c'è ancora un'ora di produzione da confrontare.
+
+        Se il probabile guasto viene dai pannelli sporchi per MAX_DIRTY_CHECKS controlli di fila, i lavaggi non sono
+        serviti già prima: dopo quest'ultimo è un guasto, qualunque cosa producano i vicini (e anche senza vicini).
+        """
         cleaned_at = system.device.last_cleaning
+        if system.dirty_checks >= MAX_DIRTY_CHECKS:
+            return CleaningResult(Status.BROKEN, None, cleaned_at)
         start = cleaned_at
         while start + CLEANING_TEST <= self.now and start < cleaned_at + CHECK_INTERVAL:
             result = self.compare(system, start)

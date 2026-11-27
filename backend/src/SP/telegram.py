@@ -837,12 +837,11 @@ def status_text(community):
 
 
 def broken_text(system):
-    url = site_url(reverse("SP:photovoltaic_system", args=[system.id]))
     return (
         f"🔴 <b>Guasto all'impianto {escape(system.name)}</b> ({escape(system.community.name)})\n\n"
-        "Negli ultimi giorni l'impianto ha prodotto meno del previsto e, anche dopo il lavaggio dei pannelli, "
-        "produce meno degli impianti vicini: probabilmente c'è un guasto.\n\n"
-        f"Puoi chiedere l'intervento di un tecnico dalla pagina dell'impianto: {escape(url)}"
+        "Negli ultimi giorni l'impianto ha prodotto meno del previsto e il lavaggio dei pannelli non è servito: "
+        "probabilmente c'è un guasto.\n\n"
+        "Per chiedere l'intervento di un tecnico visita la pagina dedicata all'impianto sul sito."
     )
 
 

@@ -258,17 +258,21 @@ grid are not measured, so they are not in the totalizer and in the summaries.
 Every 2 days each system is checked on the last 2 complete days (`SP/monitoring.py`):
 
 1. Its production is compared with what the forecast model predicts with the real weather of those days: if it is
-   more than 10% lower, the system has an anomaly.
-2. Only then it is compared with up to 10 nearby systems: those of the communities of the same city (first the ones
+   more than 10% lower, the system has an anomaly. If it produced less than 30% of the forecast it has a
+   **probable fault**, whatever the nearby systems produce: dirt does not lose that much.
+2. Otherwise it is compared with up to 10 nearby systems: those of the communities of the same city (first the ones
    of its own community) or, if there are none with readings, those of the nearest city that has some. If at least
    half of them also have an anomaly the cause is shared by the area and the panels are just **dirty**; otherwise
-   the system has a **probable fault**.
+   the system has a **probable fault**. Dirty panels at 3 checks in a row, despite the washing, are a probable fault
+   too: the cause is not the dirt.
 3. With dirty panels the device of the system washes them. With a probable fault it washes them too, since the
    washing may be enough: after an hour of production the system is compared with the nearby systems without a
    fault in that same hour (power per installed kW, median of up to 10 systems as above). If it produces at least
    90% of them it is **OK** again; otherwise it has a **fault**. The hour must have at least 45 readings of the
    system and of the nearby systems, and these must produce at least 5% of their power: after a washing in the
-   evening the comparison waits for the morning (and gives up after 2 days).
+   evening the comparison waits for the morning (and gives up after 2 days). A probable fault found because of
+   dirty panels at 3 checks in a row is a **fault** as soon as the device has washed the panels again, with no
+   comparison (even without nearby systems): the washing did not help already before.
 
 The result (`OK`, `Pannelli sporchi`, `Probabile guasto`, `Guasto`) and the date of the check are saved in the system
 and shown on its page. Days with less than 90% of the readings are not compared: the system is checked again at the

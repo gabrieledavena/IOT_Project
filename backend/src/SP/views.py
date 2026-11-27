@@ -22,6 +22,7 @@ from .benchmark import measured_city_yields, reference_yields
 from .energy import daily_energy, period_summary, totalizer
 from .forms import ContactForm, CustomerRegistrationForm
 from .models import City, Community, Customer, Intervention, PanelData, PhotovoltaicSystem, StaffProfile
+from .monitoring import FAULT_THRESHOLD, MAX_DIRTY_CHECKS
 from .production import energy_kwh, get_community_series, get_system_series
 from .roles import ROLES, is_consultant, is_technician
 from .sorting import SYSTEM_STATES, Ordering, problems_first
@@ -39,13 +40,17 @@ SYSTEM_STATUSES = {
                        "sono sporchi (polvere, pollini). Si consiglia una pulizia.",
     },
     PhotovoltaicSystem.Status.FAULT: {
-        "description": "Ha prodotto oltre il 10% in meno del previsto, mentre gli impianti vicini producono regolarmente: "
+        "description": "Ha prodotto oltre il 10% in meno del previsto mentre gli impianti vicini producono regolarmente, "
+                       f"oppure meno del {FAULT_THRESHOLD:.0%} del previsto (lo sporco non fa perdere così tanto): "
                        "probabile guasto. Il dispositivo lava comunque i pannelli: se dopo un'ora di produzione l'impianto "
-                       "non produce come i vicini, viene segnalato come guasto.",
+                       "non produce come i vicini, viene segnalato come guasto. Se invece i pannelli sono risultati sporchi "
+                       f"per {MAX_DIRTY_CHECKS} controlli di fila nonostante il lavaggio, viene segnalato come guasto "
+                       "appena il dispositivo li ha lavati di nuovo.",
     },
     PhotovoltaicSystem.Status.BROKEN: {
-        "description": "Anche dopo il lavaggio dei pannelli produce meno degli impianti vicini: guasto di pannelli o "
-                       "inverter. Si consiglia un intervento tecnico.",
+        "description": "Il lavaggio dei pannelli non è servito: dopo il lavaggio produce meno degli impianti vicini, o "
+                       f"i pannelli erano già risultati sporchi per {MAX_DIRTY_CHECKS} controlli di fila. Guasto di "
+                       "pannelli o inverter: si consiglia un intervento tecnico.",
     },
 }
 

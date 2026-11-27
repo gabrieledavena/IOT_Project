@@ -238,7 +238,8 @@ class FaultAlertTests(TelegramTestCase):
         [(chat_id, text)] = self.bot.sent
         self.assertEqual(chat_id, CHAT)
         self.assertIn("Guasto all'impianto Magazzino</b> (Rossi Trasporti)", text)
-        self.assertIn(f"http://localhost:8000/sp/system/{broken.id}/", text)
+        self.assertIn("visita la pagina dedicata all'impianto sul sito.", text)
+        self.assertNotIn("http", text)
 
     def test_no_alert_without_a_linked_account(self):
         broken = create_system(self.community, "Magazzino")
